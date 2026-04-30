@@ -1,0 +1,181 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block extrastyle %}
+<style>
+  .toolbar { display:flex; gap:.5rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap;}
+  .btn { padding:.45rem .7rem; border:1px solid #ddd; border-radius:.5rem; cursor:pointer; background:#fff;}
+  .btn.active { outline:3px solid #2b7b2b; }
+  .grid { display:grid; gap:.35rem; background:#f7f7f7; padding:.6rem; border-radius:12px; border:1px solid #eee; }
+  .cell { width:38px; height:38px; display:flex; align-items:center; justify-content:center; border-radius:10px; user-select:none; cursor:pointer; border:1px solid #e1e1e1; }
+  .L { background:#e8fff0; }     /* Libre */
+  .P { background:transparent; border-color:transparent; cursor:default; } /* Pasillo */
+  .E { background:#ffe8c9; }     /* Escalera */
+  .B { background:#ffe1e6; }     /* Baño */
+  .D { background:#e6f0ff; }     /* Discap. */
+  .X { background:#f2f2f2; }     /* Bloqueo */
+  .legend { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem;}
+  .legend span {display:inline-flex; align-items:center; gap:.35rem;}
+  .pill { width:16px; height:16px; border-radius:6px; border:1px solid #ddd;}
+  .sticky { position:sticky; top:1rem; }
+  .pane { background:#fff; padding:1rem; border:1px solid #eee; border-radius:12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Inicio</a> › <a href="{% url 'admin:reservas_bus_changelist' %}">Buses</a> › Seat Designer</div>
+
+<h1>Seat Designer – {{ bus.nombre }}</h1>
+
+<div style="display:grid; grid-template-columns: 1fr 360px; gap:1rem; align-items:start;">
+  <!-- Lienzo -->
+  <div class="pane">
+    <div class="toolbar">
+      <strong>Herramienta:</strong>
+      <button class="btn tool" data-t="L">Libre</button>
+      <button class="btn tool" data-t="P">Pasillo</button>
+      <button class="btn tool" data-t="E">Escalera</button>
+      <button class="btn tool" data-t="B">Baño</button>
+      <button class="btn tool" data-t="D">Discap.</button>
+      <button class="btn tool" data-t="X">Bloqueo</button>
+      <span style="margin-left:auto"></span>
+      <button class="btn" id="btnP1">Piso #1</button>
+      <button class="btn" id="btnP2" {% if bus.pisos != 2 %}style="display:none"{% endif %}>Piso #2</button>
+    </div>
+
+    <div id="grid" class="grid"></div>
+
+    <div class="legend">
+      <span><span class="pill" style="background:#e8fff0;"></span>Libre</span>
+      <span><span class="pill" style="background:transparent;border-color:transparent;"></span>Pasillo</span>
+      <span><span class="pill" style="background:#ffe8c9;"></span>Escalera</span>
+      <span><span class="pill" style="background:#ffe1e6;"></span>Baño</span>
+      <span><span class="pill" style="background:#e6f0ff;"></span>Discap.</span>
+      <span><span class="pill" style="background:#f2f2f2;"></span>Bloqueo</span>
+    </div>
+  </div>
+
+  <!-- Config -->
+  <div class="pane sticky">
+    <form method="post" id="frm">
+      {% csrf_token %}
+      <input type="hidden" name="pisos" value="{{ bus.pisos }}">
+      <input type="hidden" name="layout_piso1" id="layout_piso1">
+      <input type="hidden" name="layout_piso2" id="layout_piso2">
+
+      <h3>Parámetros</h3>
+      <label>Pisos:
+        <select id="pisosSel">
+          <option value="1" {% if bus.pisos == 1 %}selected{% endif %}>1 piso</option>
+          <option value="2" {% if bus.pisos == 2 %}selected{% endif %}>2 pisos</option>
+        </select>
+      </label>
+      <hr>
+      <h4>Piso #1</h4>
+      <label>Filas <input type="number" min="1" name="rows_piso1" id="rows1" value="{{ bus.rows_piso1 }}"></label>
+      <label>Columnas <input type="number" min="1" name="cols_piso1" id="cols1" value="{{ bus.cols_piso1 }}"></label>
+      <label>Prefijo numeración <input type="text" name="prefijo_piso1" value="{{ bus.prefijo_piso1 }}"></label>
+
+      <div id="boxP2" {% if bus.pisos != 2 %}style="display:none"{% endif %}>
+        <hr>
+        <h4>Piso #2</h4>
+        <label>Filas <input type="number" min="1" name="rows_piso2" id="rows2" value="{{ bus.rows_piso2 }}"></label>
+        <label>Columnas <input type="number" min="1" name="cols_piso2" id="cols2" value="{{ bus.cols_piso2 }}"></label>
+        <label>Prefijo numeración <input type="text" name="prefijo_piso2" value="{{ bus.prefijo_piso2 }}"></label>
+      </div>
+
+      <hr>
+      <button class="btn" type="button" id="btnAutoPasillo">Auto-pasillo (columna central)</button>
+      <button class="btn" type="button" id="btnLimpiar">Limpiar</button>
+      <button class="btn" type="submit" style="background:#2b7b2b;color:#fff;">Guardar diseño</button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const toolBtns = document.querySelectorAll('.tool');
+  let TOOL = 'L';
+  toolBtns.forEach(b => b.addEventListener('click', () => {
+    toolBtns.forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    TOOL = b.dataset.t;
+  }));
+  toolBtns[0].click();
+
+  let piso = 1;
+  const data = {
+    1: {{ bus.layout_piso1|default:"[]"|safe }},
+    2: {{ bus.layout_piso2|default:"[]"|safe }},
+  };
+  const dims = {
+    1: {rows: parseInt('{{ bus.rows_piso1 }}'), cols: parseInt('{{ bus.cols_piso1 }}')},
+    2: {rows: parseInt('{{ bus.rows_piso2|default:0 }}'), cols: parseInt('{{ bus.cols_piso2|default:0 }}')}
+  };
+
+  const grid = document.getElementById('grid');
+  function draw(){
+    const R = dims[piso].rows, C = dims[piso].cols;
+    if (!R || !C){ grid.innerHTML = "<em>Configura filas/columnas del piso.</em>"; return; }
+    grid.style.gridTemplateColumns = `repeat(${C}, 40px)`;
+    if (!Array.isArray(data[piso]) || data[piso].length !== R*C) data[piso] = Array(R*C).fill("L");
+    grid.innerHTML = "";
+    for (let i=0;i<R*C;i++){
+      const div = document.createElement('div');
+      div.className = `cell ${data[piso][i]}`;
+      div.title = `r${Math.floor(i/C)+1}, c${i%C+1}`;
+      div.addEventListener('click', () => { data[piso][i] = TOOL; div.className = `cell ${TOOL}`; });
+      grid.appendChild(div);
+    }
+  }
+  draw();
+
+  // Cambios de dimensiones
+  ['rows1','cols1','rows2','cols2'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', ()=>{
+      const p = id.endsWith('1') ? 1 : 2;
+      dims[p][id.startsWith('rows')?'rows':'cols'] = parseInt(el.value||0);
+      data[p] = []; // forzar regeneración
+      draw();
+    });
+  });
+
+  // Piso toggles
+  const btnP1 = document.getElementById('btnP1'), btnP2 = document.getElementById('btnP2');
+  if (btnP1) btnP1.addEventListener('click', ()=>{ piso=1; draw(); });
+  if (btnP2) btnP2.addEventListener('click', ()=>{ piso=2; draw(); });
+
+  // Pisos selector
+  const pisosSel = document.getElementById('pisosSel');
+  const boxP2 = document.getElementById('boxP2');
+  pisosSel?.addEventListener('change', ()=>{
+    document.querySelector('input[name="pisos"]').value = pisosSel.value;
+    if (pisosSel.value === '2'){ boxP2.style.display='block'; btnP2?.style?.removeProperty('display'); }
+    else { boxP2.style.display='none'; btnP2?.style.display='none'; piso=1; draw(); }
+  });
+
+  // Auto pasillo (columna central)
+  document.getElementById('btnAutoPasillo').addEventListener('click', ()=>{
+    const R = dims[piso].rows, C = dims[piso].cols;
+    if (!R || !C) return;
+    const mid = Math.floor(C/2);
+    data[piso] = Array(R*C).fill("L");
+    for (let r=0;r<R;r++){ data[piso][r*C + mid] = "P"; }
+    draw();
+  });
+
+  // Limpiar
+  document.getElementById('btnLimpiar').addEventListener('click', ()=>{
+    const R = dims[piso].rows, C = dims[piso].cols;
+    data[piso] = Array(R*C).fill("L"); draw();
+  });
+
+  // Submit → empaqueta JSON
+  document.getElementById('frm').addEventListener('submit', ()=>{
+    document.getElementById('layout_piso1').value = JSON.stringify(data[1]||[]);
+    document.getElementById('layout_piso2').value = JSON.stringify(data[2]||[]);
+  });
+})();
+</script>
+{% endblock %}

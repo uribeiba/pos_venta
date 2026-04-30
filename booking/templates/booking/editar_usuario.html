@@ -1,0 +1,393 @@
+{% extends "booking/pos_base.html" %}
+
+{% block title %}Editar Usuario{% endblock %}
+
+{% block content %}
+<style>
+    .editar-usuario-container {
+        padding: 20px;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .form-container {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 30px;
+    }
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    .form-group { display: flex; flex-direction: column; margin-bottom: 16px; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    .form-label { font-size: 14px; color: #374151; margin-bottom: 6px; font-weight: 600; }
+    .form-input, .form-select {
+        height: 44px; padding: 0 12px; border: 1px solid #e5e7eb;
+        border-radius: 8px; font-size: 14px; background: white; width: 100%;
+    }
+    .form-input:focus, .form-select:focus {
+        outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+    }
+    .form-help { font-size: 12px; color: #6b7280; margin-top: 4px; }
+    .password-strength { margin-top: 4px; font-size: 12px; }
+    .strength-weak { color: #dc2626; }
+    .strength-medium { color: #ea580c; }
+    .strength-strong { color: #059669; }
+    .acciones-form { display: flex; gap: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+    .requirements-list { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 20px; }
+    .requirements-list h4 { margin: 0 0 12px 0; font-size: 14px; color: #374151; }
+    .requirements-list ul { margin: 0; padding-left: 20px; color: #6b7280; font-size: 13px; }
+    .requirements-list li { margin-bottom: 4px; }
+    .status-toggle { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+    .toggle-switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+    .toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .toggle-slider { background-color: #10b981; }
+    input:checked + .toggle-slider:before { transform: translateX(26px); }
+    .field-error { color:#dc2626; font-size:12px; margin-top:4px; }
+</style>
+
+<div class="editar-usuario-container">
+    <!-- Header -->
+    <div class="header-section">
+        <h1 style="font-size: 24px; font-weight: 700; color: #111827;">✏️ Editar Usuario</h1>
+        <a href="{% url 'gestion_usuarios' %}" class="btn btn-light" style="display: inline-flex; align-items: center; gap: 8px;">
+            ← Volver a Usuarios
+        </a>
+    </div>
+
+    <!-- Formulario -->
+    <div class="form-container">
+        <form method="post" autocomplete="off" novalidate>
+            {% csrf_token %}
+
+            {# non field errors desde form o dict errors #}
+            {% if form and form.non_field_errors %}
+                <div class="field-error" style="margin-bottom:12px;">{{ form.non_field_errors }}</div>
+            {% elif errors and errors.non_field_errors %}
+                <div class="field-error" style="margin-bottom:12px;">{{ errors.non_field_errors }}</div>
+            {% endif %}
+            
+            <div class="form-grid">
+                <!-- Información Básica -->
+                <div class="form-group full-width">
+                    <label class="form-label">Nombre de Usuario *</label>
+                    <input type="text" name="username"
+                           value="{% if form %}{{ form.username.value|default_if_none:usuario.username }}{% else %}{{ usuario.username }}{% endif %}"
+                           class="form-input" placeholder="usuario" required
+                           inputmode="latin" autocapitalize="none" spellcheck="false" id="username">
+                    <div class="form-help">Nombre único para identificar al usuario en el sistema</div>
+                    {% if form and form.username.errors %}
+                        <div class="field-error">{{ form.username.errors|join:", " }}</div>
+                    {% elif errors and errors.username %}
+                        <div class="field-error">{{ errors.username }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="password" name="password" id="password" 
+                               class="form-input" placeholder="••••••••"
+                               oninput="checkPasswordStrength(this.value)" autocomplete="new-password">
+                        <button type="button" class="btn btn-light" onclick="togglePwd('password', this)" title="Mostrar/Ocultar">👁</button>
+                    </div>
+                    <div id="password-strength" class="password-strength"></div>
+                    <div class="form-help">Dejar en blanco para mantener la contraseña actual</div>
+                    {% if form and form.password and form.password.errors %}
+                        <div class="field-error">{{ form.password.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Confirmar Contraseña</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="password" name="confirm_password" id="confirm_password" 
+                               class="form-input" placeholder="••••••••"
+                               oninput="checkPasswordMatch()" autocomplete="new-password">
+                        <button type="button" class="btn btn-light" onclick="togglePwd('confirm_password', this)" title="Mostrar/Ocultar">👁</button>
+                    </div>
+                    <div id="password-match" class="password-strength"></div>
+                </div>
+                
+                <!-- Información Personal -->
+                <div class="form-group">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" name="first_name"
+                           value="{% if form %}{{ form.first_name.value|default_if_none:usuario.first_name }}{% else %}{{ usuario.first_name }}{% endif %}"
+                           class="form-input" placeholder="Nombre" autocomplete="given-name">
+                    {% if form and form.first_name.errors %}
+                        <div class="field-error">{{ form.first_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Apellido</label>
+                    <input type="text" name="last_name"
+                           value="{% if form %}{{ form.last_name.value|default_if_none:usuario.last_name }}{% else %}{{ usuario.last_name }}{% endif %}"
+                           class="form-input" placeholder="Apellido" autocomplete="family-name">
+                    {% if form and form.last_name.errors %}
+                        <div class="field-error">{{ form.last_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group full-width">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email"
+                           value="{% if form %}{{ form.email.value|default_if_none:usuario.email }}{% else %}{{ usuario.email }}{% endif %}"
+                           class="form-input" placeholder="correo@ejemplo.com" autocomplete="email">
+                    <div class="form-help">Opcional: para notificaciones y recuperación de cuenta</div>
+                    {% if form and form.email.errors %}
+                        <div class="field-error">{{ form.email.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                
+                <!-- Configuración del Perfil -->
+                <div class="form-group">
+                    <label class="form-label">Rol *</label>
+                    <select name="role" class="form-select" required>
+                        <option value="">Seleccionar rol...</option>
+                        {% for role_value, role_label in roles %}
+                        <option value="{{ role_value }}"
+                            {% if form %}
+                                {% if form.role.value == role_value %}selected{% endif %}
+                            {% else %}
+                                {% if usuario.profile.role == role_value %}selected{% endif %}
+                            {% endif %}>
+                            {{ role_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-help">Define los permisos del usuario en el sistema</div>
+                    {% if form and form.role.errors %}
+                        <div class="field-error">{{ form.role.errors|join:", " }}</div>
+                    {% elif errors and errors.role %}
+                        <div class="field-error">{{ errors.role }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Terminal Asignada</label>
+                    <select name="terminal" class="form-select">
+                        <option value="">-- Sin terminal --</option>
+                        {% for terminal in terminales %}
+                        <option value="{{ terminal.id }}"
+                            {% if form %}
+                                {% if form.terminal.value|stringformat:"s" == terminal.id|stringformat:"s" %}selected{% endif %}
+                            {% else %}
+                                {% if usuario.profile.terminal and usuario.profile.terminal.id == terminal.id %}selected{% endif %}
+                            {% endif %}>
+                            {{ terminal.name }} - {{ terminal.city.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-help">Opcional: terminal de trabajo asignada</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Comisión (%)</label>
+                    <input type="number" name="commission_rate"
+                           value="{% if form %}{{ form.commission_rate.value|default_if_none:usuario.profile.commission_rate }}{% else %}{{ usuario.profile.commission_rate }}{% endif %}"
+                           class="form-input" step="0.01" min="0" max="100" placeholder="0.00" inputmode="decimal">
+                    <div class="form-help">Porcentaje de comisión por ventas</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Descuento Máximo (%)</label>
+                    <input type="number" name="max_discount"
+                           value="{% if form %}{{ form.max_discount.value|default_if_none:usuario.profile.max_discount }}{% else %}{{ usuario.profile.max_discount }}{% endif %}"
+                           class="form-input" step="0.01" min="0" max="100" placeholder="0.00" inputmode="decimal">
+                    <div class="form-help">Máximo descuento que puede aplicar</div>
+                </div>
+
+                <!-- Estado del Usuario -->
+                <div class="form-group full-width">
+                    <label class="form-label">Estado del Usuario</label>
+                    <div class="status-toggle">
+                        <label class="toggle-switch">
+                            <input type="checkbox" name="is_active"
+                                   {% if form %}
+                                       {% if form.is_active.value %}checked{% endif %}
+                                   {% else %}
+                                       {% if usuario.profile.is_active %}checked{% endif %}
+                                   {% endif %}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>
+                            {% if usuario.profile.is_active %}
+                                <span class="badge badge-active">Usuario Activo</span>
+                            {% else %}
+                                <span class="badge badge-inactive">Usuario Inactivo</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="form-help">Activar o desactivar el acceso del usuario al sistema</div>
+                </div>
+            </div>
+            
+            <!-- Requisitos de Contraseña (solo si se cambia) -->
+            <div class="requirements-list">
+                <h4>Requisitos de contraseña (solo si desea cambiarla):</h4>
+                <ul>
+                    <li>Mínimo 8 caracteres</li>
+                    <li>Al menos una letra mayúscula</li>
+                    <li>Al menos una letra minúscula</li>
+                    <li>Al menos un número</li>
+                    <li>Al menos un carácter especial (!@#$%^&*)</li>
+                </ul>
+            </div>
+            
+            <!-- Acciones -->
+            <div class="acciones-form">
+                <button type="submit" class="btn btn-success" style="display: inline-flex; align-items: center; gap: 8px;">
+                    💾 Guardar Cambios
+                </button>
+                <a href="{% url 'gestion_usuarios' %}" class="btn btn-light">Cancelar</a>
+                
+                {% if usuario.id != request.user.id %}
+                    {% if usuario.profile.is_active %}
+                        <a href="{% url 'editar_usuario' usuario.id %}?desactivar=1" class="btn btn-warning" style="margin-left: auto;">
+                            ⏸️ Desactivar Usuario
+                        </a>
+                    {% else %}
+                        <a href="{% url 'editar_usuario' usuario.id %}?activar=1" class="btn btn-success" style="margin-left: auto;">
+                            ▶️ Activar Usuario
+                        </a>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Información de Auditoría -->
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h3 class="card-title">📊 Información de Auditoría</h3>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+                <strong>Fecha de Creación:</strong><br>
+                {{ usuario.date_joined|date:"d/m/Y H:i" }}
+            </div>
+            <div>
+                <strong>Último Login:</strong><br>
+                {% if usuario.last_login %}
+                    {{ usuario.last_login|date:"d/m/Y H:i" }}
+                {% else %}
+                    <span class="text-muted">Nunca ha iniciado sesión</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensajes -->
+    {% if messages %}
+    <div style="margin-top: 20px;">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="padding: 12px; border-radius: 8px; margin-bottom: 8px; 
+            {% if message.tags == 'success' %}background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0;
+            {% elif message.tags == 'error' or message.tags == 'danger' %}background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+            {% else %}background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe;{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function togglePwd(id, btn){
+        const i = document.getElementById(id);
+        if(!i) return;
+        i.type = i.type === 'password' ? 'text' : 'password';
+        btn.textContent = i.type === 'password' ? '👁' : '🙈';
+    }
+
+    function checkPasswordStrength(password) {
+        const el = document.getElementById('password-strength');
+        if (!password){ el.innerHTML=''; return; }
+        let s = 0;
+        if (password.length >= 8) s++;
+        if (/[A-Z]/.test(password)) s++;
+        if (/[a-z]/.test(password)) s++;
+        if (/[0-9]/.test(password)) s++;
+        if (/[!@#$%^&*]/.test(password)) s++;
+        el.innerHTML = s <= 2
+            ? '<span class="strength-weak">Contraseña débil</span>'
+            : (s <= 4 ? '<span class="strength-medium">Contraseña media</span>' : '<span class="strength-strong">Contraseña fuerte</span>');
+    }
+    
+    function checkPasswordMatch() {
+        const p = document.getElementById('password').value || '';
+        const c = document.getElementById('confirm_password').value || '';
+        const el = document.getElementById('password-match');
+        if (!p && !c){ el.innerHTML=''; return; }
+        el.innerHTML = (p === c)
+            ? '<span class="strength-strong">Las contraseñas coinciden</span>'
+            : '<span class="strength-weak">Las contraseñas no coinciden</span>';
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // normaliza username (UX), sin afectar servidor si no quieres
+        const username = document.getElementById('username');
+        if (username){
+            username.addEventListener('input', () => {
+                username.value = (username.value || '').toLowerCase().replace(/\s+/g,'');
+            });
+        }
+
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(e) {
+            const p = document.getElementById('password').value || '';
+            const c = document.getElementById('confirm_password').value || '';
+            const roleSelect = document.querySelector('select[name="role"]');
+            
+            // validar contraseñas solo si se cambia
+            if (p || c) {
+                if (p !== c) {
+                    e.preventDefault();
+                    alert('Las contraseñas no coinciden. Por favor, verifica.');
+                    document.getElementById('confirm_password').focus();
+                    return false;
+                }
+                if (p.length > 0 && p.length < 8) {
+                    e.preventDefault();
+                    alert('La contraseña debe tener al menos 8 caracteres.');
+                    document.getElementById('password').focus();
+                    return false;
+                }
+            }
+            if (!roleSelect.value) {
+                e.preventDefault();
+                alert('Por favor, selecciona un rol para el usuario.');
+                roleSelect.focus();
+                return false;
+            }
+        });
+
+        // Confirmación para activar/desactivar usuario
+        const toggleLinks = document.querySelectorAll('a[href*="activar="], a[href*="desactivar="]');
+        toggleLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                const action = this.textContent.includes('Desactivar') ? 'desactivar' : 'activar';
+                const uname = '{{ usuario.username }}';
+                if (!confirm(`¿Estás seguro de que quieres ${action} al usuario "${uname}"?`)) {
+                    e.preventDefault();
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

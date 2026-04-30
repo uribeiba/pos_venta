@@ -1,0 +1,91 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>POS — Buscar viajes</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root{--gap:12px;--card:#f8fafc;--border:#e5e7eb}
+    *{box-sizing:border-box}
+    body{font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,Arial;margin:0;padding:16px;background:#fff;color:#111827}
+    h1{font-size:18px;margin:0 0 12px}
+    .row{display:flex;gap:var(--gap);flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+    label{display:block;font-size:12px;color:#6b7280;margin:0 0 4px}
+    select,input[type="date"]{height:36px;padding:0 10px;border:1px solid var(--border);border-radius:8px;min-width:180px;background:#fff}
+    button,.btn{height:36px;padding:0 14px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer}
+    .btn-light{background:#f3f4f6;color:#111827;border:1px solid var(--border)}
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--gap)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+    .meta{display:flex;gap:10px;flex-wrap:wrap;color:#374151;font-size:13px}
+    .meta b{color:#111827}
+    .top{display:flex;justify-content:space-between;align-items:center}
+    .empty{padding:12px;background:#f9fafb;border:1px dashed var(--border);border-radius:12px;color:#6b7280}
+  </style>
+</head>
+<body>
+
+  <h1>POS — Buscar viajes</h1>
+
+  <form method="get" class="row">
+    <div>
+      <label for="origin">Origen</label>
+      <select id="origin" name="origin" required>
+        <option value="">— Elegir —</option>
+        {% for c in cities %}
+          <option value="{{ c.id }}" {% if origin_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label for="destination">Destino</label>
+      <select id="destination" name="destination" required>
+        <option value="">— Elegir —</option>
+        {% for c in cities %}
+          <option value="{{ c.id }}" {% if dest_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label for="date">Fecha</label>
+      <input id="date" type="date" name="date" value="{{ date_str }}">
+    </div>
+
+    <div>
+      <button type="submit">Buscar</button>
+      {% if trips %}
+        <a class="btn btn-light" href="{% url 'pos_home' %}">Limpiar</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if trips %}
+    <div class="cards">
+      {% for t in trips %}
+        <div class="card">
+          <div class="top">
+            <div><b>{{ t.route.origin.name }}</b> → <b>{{ t.route.destination.name }}</b></div>
+            <a class="btn" href="{% url 'pos_trip' t.id %}">Seleccionar</a>
+          </div>
+          <div class="meta">
+            <span><b>Salida:</b> {{ t.departure|date:"Y-m-d H:i" }}</span>
+            <span><b>Llegada:</b> {{ t.arrival|date:"Y-m-d H:i" }}</span>
+          </div>
+          <div class="meta">
+            <span><b>Bus:</b> {{ t.bus.plate }}</span>
+            <span><b>Modelo:</b> {{ t.bus.model }}</span>
+            {% if t.route.base_price %}
+              <span><b>Precio ref.:</b> ${{ t.route.base_price }}</span>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">Elige origen, destino y fecha para listar viajes disponibles.</p>
+  {% endif %}
+
+</body>
+</html>

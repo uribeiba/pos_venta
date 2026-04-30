@@ -1,0 +1,166 @@
+{# templates/pos/_receipt_inner.html #}
+
+{# --- Modo térmico 80 mm (activar con ?thermal=1) --- #}
+{% if request.GET.thermal %}
+<style>
+  /* Página térmica 80mm */
+  @page { size: 80mm auto; margin: 4mm }
+  body { background:#fff !important }
+  .receipt-wrap{ max-width:72mm !important; grid-template-columns:1fr !important; margin:0 auto }
+  .card{ border:0; padding:0; }
+  .actions{ display:none !important; }
+  .title{ font-size:16px; margin-bottom:6px }
+  .muted{ color:#555; font-size:12px }
+  .kv{ padding:6px 0; border-bottom:1px dashed #ddd; display:flex; justify-content:space-between }
+  .kv:last-child{ border-bottom:0 }
+  .ticket{ border:1px dashed #bbb; border-radius:8px; padding:8px 10px; margin-bottom:8px }
+  .ticket h4{ margin:0 0 6px; font-size:14px }
+  .badge{ display:inline-block; font-size:11px; padding:2px 6px; border-radius:999px; background:#eee; color:#111 }
+  .total{ display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:6px; border-top:1px solid #ddd; font-weight:800; font-size:15px }
+</style>
+<script>
+  // Si viene ?thermal=1&auto=1 abrimos "Imprimir" automáticamente
+  (new URLSearchParams(location.search)).get('auto') === '1' && window.print();
+</script>
+{% endif %}
+
+{# --- Estilos generales (pantalla POS) --- #}
+<style>
+  .receipt-wrap{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px}
+  .title{font-size:20px;font-weight:800;margin:0 0 8px;color:#111827}
+  .muted{color:#6b7280;font-size:13px}
+  .kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #e5e7eb}
+  .kv:last-child{border-bottom:0}
+  .ticket{border:1px dashed #d1d5db;border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .ticket h4{margin:0 0 6px;font-size:16px}
+  .badge{display:inline-block;font-size:12px;padding:4px 8px;border-radius:999px;background:#ecfeff;color:#0369a1}
+  .total{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;font-weight:800;font-size:18px}
+  .actions{display:flex;gap:10px;margin-top:16px}
+  .btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;text-decoration:none}
+  .btn-primary{background:#111827;color:#fff}
+  .btn-light{background:#f3f4f6;color:#111827;border:1px solid #e5e7eb}
+  .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  @media (max-width:1100px){.receipt-wrap{grid-template-columns:1fr}}
+  /* Impresión limpia en formato normal (A4/Letter) */
+  @media print {
+    aside, header, nav { display:none !important; }
+    .receipt-wrap{ grid-template-columns:1fr !important; max-width:780px !important; margin:0 auto }
+    .card{ border:0; padding:0 }
+    .actions{ display:none !important; }
+    body{ background:#fff !important }
+  }
+</style>
+<style>
+    /* Impresión limpia: oculta TODO salvo el recibo */
+    @media print {
+      /* fondo blanco y sin márgenes raros */
+      @page { margin: 10mm }
+      body { background:#fff !important }
+    
+      /* oculta todo… */
+      body * { visibility: hidden !important; }
+    
+      /* …menos el recibo */
+      #receipt-root, #receipt-root * { visibility: visible !important; }
+    
+      /* posiciona el recibo arriba-izquierda ocupando el ancho imprimible */
+      #receipt-root {
+        position: absolute; left: 0; top: 0;
+        width: 100%; margin: 0; padding: 0;
+        grid-template-columns: 1fr !important;  /* una sola columna en impresión */
+        max-width: 780px !important;
+      }
+    
+      /* sin bordes ni botones en impresión */
+      .card { border: 0; padding: 0; }
+      .actions { display: none !important; }
+    }
+    </style>
+    
+
+<div id="receipt-root" class="receipt-wrap">
+
+
+  <!-- Columna izquierda: resumen del viaje y comprador -->
+  <section class="card">
+    <h1 class="title">✅ Venta Realizada</h1>
+    <div class="muted">Los boletos han sido emitidos correctamente.</div>
+
+    <div style="height:12px"></div>
+
+    <div class="kv"><span>Ruta</span>
+      <strong>
+        {% if trip.route.origin and trip.route.destination %}
+          {{ trip.route.origin.name }} → {{ trip.route.destination.name }}
+        {% else %}
+          {{ trip.route }}
+        {% endif %}
+      </strong>
+    </div>
+    <div class="kv"><span>Salida</span><strong>{{ trip.departure|date:"Y-m-d H:i" }}</strong></div>
+    <div class="kv"><span>Bus</span><strong>{{ trip.bus.plate|default:trip.bus }}</strong></div>
+    {% if price %}
+      <div class="kv"><span>Tarifa</span><strong>${{ price }}</strong></div>
+    {% endif %}
+    <div class="kv"><span>Pasajero</span><strong>{{ buyer|default:"(sin nombre)" }}</strong></div>
+
+    {% if ticket_numbers %}
+      <div class="kv"><span>N° Tickets</span><strong>{{ ticket_numbers|join:", " }}</strong></div>
+    {% endif %}
+
+    {% if skipped and skipped|length %}
+      <div style="margin-top:14px;padding:12px;border:1px solid #fecaca;background:#fef2f2;border-radius:8px;color:#991b1b;">
+        <strong>Atención:</strong> No se emitieron los asientos {{ skipped|join:", " }} (ocupados o inválidos).
+      </div>
+    {% endif %}
+
+    <div class="actions">
+      <a href="{% url 'pos_home' %}" class="btn btn-light">← Volver al Inicio</a>
+      <a href="{% url 'pos_trip' trip.id %}" class="btn btn-light">🪑 Vender en este Viaje</a>
+      <a href="?thermal=1&auto=1" class="btn btn-light">🧾 Imprimir Térmico</a>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+  </section>
+
+  <!-- Columna derecha: detalle de boletos -->
+  <section class="card">
+    <h2 class="title">Boletos</h2>
+
+    {# Compatibilidad: si llega solo 'ticket' #}
+    {% if ticket and not tickets %}
+      <div class="ticket">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h4>Ticket <strong>{{ ticket.number }}</strong></h4>
+          <span class="badge">Pagado</span>
+        </div>
+        <div class="grid2 muted">
+          <div>Asiento: <strong>{{ ticket.seat.number }}</strong></div>
+          <div>Piso: <strong>{{ ticket.seat.deck|default:"1" }}</strong></div>
+          <div>Precio: <strong>${{ ticket.price }}</strong></div>
+          <div>Fecha: <strong>{{ ticket.created_at|date:"d/m H:i" }}</strong></div>
+        </div>
+      </div>
+      <div class="total"><span>Total</span><span>${{ total|default:ticket.price }}</span></div>
+
+    {% else %}
+      {% for t in tickets %}
+        <div class="ticket">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h4>Ticket <strong>{{ t.number }}</strong></h4>
+            <span class="badge">Pagado</span>
+          </div>
+          <div class="grid2 muted">
+            <div>Asiento: <strong>{{ t.seat.number }}</strong></div>
+            <div>Piso: <strong>{{ t.seat.deck|default:"1" }}</strong></div>
+            <div>Precio: <strong>${{ t.price }}</strong></div>
+            <div>Fecha: <strong>{{ t.created_at|date:"d/m H:i" }}</strong></div>
+          </div>
+        </div>
+      {% empty %}
+        <div class="muted">No se crearon boletos.</div>
+      {% endfor %}
+      <div class="total"><span>Total</span><span>${{ total|default:"0" }}</span></div>
+    {% endif %}
+  </section>
+</div>

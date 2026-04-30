@@ -1,0 +1,482 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>POS — Selección de asientos</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root{
+      --gap:16px; --card:#f8fafc; --border:#e5e7eb;
+      --seat:#e8f5e9; --seat-b:#cfe6d3;
+      --muted:#6b7280; --danger:#ef4444; --warn:#f59e0b; --info:#0ea5e9; --pink:#ec4899;
+      --cell:38px; --radius:10px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; padding:16px; font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,Arial; color:#111827; background:#fff}
+    a{color:#111827}
+    .layout{display:grid; grid-template-columns: 1fr 360px; gap:var(--gap)}
+    .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px}
+    .h1{font-size:18px; font-weight:700; margin:0 0 10px}
+    .meta{display:flex; gap:10px; flex-wrap:wrap; color:#374151; font-size:13px}
+    .meta b{color:#111827}
+    .legend{display:flex; gap:12px; flex-wrap:wrap; align-items:center; font-size:12px; color:#4b5563; margin:10px 0 0}
+    .legend i{display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:-2px; margin-right:6px; border:1px solid var(--border)}
+    .i-free{background:var(--seat); border-color:var(--seat-b)}
+    .i-sel{background:#111827; border-color:#111827}
+    .i-occ{background:#f3f4f6; border-color:#e5e7eb}
+    .i-hold{background:#fff7ed; border-color:#fed7aa}
+    .i-door{background:#e8f2ff; border-color:#bbdefb}
+    .i-wc{background:#fde7ef; border-color:#f8bbd0}
+    .i-st{background:#fff3e0; border-color:#ffd2a8}
+    .i-pas{background:transparent; border:0}
+
+    .deck{margin-top:12px}
+    .deck h3{margin:0 0 8px; font-size:15px; color:#334155}
+    .grid{display:grid; gap:8px; width:max-content; background:transparent}
+    .cell{
+      width:var(--cell); height:var(--cell);
+      display:grid; place-items:center; border-radius:var(--radius);
+      user-select:none; border:1px solid var(--border); background:#fff; font-weight:700; font-size:12px;
+      transition:transform .05s ease;
+    }
+    .cell--L{background:var(--seat); border-color:var(--seat-b); cursor:pointer}
+    .cell--P{background:transparent!important; border:0!important; box-shadow:none!important}
+    .cell--X{background:#f3f4f6; color:#9ca3af}
+    .cell--D{background:#e8f2ff; border-color:#bbdefb}
+    .cell--B{background:#fde7ef; border-color:#f8bbd0}
+    .cell--E{background:#fff3e0; border-color:#ffd2a8}
+    .cell.sel{background:#111827!important; color:#fff!important; border-color:#111827!important}
+    .cell.lock{filter:grayscale(1); opacity:.55; cursor:not-allowed}
+
+    .aside h3{margin:0 0 10px; font-size:15px}
+    .row{display:flex; gap:10px; margin:8px 0; align-items:center}
+    input[type="text"], input[type="number"], input[type="email"], input[type="tel"]{
+      height:36px; padding:0 10px; border:1px solid var(--border); border-radius:8px; flex:1; background:#fff;
+    }
+    .btn{height:38px; padding:0 14px; border:0; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center}
+    .btn-dark{background:#111827; color:#fff}
+    .btn-light{background:#f3f4f6; border:1px solid var(--border)}
+    .btn-green{background:#16a34a; color:#fff}
+    .btn-red{background:#ef4444; color:#fff}
+    .total{font-size:18px; font-weight:800}
+    .list{border:1px solid var(--border); border-radius:10px; padding:10px; max-height:180px; overflow:auto; background:#fff}
+    .list .item{display:flex; justify-content:space-between; gap:8px; border-bottom:1px dashed #e5e7eb; padding:6px 0}
+    .list .item:last-child{border-bottom:0}
+    .muted{color:#6b7280}
+    .hint{font-size:12px; color:#6b7280}
+    .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:#fff; font-size:12px}
+    .pill.warn{background:#fff7ed; border-color:#fed7aa}
+    .divider{height:1px; background:var(--border); margin:12px 0}
+    .results{border:1px solid var(--border); background:#fff; border-radius:10px; padding:6px; display:none; max-height:160px; overflow:auto}
+    .res-item{padding:8px; border-radius:8px; cursor:pointer}
+    .res-item:hover{background:#f3f4f6}
+    .res-title{font-weight:800}
+    .res-sub{font-size:12px; color:#6b7280}
+    .toast{display:none; margin-top:8px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:#fff}
+    .toast.ok{border-color:#bbf7d0; background:#f0fdf4}
+    .toast.err{border-color:#fecaca; background:#fef2f2}
+    @media (max-width: 980px){ .layout{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+
+  <div class="layout">
+    <div class="card">
+      <div class="h1">Selecciona asientos</div>
+      <div class="meta">
+        <span><b>Ruta:</b> {{ trip.route.origin.name }} → {{ trip.route.destination.name }}</span>
+        <span><b>Salida:</b> {{ trip.departure|date:"Y-m-d H:i" }}</span>
+        <span><b>Bus:</b> {{ trip.bus.plate }} ({{ trip.bus.model }})</span>
+        {% if trip.route.base_price %}<span><b>Tarifa:</b> ${{ trip.route.base_price }}</span>{% endif %}
+      </div>
+      <div class="legend">
+        <span><i class="i-free"></i>Libre</span>
+        <span><i class="i-sel"></i>Seleccionado</span>
+        <span><i class="i-occ"></i>Ocupado</span>
+        <span><i class="i-hold"></i>Hold</span>
+        <span><i class="i-pas"></i>Pasillo</span>
+        <span><i class="i-st"></i>Escalera</span>
+        <span><i class="i-door"></i>Puerta</span>
+        <span><i class="i-wc"></i>WC</span>
+      </div>
+
+      {% if grid_upper %}
+      <div class="deck">
+        <h3>Piso superior</h3>
+        <div id="gridU" class="grid"></div>
+      </div>
+      {% endif %}
+
+      <div class="deck">
+        <h3>Piso inferior</h3>
+        <div id="gridL" class="grid"></div>
+      </div>
+    </div>
+
+    <aside class="card aside">
+      <h3>Resumen</h3>
+
+      <!-- ✅ Bloque Cliente (búsqueda + crear) -->
+      <div class="pill warn">
+        <b>Datos del pasajero</b>
+        <span class="hint">Busca por RUT o nombre.</span>
+      </div>
+
+      <div class="row">
+        <input type="text" id="customerQuery" placeholder="RUT o nombre (ej: 12.345.678-9)" autocomplete="off">
+        <button type="button" class="btn btn-light" id="btnSearchCustomer">Buscar</button>
+      </div>
+
+      <div class="results" id="customerResults"></div>
+
+      <div class="row" style="margin-top:10px">
+        <button type="button" class="btn btn-light" id="btnToggleNew">+ Nuevo cliente</button>
+        <button type="button" class="btn btn-light" id="btnClearCustomer">Limpiar</button>
+      </div>
+
+      <div id="newCustomerBox" style="display:none;margin-top:10px">
+        <div class="pill">
+          <span>Cliente nuevo</span>
+          <span class="hint">RUT obligatorio</span>
+        </div>
+
+        <div class="row">
+          <input type="text" id="newRut" placeholder="RUT (obligatorio)">
+        </div>
+        <div class="row">
+          <input type="text" id="newName" placeholder="Nombre completo">
+        </div>
+        <div class="row">
+          <input type="tel" id="newPhone" placeholder="Teléfono">
+        </div>
+        <div class="row">
+          <input type="email" id="newEmail" placeholder="Email">
+        </div>
+        <div class="row">
+          <button type="button" class="btn btn-green" id="btnCreateCustomer">Guardar cliente</button>
+          <button type="button" class="btn btn-red" id="btnCancelNew">Cancelar</button>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+
+      <div class="divider"></div>
+
+      <!-- Lista de asientos seleccionados -->
+      <div class="list" id="selList"><div class="muted">Sin asientos seleccionados.</div></div>
+
+      <div class="row" style="justify-content:space-between;margin-top:12px">
+        <div class="muted">Cantidad: <b id="qty">0</b></div>
+        <div class="total">$<span id="total">0</span></div>
+      </div>
+
+      <!-- Checkout -->
+      <form method="post" action="{% url 'pos_checkout' trip.id %}" id="checkoutForm">
+        {% csrf_token %}
+        <input type="hidden" name="seats" id="seatsField" value="">
+        <!-- Campos actuales (no rompo tu backend) -->
+        <div class="row">
+          <input type="text" name="buyer" id="buyerInput" placeholder="Pasajero/Cliente" required>
+        </div>
+        <div class="row">
+          <input type="text" name="document" id="documentInput" placeholder="Documento (opcional)">
+        </div>
+
+        <div class="row">
+          <button type="submit" class="btn btn-dark" id="btnEmit" disabled>Emitir boletos</button>
+          <a href="{% url 'pos_home' %}" class="btn btn-light">Volver</a>
+        </div>
+      </form>
+
+      <p class="muted" style="margin-top:8px">Selecciona uno o más asientos en el plano y luego presiona “Emitir boletos”.</p>
+    </aside>
+  </div>
+
+  {# JSON del mapa (proporcionado por la vista) #}
+  <script id="L" type="application/json">{{ grid_lower|safe }}</script>
+  <script id="U" type="application/json">{{ grid_upper|safe }}</script>
+
+  <script>
+    // ===========================
+    // URLs (sin hardcodear /booking/)
+    // ===========================
+    const CUSTOMER_SEARCH_URL = "{% url 'search_customer' %}";
+    const CUSTOMER_CREATE_URL = "{% url 'create_customer' %}";
+
+    // ===========================
+    // Mapa de asientos
+    // ===========================
+    const cols = Number({{ cols|default:4 }});
+    const price = Number({{ trip.route.base_price|default:0 }});
+
+    const lower = JSON.parse(document.getElementById('L').textContent || "[]");
+    const upper = JSON.parse(document.getElementById('U').textContent || "[]");
+
+    function draw(deckEl, matrix, deckNo){
+      if (!deckEl || !matrix || !matrix.length) return;
+      deckEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell))`;
+      deckEl.innerHTML = "";
+      matrix.forEach((row,r)=>{
+        row.forEach((cell,c)=>{
+          const div = document.createElement('div');
+          const t = (cell.type||'L');
+          div.className = 'cell cell--'+t;
+
+          const label = (t==='L' ? (cell.label||'') : '');
+          if (label){ div.textContent = label }
+
+          const st = (cell.status||'free');
+          if (st!=='free') div.classList.add('lock');
+
+          div.dataset.deck = String(deckNo);
+          div.dataset.row = String(r+1);
+          div.dataset.col = String(c+1);
+          div.dataset.number = String(label || '');
+          div.dataset.state = String(st);
+          div.dataset.type = String(t);
+
+          if (t==='L' && st==='free' && label){
+            div.addEventListener('click', ()=>toggle(div));
+            div.addEventListener('mousedown', ()=>div.style.transform='scale(.97)');
+            div.addEventListener('mouseup', ()=>div.style.transform='');
+            div.addEventListener('mouseleave', ()=>div.style.transform='');
+          }
+          deckEl.appendChild(div);
+        });
+      });
+    }
+
+    // ✅ FIX: clave única por piso + número
+    const selected = new Map(); // key="deck:number", val={deck,number}
+
+    function seatKey(deck, num){ return `${deck}:${num}`; }
+
+    function toggle(el){
+      const num = (el.dataset.number || '').trim();
+      const deck = (el.dataset.deck || '').trim();
+      if (!num || !deck) return;
+
+      const key = seatKey(deck, num);
+
+      if (selected.has(key)){
+        selected.delete(key);
+        el.classList.remove('sel');
+      } else {
+        selected.set(key, {deck: Number(deck), number: num});
+        el.classList.add('sel');
+      }
+      renderSummary();
+    }
+
+    function renderSummary(){
+      const list = document.getElementById('selList');
+      list.innerHTML = "";
+
+      const values = [...selected.values()];
+
+      if (values.length === 0){
+        list.innerHTML = '<div class="muted">Sin asientos seleccionados.</div>';
+      } else {
+        values.sort((a,b)=> (a.deck - b.deck) || a.number.localeCompare(b.number, undefined, {numeric:true}))
+          .forEach(it=>{
+            const row = document.createElement('div');
+            row.className = 'item';
+            row.innerHTML = `
+              <span>Asiento <b>${it.number}</b> (Piso ${it.deck})</span>
+              <button type="button" class="btn btn-light" style="height:28px" data-rm="${it.deck}|${it.number}">Quitar</button>
+            `;
+            row.querySelector('button').onclick = (e)=>{
+              const token = e.currentTarget.getAttribute('data-rm') || '';
+              const parts = token.split('|');
+              const d = parts[0];
+              const n = parts.slice(1).join('|');
+
+              selected.delete(seatKey(d, n));
+
+              // quitar selección visual exacta (piso+numero)
+              document.querySelectorAll('.cell.sel').forEach(c=>{
+                if ((c.dataset.deck||'')===String(d) && (c.dataset.number||'')===String(n)){
+                  c.classList.remove('sel');
+                }
+              });
+              renderSummary();
+            };
+            list.appendChild(row);
+          });
+      }
+
+      const qty = values.length;
+      const total = (Number(price) || 0) * qty;
+
+      document.getElementById('qty').textContent = String(qty);
+      document.getElementById('total').textContent = (Number.isFinite(total) ? total : 0).toLocaleString();
+
+      // Emitir se habilita solo si hay asientos + buyer (para POS real)
+      const buyerOk = (document.getElementById('buyerInput').value || '').trim().length > 0;
+      document.getElementById('btnEmit').disabled = (qty===0) || !buyerOk;
+
+      document.getElementById('seatsField').value = JSON.stringify(values);
+    }
+
+    // ===========================
+    // Cliente: búsqueda + creación
+    // ===========================
+    const elQuery = document.getElementById('customerQuery');
+    const elResults = document.getElementById('customerResults');
+    const elToast = document.getElementById('toast');
+
+    const elBuyer = document.getElementById('buyerInput');
+    const elDoc = document.getElementById('documentInput');
+
+    const elNewBox = document.getElementById('newCustomerBox');
+    const elNewRut = document.getElementById('newRut');
+    const elNewName = document.getElementById('newName');
+    const elNewPhone = document.getElementById('newPhone');
+    const elNewEmail = document.getElementById('newEmail');
+
+    function csrfToken(){
+      const inp = document.querySelector('#checkoutForm input[name="csrfmiddlewaretoken"]');
+      return inp ? inp.value : '';
+    }
+
+    function toast(msg, kind){
+      elToast.className = 'toast ' + (kind || '');
+      elToast.textContent = msg;
+      elToast.style.display = 'block';
+      setTimeout(()=>{ elToast.style.display='none'; }, 2800);
+    }
+
+    function setCustomerFromResult(c){
+      // No rompo backend: solo relleno buyer/document.
+      elBuyer.value = (c.full_name || '').trim() || 'Cliente';
+      elDoc.value = (c.national_id || '').trim() || '';
+      renderSummary();
+      elResults.style.display = 'none';
+      toast('Cliente seleccionado ✅', 'ok');
+    }
+
+    async function searchCustomer(){
+      const q = (elQuery.value || '').trim();
+      if (q.length < 2){
+        elResults.style.display = 'none';
+        return;
+      }
+      try{
+        const r = await fetch(`${CUSTOMER_SEARCH_URL}?q=${encodeURIComponent(q)}`, {credentials:'same-origin'});
+        const data = await r.json();
+
+        const items = (data.customers || []);
+        elResults.innerHTML = '';
+
+        if (!items.length){
+          elResults.innerHTML = '<div class="res-item"><div class="res-title">Sin resultados</div><div class="res-sub">Puedes crear el cliente con “Nuevo cliente”.</div></div>';
+          elResults.style.display = 'block';
+          return;
+        }
+
+        items.forEach(c=>{
+          const div = document.createElement('div');
+          div.className = 'res-item';
+          div.innerHTML = `
+            <div class="res-title">${(c.full_name || 'Cliente').toString()}</div>
+            <div class="res-sub">${(c.national_id || '').toString()} ${c.phone ? ' • '+c.phone : ''} ${c.email ? ' • '+c.email : ''}</div>
+          `;
+          div.onclick = ()=> setCustomerFromResult(c);
+          elResults.appendChild(div);
+        });
+        elResults.style.display = 'block';
+      }catch(err){
+        console.error(err);
+        toast('Error buscando cliente ❌', 'err');
+      }
+    }
+
+    async function createCustomer(){
+      const rut = (elNewRut.value || '').trim();
+      if (!rut){
+        toast('RUT es obligatorio', 'err');
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('rut', rut);
+      fd.append('full_name', (elNewName.value || '').trim());
+      fd.append('phone', (elNewPhone.value || '').trim());
+      fd.append('email', (elNewEmail.value || '').trim());
+
+      try{
+        const r = await fetch(CUSTOMER_CREATE_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {'X-CSRFToken': csrfToken()},
+          body: fd
+        });
+
+        // Tu view devuelve JSON; si no, igual manejamos.
+        const data = await r.json().catch(()=>({}));
+
+        if (!r.ok){
+          console.error('Create customer failed', r.status, data);
+          toast('No se pudo guardar cliente ❌', 'err');
+          return;
+        }
+
+        // Si tu backend devuelve {customer:{...}} o similar, lo tomamos.
+        const c = data.customer || data || {};
+        setCustomerFromResult({
+          full_name: c.full_name || (elNewName.value || 'Cliente').trim(),
+          national_id: c.national_id || rut,
+          phone: c.phone || (elNewPhone.value || '').trim(),
+          email: c.email || (elNewEmail.value || '').trim(),
+        });
+
+        elNewBox.style.display = 'none';
+        elNewRut.value = ''; elNewName.value = ''; elNewPhone.value = ''; elNewEmail.value = '';
+        toast('Cliente guardado ✅', 'ok');
+
+      }catch(err){
+        console.error(err);
+        toast('Error guardando cliente ❌', 'err');
+      }
+    }
+
+    // Eventos UI cliente
+    document.getElementById('btnSearchCustomer').addEventListener('click', searchCustomer);
+    elQuery.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); searchCustomer(); }});
+    elQuery.addEventListener('input', ()=>{
+      // búsqueda suave
+      if ((elQuery.value||'').trim().length >= 3) searchCustomer();
+    });
+
+    document.getElementById('btnToggleNew').addEventListener('click', ()=>{
+      elNewBox.style.display = (elNewBox.style.display === 'none') ? 'block' : 'none';
+      if (elNewBox.style.display === 'block'){
+        elNewRut.value = (elQuery.value || '').trim();
+        elNewRut.focus();
+      }
+    });
+    document.getElementById('btnCancelNew').addEventListener('click', ()=>{
+      elNewBox.style.display = 'none';
+    });
+    document.getElementById('btnCreateCustomer').addEventListener('click', createCustomer);
+
+    document.getElementById('btnClearCustomer').addEventListener('click', ()=>{
+      elBuyer.value = '';
+      elDoc.value = '';
+      elQuery.value = '';
+      elResults.style.display='none';
+      renderSummary();
+      toast('Cliente limpiado', '');
+    });
+
+    // habilitar/deshabilitar Emitir cuando se escribe buyer
+    elBuyer.addEventListener('input', renderSummary);
+
+    // Draw
+    draw(document.getElementById('gridL'), lower, 1);
+    draw(document.getElementById('gridU'), upper, 2);
+    renderSummary();
+  </script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+{% extends "booking/pos_base.html" %}
+{% load static %}
+
+{% block title %}POS — Recibo de Venta{% endblock %}
+
+{% block content %}
+<style>
+  .receipt-wrap{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px}
+  .title{font-size:20px;font-weight:800;margin:0 0 8px;color:#111827}
+  .muted{color:#6b7280;font-size:13px}
+  .kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #e5e7eb}
+  .kv:last-child{border-bottom:0}
+  .ticket{border:1px dashed #d1d5db;border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .ticket h4{margin:0 0 6px;font-size:16px}
+  .badge{display:inline-block;font-size:12px;padding:4px 8px;border-radius:999px;background:#ecfeff;color:#0369a1}
+  .total{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;font-weight:800;font-size:18px}
+  .actions{display:flex;gap:10px;margin-top:16px}
+  .btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;text-decoration:none}
+  .btn-primary{background:#111827;color:#fff}
+  .btn-light{background:#f3f4f6;color:#111827;border:1px solid #e5e7eb}
+  .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  @media (max-width:1100px){.receipt-wrap{grid-template-columns:1fr}}
+</style>
+
+<div class="receipt-wrap">
+
+  <!-- Columna izquierda: resumen del viaje y comprador -->
+  <section class="card">
+    <h1 class="title">✅ Venta Realizada</h1>
+    <div class="muted">Los boletos han sido emitidos correctamente.</div>
+
+    <div style="height:12px"></div>
+
+    <div class="kv"><span>Ruta</span><strong>{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</strong></div>
+    <div class="kv"><span>Salida</span><strong>{{ trip.departure|date:"Y-m-d H:i" }}</strong></div>
+    <div class="kv"><span>Bus</span><strong>{{ trip.bus.plate }}</strong></div>
+    {% if price %}
+      <div class="kv"><span>Tarifa</span><strong>${{ price }}</strong></div>
+    {% endif %}
+    <div class="kv"><span>Pasajero</span><strong>{{ buyer|default:"(sin nombre)" }}</strong></div>
+
+
+    <div class="kv"><span>Pasajero</span><strong>{{ buyer|default:"(sin nombre)" }}</strong></div>
+
+{# ✅ NUEVO: Método de pago (viene desde ctx["payment_method"]) #}
+<div class="kv">
+  <span>Método de pago</span>
+  <strong>
+    {% if payment_method == "card" %}
+      💳 Tarjeta
+    {% elif payment_method == "cash" %}
+      💵 Efectivo
+    {% else %}
+      —
+    {% endif %}
+  </strong>
+</div>
+
+
+
+    {% if skipped and skipped|length %}
+      <div style="margin-top:14px;padding:12px;border:1px solid #fecaca;background:#fef2f2;border-radius:8px;color:#991b1b;">
+        <strong>Atención:</strong> No se emitieron los asientos {{ skipped|join:", " }} (ocupados o inválidos).
+      </div>
+    {% endif %}
+
+    <div class="actions">
+      <a href="{% url 'pos_home' %}" class="btn btn-light">← Volver al Inicio</a>
+      <a href="{% url 'pos_trip' trip.id %}" class="btn btn-light">🪑 Vender en este Viaje</a>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+  </section>
+
+  <!-- Columna derecha: detalle de boletos -->
+  <section class="card">
+    <h2 class="title">Boletos</h2>
+
+    {# Compatibilidad: si viene 'ticket' (uno solo) lo mostramos igual #}
+    {% if ticket and not tickets %}
+      <div class="ticket">
+        <h4>Ticket <strong>{{ ticket.number }}</strong></h4>
+        <div class="grid2 muted">
+          <div>Asiento: <strong>{{ ticket.seat.number }}</strong></div>
+          <div>Piso: <strong>{{ ticket.seat.deck|default:"1" }}</strong></div>
+          <div>Precio: <strong>${{ ticket.price }}</strong></div>
+          <div>Fecha: <strong>{{ ticket.created_at|date:"d/m H:i" }}</strong></div>
+        </div>
+      </div>
+      <div class="total"><span>Total</span><span>${{ total|default:ticket.price }}</span></div>
+
+    {% else %}
+      {% for t in tickets %}
+        <div class="ticket">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h4>Ticket <strong>{{ t.number }}</strong></h4>
+            <span class="badge">Pagado</span>
+          </div>
+          <div class="grid2 muted">
+            <div>Asiento: <strong>{{ t.seat.number }}</strong></div>
+            <div>Piso: <strong>{{ t.seat.deck|default:"1" }}</strong></div>
+            <div>Precio: <strong>${{ t.price }}</strong></div>
+            <div>Fecha: <strong>{{ t.created_at|date:"d/m H:i" }}</strong></div>
+            <div>
+              Pago:
+              <strong>
+                {% if t.payment_method == "card" %}
+                  💳 Tarjeta
+                {% elif t.payment_method == "cash" %}
+                  💵 Efectivo
+                {% else %}
+                  —
+                {% endif %}
+              </strong>
+            </div>
+            
+
+
+          </div>
+        </div>
+      {% empty %}
+        <div class="muted">No se crearon boletos.</div>
+      {% endfor %}
+
+      <div class="total"><span>Total</span><span>${{ total|default:"0" }}</span></div>
+      <div class="kv"><span>Total Efectivo</span><strong>${{ total_cash|default:"0" }}</strong></div>
+      <div class="kv"><span>Total Tarjeta</span><strong>${{ total_card|default:"0" }}</strong></div>
+
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

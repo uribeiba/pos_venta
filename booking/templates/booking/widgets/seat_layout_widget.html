@@ -1,0 +1,58 @@
+{% load static %}
+
+<div class="seat-widget"
+     data-name="{{ widget.name }}"
+     data-rows="{{ widget.rows|default:0 }}"
+     data-cols="{{ widget.cols|default:0 }}"
+     data-which="{{ widget.which_layout }}"
+     data-nums-field="{{ widget.nums_field }}"
+     data-img-green="{% static 'img/asientos/asiento_verde.png' %}"
+     data-img-red="{% static 'img/asientos/asiento_rojo.png' %}"
+     data-img-grey="{% static 'img/asientos/asiento_gris.png' %}"
+     data-img-bath="{% static 'img/asientos/bano.png' %}"
+     data-img-stairs="{% static 'img/asientos/escalera_verde.png' %}"
+     data-img-door="{% static 'img/asientos/puerta.png' %}">
+
+  <!-- Toolbar (inline para evitar includes faltantes) -->
+  <div class="toolbar">
+    <strong class="me-2">
+      Piso {% if widget.which_layout == 'upper' %}Superior{% else %}Inferior{% endif %}
+    </strong>
+
+    <!-- Herramientas -->
+    <button type="button" class="tool active" data-t="L" title="Asiento">🪑</button>
+    <button type="button" class="tool" data-t="P" title="Pasillo">—</button>
+    <button type="button" class="tool" data-t="X" title="Bloqueo">🚫</button>
+    <button type="button" class="tool" data-t="B" title="Baño">🚻</button>
+    <button type="button" class="tool" data-t="E" title="Escalera">🪜</button>
+    <button type="button" class="tool" data-t="U" title="Puerta">🚪</button>
+
+    <!-- Acciones -->
+    <button type="button" class="btn" data-action="auto-pasillo">Auto pasillo</button>
+    <button type="button" class="btn" data-action="limpiar">Limpiar</button>
+    <button type="button" class="btn" data-action="copiar">Copiar</button>
+    <button type="button" class="btn" data-action="pegar">Pegar</button>
+    <button type="button" class="btn tool" data-t="#" title="Mostrar/ocultar números">123</button>
+
+    <span class="spacer"></span>
+    <small class="text-muted">
+      Filas: <span data-r>{{ widget.rows|default:0 }}</span> ·
+      Columnas: <span data-c>{{ widget.cols|default:0 }}</span>
+      <span class="ms-2">(Doble click en un asiento para escribir su número)</span>
+    </small>
+  </div>
+
+  <!-- Lienzo -->
+  <div class="seat-grid" data-grid></div>
+
+  <!-- Inputs reales que Django guardará -->
+  {# Layout lineal del piso (L/P/X/...) #}
+  <input type="hidden" name="{{ widget.name }}"
+         value='{{ value|default:"[]"|escapejs }}'>
+
+  {# Números por celda (se guarda en numbers_lower / numbers_upper) #}
+  <input type="hidden" name="{{ widget.nums_field }}"
+         value='{{ widget.nums_value|default:"[]"|escapejs }}'
+         data-nums>
+
+</div>

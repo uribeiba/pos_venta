@@ -1,0 +1,135 @@
+{% extends "booking/pos_base.html" %}
+{% load static %}
+
+{% block title %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<style>
+  .gu-wrapper{max-width:1200px;margin:0 auto}
+  .gu-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .gu-header h1{font-size:22px;font-weight:700;color:#111827}
+  .stats-cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+  .stat-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;text-align:center}
+  .stat-number{font-size:20px;font-weight:800;color:#111827}
+  .stat-label{font-size:12px;color:#6b7280;margin-top:4px}
+  .tools-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .tools-bar input[type="text"]{height:40px;border:1px solid #e5e7eb;border-radius:8px;padding:0 12px}
+  .table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
+  .table th,.table td{padding:12px;border-bottom:1px solid #f1f5f9;font-size:14px}
+  .table th{background:#f8fafc;color:#111827;text-align:left}
+  .badge{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:12px}
+  .badge-green{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}
+  .badge-red{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+  .role-chip{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe}
+  .btn{display:inline-flex;align-items:center;padding:8px 12px;border:none;border-radius:8px;font-weight:600;cursor:pointer;text-decoration:none;transition:.2s;font-size:14px}
+  .btn-primary{background:#111827;color:#fff}
+  .btn-light{background:#f8fafc;color:#111827;border:1px solid #e5e7eb}
+  .btn-warning{background:#fff7ed;color:#92400e;border:1px solid #fed7aa}
+  @media(max-width:1024px){.stats-cards{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:640px){.stats-cards{grid-template-columns:repeat(2,1fr)}}
+</style>
+
+<div class="gu-wrapper">
+
+  <!-- Header -->
+  <div class="gu-header">
+    <h1>👥 Gestión de Usuarios</h1>
+    <a class="btn btn-primary" href="{% url 'crear_usuario' %}">➕ Crear Usuario</a>
+  </div>
+
+  <!-- Tarjetas de estadísticas -->
+  <div class="stats-cards">
+    <div class="stat-card">
+      <div class="stat-number">{{ total_count|default:0 }}</div>
+      <div class="stat-label">Total Usuarios</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ admins_count|default:0 }}</div>
+      <div class="stat-label">Administradores</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ supervisores_count|default:0 }}</div>
+      <div class="stat-label">Supervisores</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ vendedores_count|default:0 }}</div>
+      <div class="stat-label">Vendedores</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ activos_count|default:0 }}</div>
+      <div class="stat-label">Usuarios Activos</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ inactivos_count|default:0 }}</div>
+      <div class="stat-label">Usuarios Inactivos</div>
+    </div>
+  </div>
+
+  <!-- Barra de herramientas (búsqueda simple) -->
+  <form method="get" class="tools-bar">
+    <input type="text" name="q" value="{{ request.GET.q }}" placeholder="Buscar por usuario, nombre o email…" />
+    <button class="btn btn-light" type="submit">🔎 Buscar</button>
+    <a class="btn btn-light" href="{% url 'gestion_usuarios' %}">↺ Limpiar</a>
+  </form>
+
+  <!-- Tabla de usuarios -->
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Nombre</th>
+          <th>Email</th>
+          <th>Rol</th>
+          <th>Terminal</th>
+          <th>Estado</th>
+          <th style="width:140px">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+          <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.get_full_name|default:"—" }}</td>
+            <td>{{ u.email|default:"—" }}</td>
+            <td>
+              {% if u.profile %}
+                <span class="badge role-chip">{{ u.profile.role|default:"—" }}</span>
+              {% else %}
+                <span class="badge role-chip">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.profile and u.profile.terminal %}
+                {{ u.profile.terminal.name }} — {{ u.profile.terminal.city.name }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if u.profile and u.profile.is_active %}
+                <span class="badge badge-green">Activo</span>
+              {% else %}
+                <span class="badge badge-red">Inactivo</span>
+              {% endif %}
+            </td>
+            <td>
+              <a class="btn btn-light" href="{% url 'editar_usuario' u.id %}">✏️ Editar</a>
+              {% if u.id != request.user.id %}
+                {% if u.profile and u.profile.is_active %}
+                  <a class="btn btn-warning" href="{% url 'editar_usuario' u.id %}?desactivar=1">⏸️</a>
+                {% else %}
+                  <a class="btn btn-primary" href="{% url 'editar_usuario' u.id %}?activar=1">▶️</a>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" style="text-align:center;color:#6b7280">No hay usuarios</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

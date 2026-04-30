@@ -1,0 +1,33 @@
+{# templates/booking/widgets/_seat_toolbar.html #}
+<div class="toolbar d-flex align-items-center gap-2 mb-2">
+  <strong class="me-2">Piso {{ widget.which_layout|yesno:"Inferior,Superior" }}</strong>
+
+  <!-- Herramientas (tipos de celda) -->
+  <div class="btn-group btn-group-sm" role="group" aria-label="Herramientas">
+    <button type="button" class="btn btn-outline-secondary tool active" data-t="L" title="Asiento">🪑</button>
+    <button type="button" class="btn btn-outline-secondary tool" data-t="P" title="Pasillo">—</button>
+    <button type="button" class="btn btn-outline-secondary tool" data-t="X" title="Bloqueo">⛔️</button>
+    <button type="button" class="btn btn-outline-secondary tool" data-t="B" title="Baño">🚻</button>
+    <button type="button" class="btn btn-outline-secondary tool" data-t="E" title="Escalera">🪜</button>
+    <button type="button" class="btn btn-outline-secondary tool" data-t="R" title="Puerta">🚪</button>
+    <!-- Si usas PMR, descomenta:
+    <button type="button" class="btn btn-outline-secondary tool" data-t="D" title="PMR">♿</button>
+    -->
+  </div>
+
+  <!-- Acciones -->
+  <div class="btn-group btn-group-sm ms-2">
+    <button type="button" class="btn btn-light" data-action="auto-pasillo" title="Insertar pasillo central">Auto pasillo</button>
+    <button type="button" class="btn btn-light" data-action="limpiar"      title="Limpiar">Limpiar</button>
+    <button type="button" class="btn btn-light" data-action="copiar"       title="Copiar diseño">Copiar</button>
+    <button type="button" class="btn btn-light" data-action="pegar"        title="Pegar diseño">Pegar</button>
+    <button type="button" class="btn btn-light" data-action="toggle-nums"  title="Mostrar/ocultar números">123</button>
+    <button type="button" class="btn btn-light" data-action="auto-number"  title="Autonumerar asientos">#</button>
+  </div>
+
+  <div class="ms-auto small text-muted">
+    Filas: <span data-r>{{ widget.rows|default:0 }}</span> ·
+    Columnas: <span data-c>{{ widget.cols|default:0 }}</span>
+    <span class="ms-2">(Doble click en un asiento para escribir su número)</span>
+  </div>
+</div>

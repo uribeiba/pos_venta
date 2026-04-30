@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+{% block object-tools-items %}
+  {{ block.super }}
+  {% if original.pk %}
+    <li>
+      <a class="historylink" href="{% url 'admin:reservas_bus_seat_designer' original.pk %}">
+        🪑 Editar diseño de asientos
+      </a>
+    </li>
+  {% endif %}
+{% endblock %}

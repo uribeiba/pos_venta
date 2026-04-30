@@ -1,0 +1,131 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Mapa de asientos — {{ bus.plate }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root{
+      --gap:8px; --cell:38px; --radius:10px;
+      --border:#dcdfe3; --paper:#f7f8fa;
+      --txt:#222; --muted:#98a1aa;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:24px;
+      font: 14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+      color:var(--txt); background:#fff;
+    }
+    header{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+    .tag{display:inline-block; padding:2px 8px; border-radius:16px; font-weight:600; font-size:12px;}
+    .tag--wc{background:#fde7ef; color:#b8004f}
+    .tag--door{background:#e8f2ff; color:#0b5ac3}
+    .tag--stairs{background:#fff3e0; color:#b05c00}
+    .legend{display:flex; align-items:center; gap:10px; margin-left:auto; color:#5b6670}
+    .legend i{display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:6px; vertical-align:-2px}
+    .i-seat{background:#e8f5e9; border:1px solid #cfe6d3}
+    .i-void{border:1px dashed #dcdfe3; background:transparent}
+    .i-stairs{background:#fff3e0; border:1px solid #ffd2a8}
+    .i-door{background:#e8f2ff; border:1px solid #bbdefb}
+    .i-wc{background:#fde7ef; border:1px solid #f8bbd0}
+
+    .deck{
+      margin:18px 0 28px;
+    }
+    .deck h2{
+      font-size:15px; margin:0 0 10px; color:#334155;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(var(--cols), var(--cell));
+      gap: var(--gap);
+      width:max-content; background:transparent;
+    }
+    .cell{
+      width:var(--cell); height:var(--cell);
+      display:grid; place-items:center;
+      border:1px solid var(--border);
+      background:var(--paper);
+      border-radius: var(--radius);
+      font-weight:700; font-size:12px;
+      user-select:none;
+    }
+    .cell--L { background:#e8f5e9; border-color:#cfe6d3; }
+    .cell--X { background:#f6f6f6; border-color:#eee; color:#b3bac2; }
+    .cell--E { background:#fff3e0; border-color:#ffd2a8; }
+    .cell--D { background:#e8f2ff; border-color:#bbdefb; }
+    .cell--B { background:#fde7ef; border-color:#f8bbd0; }
+
+    /* 🚶 Pasillo: sin fondo ni borde */
+    .cell--P { background:transparent !important; border:0 !important; box-shadow:none !important; }
+
+    .num{font-variant-numeric:tabular-nums}
+    .hdr{
+      display:grid; grid-template-columns: 1fr 1fr; gap:16px;
+      margin-bottom:8px; color:#5b6670; font-size:12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Bus:</strong> {{ bus.company.name }} — {{ bus.plate }}
+    <span class="legend">
+      <span><i class="i-seat"></i>Asiento</span>
+      <span><i class="i-void" style="border-style:none"></i>Pasillo</span>
+      <span><i class="i-stairs"></i>Escalera</span>
+      <span><i class="i-door"></i>Puerta</span>
+      <span><i class="i-wc"></i>WC</span>
+    </span>
+  </header>
+
+  <div class="deck">
+    <h2>Piso superior</h2>
+    <div id="grid-upper" class="grid"></div>
+  </div>
+
+  <div class="deck">
+    <h2>Piso inferior</h2>
+    <div id="grid-lower" class="grid"></div>
+  </div>
+
+  {{ bus.layout_upper|json_script:"LAY_U" }}
+  {{ bus.layout_lower|json_script:"LAY_L" }}
+  {{ bus.numbers_upper|json_script:"NUM_U" }}
+  {{ bus.numbers_lower|json_script:"NUM_L" }}
+  <script>
+    const cols = Number({{ bus.cols|default:4 }});
+    const rowsU = Number({{ bus.rows_upper|default:0 }});
+    const rowsL = Number({{ bus.rows_lower|default:0 }});
+    const LAY_U = JSON.parse(document.getElementById('LAY_U').textContent || "[]");
+    const LAY_L = JSON.parse(document.getElementById('LAY_L').textContent || "[]");
+    const NUM_U = JSON.parse(document.getElementById('NUM_U').textContent || "[]");
+    const NUM_L = JSON.parse(document.getElementById('NUM_L').textContent || "[]");
+
+    function drawGrid(el, rows, cols, types, numbers){
+      el.style.setProperty("--cols", cols);
+      el.innerHTML = "";
+      const toClass = t => "cell cell--" + (t || "L");
+      let i = 0;
+      for (let r=0; r<rows; r++){
+        for (let c=0; c<cols; c++, i++){
+          const t = (types[i] ?? "L");
+          const n = (numbers[i] ?? "").toString().trim();
+          const div = document.createElement("div");
+          div.className = toClass(t);
+          if (t !== "P" && n) {
+            const s = document.createElement("span");
+            s.className = "num";
+            s.textContent = n;
+            div.appendChild(s);
+          }
+          el.appendChild(div);
+        }
+      }
+    }
+
+    drawGrid(document.getElementById("grid-upper"), rowsU, cols, LAY_U, NUM_U);
+    drawGrid(document.getElementById("grid-lower"), rowsL, cols, LAY_L, NUM_L);
+  </script>
+</body>
+</html>

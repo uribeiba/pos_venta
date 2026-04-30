@@ -1,0 +1,193 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}POS - Sistema de Ventas{% endblock %}</title>
+
+  <style>
+    :root{
+      --sidebar-width:260px;--header-height:60px;
+      --primary:#111827;--secondary:#6b7280;--accent:#0ea5e9;
+      --success:#10b981;--danger:#ef4444;--warning:#f59e0b;
+      --bg-light:#f8fafc;--border:#e5e7eb;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#fff;color:#111827;overflow-x:hidden}
+    .pos-container{display:flex;min-height:100vh}
+    /* Sidebar */
+    .pos-sidebar{width:var(--sidebar-width);background:var(--primary);color:#fff;position:fixed;height:100vh;overflow-y:auto;transition:.3s;z-index:1000}
+    .pos-sidebar-header{padding:20px;border-bottom:1px solid #374151;text-align:center}
+    .pos-sidebar-header h1{font-size:18px;font-weight:700}
+    .pos-sidebar-nav{padding:20px 0}
+    .nav-item{display:flex;align-items:center;padding:12px 20px;color:#d1d5db;text-decoration:none;transition:.2s;border-left:4px solid transparent}
+    .nav-item:hover{background:#1f2937;color:#fff;border-left-color:var(--accent)}
+    .nav-item.active{background:#1f2937;color:#fff;border-left-color:var(--accent)}
+    .nav-item i{margin-right:12px;font-size:16px;width:20px;text-align:center}
+    /* Main */
+    .pos-main{flex:1;margin-left:var(--sidebar-width);background:var(--bg-light);min-height:100vh}
+    .pos-header{height:var(--header-height);background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:100}
+    .pos-content{padding:24px;min-height:calc(100vh - var(--header-height))}
+    /* Cards / Buttons */
+    .card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+    .card-header{display:flex;justify-content:between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+    .card-title{font-size:18px;font-weight:700;color:var(--primary)}
+    .btn{display:inline-flex;align-items:center;padding:10px 16px;border:none;border-radius:8px;font-weight:600;cursor:pointer;text-decoration:none;transition:.2s;font-size:14px}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-success{background:var(--success);color:#fff}
+    .btn-light{background:var(--bg-light);color:var(--primary);border:1px solid var(--border)}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 4px 8px rgba(0,0,0,.1)}
+    /* Responsive */
+    @media (max-width:768px){
+      .pos-sidebar{margin-left:-var(--sidebar-width)}
+      .pos-sidebar.active{margin-left:0}
+      .pos-main{margin-left:0}
+      .menu-toggle{display:block}
+    }
+    .menu-toggle{display:none;background:none;border:none;color:var(--primary);font-size:20px;cursor:pointer}
+    .user-info{display:flex;align-items:center;gap:12px;color:#6b7280;font-size:14px}
+  </style>
+
+  <!-- 🔒 Print global: oculta todo y muestra solo #receipt-root al imprimir -->
+  <style id="pos-print-global">
+  @media print {
+    /* Márgenes y fondo limpio */
+    @page { margin: 10mm; }
+    html, body { background:#fff !important; }
+
+    /* 1) Oculta todo en la página */
+    body * { visibility: hidden !important; }
+
+    /* 2) Muestra únicamente el recibo y sus descendientes */
+    #receipt-root, #receipt-root * { visibility: visible !important; }
+
+    /* 3) Posiciona el recibo arriba y ocupa ancho imprimible */
+    #receipt-root {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      max-width: 780px !important;   /* ajustable */
+      margin: 0 !important;
+      padding: 0 !important;
+      /* si el recibo usa grid, fuerza 1 columna en impresión */
+      grid-template-columns: 1fr !important;
+    }
+
+    /* 4) No imprimir bordes/sombras/botones del layout */
+    aside, header, nav, .actions { display: none !important; }
+    .card { border: 0 !important; padding: 0 !important; box-shadow: none !important; }
+  }
+  </style>
+</head>
+<body>
+<div class="pos-container">
+  <!-- Sidebar -->
+  <aside class="pos-sidebar">
+    <div class="pos-sidebar-header">
+      <h1>🏢 POS Agencia</h1>
+    </div>
+
+    <nav class="pos-sidebar-nav">
+      <!-- Inicio -->
+      <a href="{% url 'pos_home' %}" class="nav-item
+         {% if request.resolver_match %}{% if request.resolver_match.url_name == 'pos_home' %}active{% endif %}{% endif %}">
+        📊 Inicio
+      </a>
+
+      <!-- Venta de Boletos (ajusta 'pos_trip' si tu url_name es otro) -->
+      <a href="{% url 'pos_home' %}" class="nav-item
+         {% if request.resolver_match %}{% if request.resolver_match.url_name == 'pos_trip' %}active{% endif %}{% endif %}">
+        🎫 Venta de Boletos
+      </a>
+
+      <a href="#" class="nav-item">📦 Encomiendas</a>
+      <a href="#" class="nav-item">📅 Reservas</a>
+
+      <!-- Caja -->
+      <a href="{% url 'pos_caja' %}" class="nav-item
+         {% if request.resolver_match %}{% if request.resolver_match.url_name == 'pos_caja' %}active{% endif %}{% endif %}">
+        💰 Caja
+      </a>
+
+      <!-- Reportes -->
+      <a href="{% url 'pos_reportes' %}" class="nav-item
+         {% if request.resolver_match %}{% if request.resolver_match.url_name == 'pos_reportes' %}active{% endif %}{% endif %}">
+        📊 Reportes
+      </a>
+
+      <a href="/admin/" class="nav-item">⚙️ Administración</a>
+
+      {# Gestión de Usuarios: admin o supervisor #}
+      {% if request.user.is_superuser %}
+        <a href="{% url 'gestion_usuarios' %}" class="nav-item
+           {% if request.resolver_match %}{% if request.resolver_match.url_name == 'gestion_usuarios' %}active{% endif %}{% endif %}">
+          👥 Gestión de Usuarios
+        </a>
+      {% else %}
+        {% if request.user.profile and request.user.profile.role|default:'' == 'admin' %}
+          <a href="{% url 'gestion_usuarios' %}" class="nav-item
+             {% if request.resolver_match %}{% if request.resolver_match.url_name == 'gestion_usuarios' %}active{% endif %}{% endif %}">
+            👥 Gestión de Usuarios
+          </a>
+        {% elif request.user.profile and request.user.profile.role|default:'' == 'supervisor' %}
+          <a href="{% url 'gestion_usuarios' %}" class="nav-item
+             {% if request.resolver_match %}{% if request.resolver_match.url_name == 'gestion_usuarios' %}active{% endif %}{% endif %}">
+            👥 Gestión de Usuarios
+          </a>
+        {% endif %}
+      {% endif %}
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="pos-main">
+    <header class="pos-header">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <div class="user-info">
+        <span>Vendedor: {{ request.user.get_full_name|default:request.user.username }}</span>
+        <a href="/admin/logout/" class="btn btn-light" style="padding:6px 12px;font-size:12px;">Cerrar Sesión</a>
+      </div>
+    </header>
+
+    {# Mensajes flash (éxito/error/info) #}
+    {% if messages %}
+      <div style="max-width:1200px;margin:16px auto 0;">
+        {% for message in messages %}
+          <div style="
+            background:#f9fafb;border:1px solid #e5e7eb;border-left-width:4px;
+            {% if message.tags == 'success' %}border-left-color:#10b981;
+            {% elif message.tags == 'error' or message.tags == 'danger' %}border-left-color:#ef4444;
+            {% elif message.tags == 'warning' %}border-left-color:#f59e0b;
+            {% else %}border-left-color:#0ea5e9;{% endif %}
+            padding:10px 14px;border-radius:8px;margin:0 24px 10px;color:#111827;">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="pos-content">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<script>
+  function toggleSidebar(){
+    const s=document.querySelector('.pos-sidebar');
+    s.classList.toggle('active');
+  }
+  // Cerrar sidebar al hacer click fuera (móvil)
+  document.addEventListener('click',function(e){
+    const s=document.querySelector('.pos-sidebar');
+    const t=document.querySelector('.menu-toggle');
+    if(window.innerWidth<=768 && !s.contains(e.target) && !t.contains(e.target)){
+      s.classList.remove('active');
+    }
+  });
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

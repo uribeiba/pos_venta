@@ -1,0 +1,400 @@
+{% extends "booking/pos_base.html" %}
+{% load static %}
+
+{% block title %}POS — Panel de Caja{% endblock %}
+
+{% block content %}
+<style>
+    .dashboard-caja {
+        padding: 20px;
+    }
+    
+    .dashboard-header {
+        display: flex;
+        justify-content: between;
+        align-items: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .dashboard-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: #111827;
+    }
+    
+    .fecha-selector {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: transform 0.2s;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .stat-icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+    }
+    
+    .stat-value {
+        font-size: 28px;
+        font-weight: 800;
+        color: #111827;
+        margin-bottom: 4px;
+    }
+    
+    .stat-label {
+        font-size: 14px;
+        color: #6b7280;
+        font-weight: 600;
+    }
+    
+    .stat-trend {
+        font-size: 12px;
+        margin-top: 8px;
+    }
+    
+    .trend-positive { color: #10b981; }
+    .trend-negative { color: #ef4444; }
+    
+    .card-primary { border-left: 4px solid #3b82f6; }
+    .card-success { border-left: 4px solid #10b981; }
+    .card-warning { border-left: 4px solid #f59e0b; }
+    .card-danger { border-left: 4px solid #ef4444; }
+    
+    .charts-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .chart-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    
+    .chart-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 16px;
+    }
+    
+    .ventas-recientes {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .table th,
+    .table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .table th {
+        background: #f8fafc;
+        font-weight: 600;
+        color: #374151;
+        font-size: 14px;
+    }
+    
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    
+    .acciones-caja {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+    }
+    
+    .btn-caja {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .btn-abrir { background: #10b981; color: white; }
+    .btn-cerrar { background: #ef4444; color: white; }
+    .btn-reporte { background: #3b82f6; color: white; }
+    
+    .btn-caja:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .estado-caja {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    .estado-abierta { background: #d1fae5; color: #065f46; }
+    .estado-cerrada { background: #fef3c7; color: #92400e; }
+    
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    
+    .dot-abierta { background: #10b981; }
+    .dot-cerrada { background: #f59e0b; }
+</style>
+
+<div class="dashboard-caja">
+    <!-- Header -->
+    <div class="dashboard-header">
+        <div>
+            <h1 class="dashboard-title">💰 Panel de Caja</h1>
+            <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px;">
+                <span style="color: #6b7280; font-size: 14px;">
+                    Vendedor: <strong>{{ request.user.get_full_name|default:request.user.username }}</strong>
+                </span>
+                <div class="estado-caja {% if caja_abierta %}estado-abierta{% else %}estado-cerrada{% endif %}">
+                    <span class="dot {% if caja_abierta %}dot-abierta{% else %}dot-cerrada{% endif %}"></span>
+                    {% if caja_abierta %}Caja Abierta{% else %}Caja Cerrada{% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="fecha-selector">
+            <input type="date" id="fechaFiltro" value="{{ hoy }}" style="height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 8px;">
+            <button onclick="filtrarPorFecha()" class="btn btn-primary">Aplicar</button>
+        </div>
+    </div>
+<!-- Reemplazar las cards de estadísticas -->
+<div class="stats-grid">
+    <div class="stat-card card-primary">
+        <div class="stat-icon">💰</div>
+        <div class="stat-value">${{ total_ventas|floatformat:0 }}</div>
+        <div class="stat-label">TOTAL VENTAS HOY</div>
+        <div class="stat-trend {% if tendencia_ventas >= 0 %}trend-positive{% else %}trend-negative{% endif %}">
+            {{ tendencia_ventas|floatformat:1 }}% vs ayer
+        </div>
+    </div>
+    
+    <div class="stat-card card-success">
+        <div class="stat-icon">🎫</div>
+        <div class="stat-value">{{ total_boletos }}</div>
+        <div class="stat-label">BOLETOS VENDIDOS</div>
+        <div class="stat-trend {% if tendencia_boletos >= 0 %}trend-positive{% else %}trend-negative{% endif %}">
+            {{ tendencia_boletos|floatformat:1 }}% vs ayer
+        </div>
+    </div>
+    
+    <div class="stat-card card-warning">
+        <div class="stat-icon">🛣️</div>
+        <div class="stat-value">{{ rutas_vendidas }}</div>
+        <div class="stat-label">RUTAS VENDIDAS</div>
+        <div class="stat-trend trend-positive">+{{ rutas_vendidas }} activas</div>
+    </div>
+    
+    <div class="stat-card card-danger">
+        <div class="stat-icon">👤</div>
+        <div class="stat-value">${{ promedio_venta|floatformat:0 }}</div>
+        <div class="stat-label">TICKET PROMEDIO</div>
+        <div class="stat-trend trend-positive">Por pasajero</div>
+    </div>
+</div>
+
+<!-- Mostrar información de caja si está abierta -->
+{% if caja_abierta and caja_actual %}
+<div style="background: #d1fae5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <div style="display: flex; justify-content: between; align-items: center;">
+        <div>
+            <strong>💰 Caja Abierta</strong>
+            <div style="font-size: 14px; color: #065f46; margin-top: 4px;">
+                Abierta desde: {{ caja_actual.opening_date|date:"H:i" }} | 
+                Saldo inicial: ${{ caja_actual.opening_balance }}
+            </div>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-size: 18px; font-weight: 700; color: #065f46;">
+                ${{ total_ventas|floatformat:0 }}
+            </div>
+            <div style="font-size: 12px; color: #065f46;">
+                Recaudado hoy
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+        
+        <!-- Rutas Más Vendidas -->
+        <div class="chart-card">
+            <h3 class="chart-title">Rutas Más Vendidas</h3>
+            <div id="graficoRutas" style="height: 300px; background: #f8fafc; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6b7280;">
+                Gráfico de rutas...
+            </div>
+        </div>
+    </div>
+
+    <!-- Ventas Recientes -->
+    <div class="ventas-recientes">
+        <h3 class="chart-title">Ventas Recientes</h3>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Hora</th>
+                        <th>N° Ticket</th>
+                        <th>Ruta</th>
+                        <th>Asientos</th>
+                        <th>Pasajero</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for venta in ventas_recientes %}
+                    <tr>
+                        <td>{{ venta.created_at|date:"H:i" }}</td>
+                        <td><strong>{{ venta.number }}</strong></td>
+                        <td>{{ venta.trip.route.origin.name }} → {{ venta.trip.route.destination.name }}</td>
+                        <td>{{ venta.seat.number }}</td>
+                        <td>{{ venta.buyer_name|default:"N/A" }}</td>
+                        <td><strong>${{ venta.price }}</strong></td>
+                        <td>
+                            <span class="badge badge-success">Pagado</span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: #6b7280; padding: 20px;">
+                            No hay ventas registradas hoy
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function filtrarPorFecha() {
+        const fecha = document.getElementById('fechaFiltro').value;
+        window.location.href = `?fecha=${fecha}`;
+    }
+    
+    function abrirCaja() {
+    // Pedir monto inicial al usuario
+    const montoInicial = prompt('💰 Ingrese el monto inicial de la caja:\n(Si no ingresa monto, se usará $0)', '0');
+    
+    if (montoInicial === null) return; // Usuario canceló
+    
+    // Convertir y validar el monto
+    const monto = parseFloat(montoInicial.replace(/,/g, '')); // Remover comas
+    if (isNaN(monto) || monto < 0) {
+        alert('❌ Por favor ingrese un monto válido (número positivo)');
+        return;
+    }
+    
+    const mensajeConfirmacion = monto > 0 
+        ? `¿Está seguro de abrir la caja con $${monto.toLocaleString()} como saldo inicial?`
+        : '¿Está seguro de abrir la caja sin saldo inicial?';
+    
+    if (confirm(mensajeConfirmacion)) {
+        fetch('/pos/caja/abrir/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ opening_balance: monto })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ ' + data.message);
+                location.reload();
+            } else {
+                alert('❌ Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('❌ Error de conexión: ' + error);
+        });
+    }
+}
+    
+    function cerrarCaja() {
+        if (confirm('¿Está seguro de cerrar la caja? Esto generará un reporte final.')) {
+            // Aquí irá la llamada AJAX para cerrar caja
+            fetch('/pos/caja/cerrar/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            });
+        }
+    }
+    
+    function generarReporte() {
+        const fecha = document.getElementById('fechaFiltro').value;
+        window.open(`/pos/reportes/diario/?fecha=${fecha}`, '_blank');
+    }
+    
+    // Simulación de gráficos (luego implementaremos Chart.js)
+    document.addEventListener('DOMContentLoaded', function() {
+        // Aquí inicializaremos los gráficos reales
+        console.log('Dashboard de caja cargado');
+    });
+</script>
+{% endblock %}

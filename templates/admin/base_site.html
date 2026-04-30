@@ -1,0 +1,8 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block title %}Cejer • Administración{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'admin/cejer_admin.css' %}">{% endblock %}
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}"><span class="cejer-badge">CEJER</span> Administración</a></h1>
+{% endblock %}
+{% block nav-global %}{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+<style>
+  .seat-wrap { display: grid; gap: 24px; }
+  .deck { border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fff; }
+  .deck h3 { margin: 0 0 12px; }
+  .grid { display: grid; gap: 6px; }
+  .cell {
+    width: 38px; height: 38px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    border: 1px solid #cfd3d8;
+  }
+  /* Tipos de celda */
+  .cell.L { background: #e8f5e9; }      /* asiento */
+  .cell.P { background: #f3f4f6; color: #9ca3af; border-style: dashed; } /* pasillo */
+  .cell.X { background: #fde8e8; }      /* bloqueo/hueco */
+  .cell.E { background: #fff7ed; border-color:#f59e0b; }  /* escalera */
+  .cell.D { background: #eef2ff; border-color:#6366f1; }  /* puerta   */
+  .cell.B { background: #fdf2f8; border-color:#ec4899; }  /* baño     */
+
+  /* Estados (solo si hay trip) */
+  .cell.status-occupied { outline: 2px solid #ef4444; }
+  .cell.status-hold { outline: 2px solid #f59e0b; }
+
+  .legend { display: flex; gap: 12px; margin: 16px 0; color: #555; flex-wrap: wrap; }
+  .legend .chip { display: inline-flex; align-items: center; gap: 6px; }
+  .chip .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border:1px solid #cfd3d8;}
+  .sw.L { background:#e8f5e9; }
+  .sw.P { background:#f3f4f6; }
+  .sw.X { background:#fde8e8; }
+  .sw.E { background:#fff7ed; border-color:#f59e0b; }
+  .sw.D { background:#eef2ff; border-color:#6366f1; }
+  .sw.B { background:#fdf2f8; border-color:#ec4899; }
+  .sw.O { background:#fee2e2; border-color:#ef4444; } /* ocupado */
+  .sw.H { background:#ffedd5; border-color:#f59e0b; } /* hold */
+  .actions { margin-bottom: 14px; }
+  .actions a.button { padding: 6px 10px; border:1px solid #c5c5c5; border-radius:6px; text-decoration:none; background:#fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="actions">
+  <a class="button" href="{{ change_url }}">← Volver</a>
+</div>
+
+<h1>{{ title }}</h1>
+
+<div class="legend">
+  <span class="chip"><span class="sw L"></span> Asiento (L)</span>
+  <span class="chip"><span class="sw P"></span> Pasillo (P)</span>
+  <span class="chip"><span class="sw X"></span> Bloqueo/Hueco (X)</span>
+  <span class="chip"><span class="sw E"></span> Escalera (E)</span>
+  <span class="chip"><span class="sw D"></span> Puerta (D)</span>
+  <span class="chip"><span class="sw B"></span> Baño (B)</span>
+
+  {% if trip %}
+    <span class="chip"><span class="sw O"></span> Ocupado (ticket)</span>
+    <span class="chip"><span class="sw H"></span> Hold (bloqueado)</span>
+  {% endif %}
+</div>
+
+<div class="seat-wrap">
+
+  <div class="deck">
+    <h3>Piso inferior</h3>
+    {% if grid_lower %}
+      <div class="grid" style="grid-template-columns: repeat({{ cols }}, 38px);">
+        {% for row in grid_lower %}
+          {% for c in row %}
+            {# c.status solo existe en modo trip; en bus es None #}
+            <div class="cell {{ c.type }} {% if c.status %}status-{{ c.status }}{% endif %}" title="{{ c.label|default:'—' }}">
+              {% if c.type == "L" %}
+                {{ c.label|default:"" }}
+              {% else %}
+                &nbsp;
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No hay filas definidas para el piso inferior.</p>
+    {% endif %}
+  </div>
+
+  {% if grid_upper %}
+  <div class="deck">
+    <h3>Piso superior</h3>
+    <div class="grid" style="grid-template-columns: repeat({{ cols }}, 38px);">
+      {% for row in grid_upper %}
+        {% for c in row %}
+          <div class="cell {{ c.type }} {% if c.status %}status-{{ c.status }}{% endif %}" title="{{ c.label|default:'—' }}">
+            {% if c.type == "L" %}
+              {{ c.label|default:"" }}
+            {% else %}
+              &nbsp;
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

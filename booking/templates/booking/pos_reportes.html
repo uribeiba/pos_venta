@@ -1,0 +1,614 @@
+{% extends "booking/pos_base.html" %}
+
+{% block title %}POS — Reportes Detallados{% endblock %}
+
+{% block content %}
+<style>
+    .reportes-container {
+        padding: 20px;
+    }
+    
+    .filtros-reportes {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+    
+    .filtros-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto auto;
+        gap: 12px;
+        align-items: end;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-label {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+    
+    .form-input {
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 24px;
+        font-weight: 800;
+        color: #111827;
+        margin-bottom: 4px;
+    }
+    
+    .stat-label {
+        font-size: 14px;
+        color: #6b7280;
+        font-weight: 600;
+    }
+    
+    .tabla-reporte {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .tabla-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 16px;
+    }
+    
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .table th,
+    .table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .table th {
+        background: #f8fafc;
+        font-weight: 600;
+        color: #374151;
+        font-size: 14px;
+    }
+    
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-primary { background: #dbeafe; color: #1e40af; }
+    
+    .acciones-reporte {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+    }
+    
+    .btn-export {
+        background: #10b981;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 16px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Estilos para gráficos */
+    .graficos-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .grafico-container {
+        background: #f8fafc;
+        border-radius: 8px;
+        padding: 15px;
+    }
+    
+    .grafico-title {
+        font-size: 14px;
+        color: #374151;
+        margin-bottom: 12px;
+        text-align: center;
+        font-weight: 600;
+    }
+</style>
+
+<div class="reportes-container">
+    <!-- Header -->
+    <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 24px;">
+        <h1 style="font-size: 24px; font-weight: 700; color: #111827;">📊 Reportes Detallados</h1>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filtros-reportes">
+        <form method="get" class="filtros-form">
+            <div class="form-group">
+                <label class="form-label">Fecha Inicio</label>
+                <input type="date" name="fecha_inicio" value="{{ fecha_inicio }}" class="form-input" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Fecha Fin</label>
+                <input type="date" name="fecha_fin" value="{{ fecha_fin }}" class="form-input" required>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary" style="height: 40px;">🔍 Generar Reporte</button>
+            </div>
+            
+            <div class="form-group">
+                <a href="{% url 'pos_reportes' %}" class="btn btn-light" style="height: 40px; display: flex; align-items: center; justify-content: center;">
+                    🔄 Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Estadísticas Principales -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">${{ total_ventas|floatformat:0 }}</div>
+            <div class="stat-label">TOTAL VENTAS</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-value">{{ total_boletos }}</div>
+            <div class="stat-label">BOLETOS VENDIDOS</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-value">{{ dias_rango }}</div>
+            <div class="stat-label">DÍAS ANALIZADOS</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-value">${{ promedio_diario|floatformat:0 }}</div>
+            <div class="stat-label">PROMEDIO DIARIO</div>
+        </div>
+    </div>
+
+    <!-- Gráficos Interactivos -->
+    <div class="tabla-reporte">
+        <h3 class="tabla-title">📊 Gráficos de Ventas</h3>
+        
+        <div class="graficos-grid">
+            <!-- Gráfico de Ventas por Día -->
+            <div class="grafico-container">
+                <div class="grafico-title">Ventas por Día</div>
+                <canvas id="graficoVentasDia" style="width: 100%; height: 250px;"></canvas>
+            </div>
+            
+            <!-- Gráfico de Ventas por Hora -->
+            <div class="grafico-container">
+                <div class="grafico-title">Ventas por Hora del Día</div>
+                <canvas id="graficoVentasHora" style="width: 100%; height: 250px;"></canvas>
+            </div>
+        </div>
+        
+        <!-- Gráfico de Rutas Populares -->
+        <div class="grafico-container">
+            <div class="grafico-title">Top Rutas Más Vendidas</div>
+            <canvas id="graficoRutas" style="width: 100%; height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Rutas Más Vendidas -->
+    <div class="tabla-reporte">
+        <h3 class="tabla-title">🏆 Rutas Más Vendidas</h3>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Ruta</th>
+                        <th>Boletos Vendidos</th>
+                        <th>Total Recaudado</th>
+                        <th>Ticket Promedio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ruta in rutas_populares %}
+                    <tr>
+                        <td>
+                            <strong>{{ ruta.trip__route__origin__name }}</strong> → 
+                            <strong>{{ ruta.trip__route__destination__name }}</strong>
+                        </td>
+                        <td>
+                            <span class="badge badge-primary">{{ ruta.cantidad }}</span>
+                        </td>
+                        <td><strong>${{ ruta.total|floatformat:0 }}</strong></td>
+                        <td>${{ ruta.promedio|floatformat:0 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #6b7280; padding: 20px;">
+                            No hay ventas en el periodo seleccionado
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Ventas por Día -->
+    <div class="tabla-reporte">
+        <h3 class="tabla-title">📅 Ventas por Día</h3>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Boletos Vendidos</th>
+                        <th>Total Recaudado</th>
+                        <th>Promedio por Boleto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for venta in ventas_por_dia %}
+                    <tr>
+                        <td>{{ venta.fecha }}</td>
+                        <td>{{ venta.cantidad }}</td>
+                        <td><strong>${{ venta.total|floatformat:0 }}</strong></td>
+                        <td>${{ venta.promedio|floatformat:0 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #6b7280; padding: 20px;">
+                            No hay datos para mostrar
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Acciones -->
+    <div class="acciones-reporte">
+        <button onclick="exportarPDF()" class="btn-export">
+            📄 Exportar PDF
+        </button>
+        <button onclick="exportarExcel()" class="btn-export">
+            📊 Exportar Excel
+        </button>
+        <a href="{% url 'pos_caja' %}" class="btn btn-light">
+            ← Volver a Caja
+        </a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Datos para gráficos
+    const ventasPorDia = {{ ventas_por_dia|safe }};
+    const ventasPorHora = {{ ventas_por_hora|safe }};
+    const rutasPopulares = {{ rutas_populares|safe }};
+    
+    // Función para inicializar gráficos
+    function inicializarGraficos() {
+        // 1. Gráfico de Ventas por Día (Línea)
+        if (ventasPorDia.length > 0) {
+            const ctxDia = document.getElementById('graficoVentasDia').getContext('2d');
+            new Chart(ctxDia, {
+                type: 'line',
+                data: {
+                    labels: ventasPorDia.map(v => {
+                        const fecha = new Date(v.fecha + 'T00:00:00');
+                        return fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+                    }),
+                    datasets: [{
+                        label: 'Ventas por Día',
+                        data: ventasPorDia.map(v => parseFloat(v.total) || 0),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Ventas: $${context.parsed.y.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            document.getElementById('graficoVentasDia').innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No hay datos para mostrar</p>';
+        }
+        
+        // 2. Gráfico de Ventas por Hora (Barras)
+        if (ventasPorHora.length > 0) {
+            const ctxHora = document.getElementById('graficoVentasHora').getContext('2d');
+            
+            // Preparar datos por hora (llenar horas vacías)
+            const horasData = Array.from({length: 24}, (_, i) => {
+                const ventaHora = ventasPorHora.find(v => parseInt(v.hora) === i);
+                return ventaHora ? parseFloat(ventaHora.total) || 0 : 0;
+            });
+            
+            new Chart(ctxHora, {
+                type: 'bar',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+                    datasets: [{
+                        label: 'Ventas por Hora',
+                        data: horasData,
+                        backgroundColor: '#10b981',
+                        borderColor: '#059669',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { maxTicksLimit: 12 } },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            document.getElementById('graficoVentasHora').innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No hay datos para mostrar</p>';
+        }
+        
+        // 3. Gráfico de Rutas Populares (Horizontal Bar)
+        if (rutasPopulares.length > 0) {
+            const ctxRutas = document.getElementById('graficoRutas').getContext('2d');
+            
+            const rutasLabels = rutasPopulares.slice(0, 8).map(r => {
+                const origen = r.trip__route__origin__name || 'Origen';
+                const destino = r.trip__route__destination__name || 'Destino';
+                return `${origen} → ${destino}`.substring(0, 30) + (origen.length + destino.length > 30 ? '...' : '');
+            });
+            
+            const rutasData = rutasPopulares.slice(0, 8).map(r => parseFloat(r.total) || 0);
+            
+            new Chart(ctxRutas, {
+                type: 'bar',
+                data: {
+                    labels: rutasLabels,
+                    datasets: [{
+                        label: 'Ventas por Ruta',
+                        data: rutasData,
+                        backgroundColor: [
+                            '#ef4444', '#f59e0b', '#10b981', '#3b82f6',
+                            '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Ventas: $${context.parsed.x.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            document.getElementById('graficoRutas').innerHTML = '<p style="text-align: center; color: #6b7280; padding: 20px;">No hay datos para mostrar</p>';
+        }
+    }
+    
+    // Funciones de exportación mejoradas
+    function exportarPDF() {
+        const ventana = window.open('', '_blank');
+        const fechaGeneracion = new Date().toLocaleDateString('es-ES');
+        
+        ventana.document.write(`
+ <html>
+                <head>
+                    <title>Reporte de Ventas - {{ fecha_inicio }} al {{ fecha_fin }}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+                        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+                        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 30px 0; }
+                        .stat-card { border: 1px solid #ddd; padding: 15px; text-align: center; border-radius: 8px; background: #f9f9f9; }
+                        .stat-value { font-size: 20px; font-weight: bold; color: #111827; }
+                        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                        th { background-color: #f5f5f5; font-weight: bold; }
+                        .section { margin: 30px 0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>🚌 Reporte de Ventas - Sistema de Buses</h1>
+                        <p><strong>Período:</strong> {{ fecha_inicio }} al {{ fecha_fin }}</p>
+                        <p><strong>Generado:</strong> ${fechaGeneracion}</p>
+                        <p><strong>Vendedor:</strong> {{ request.user.get_full_name|default:request.user.username }}</p>
+                    </div>
+                    
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-value">${{ total_ventas|floatformat:0 }}</div>
+                            <div>Total Ventas</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ total_boletos }}</div>
+                            <div>Boletos Vendidos</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ dias_rango }}</div>
+                            <div>Días Analizados</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${{ promedio_diario|floatformat:0 }}</div>
+                            <div>Promedio Diario</div>
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>🏆 Rutas Más Vendidas</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ruta</th>
+                                    <th>Boletos</th>
+                                    <th>Total</th>
+                                    <th>Promedio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ruta in rutas_populares %}
+                                <tr>
+                                    <td>{{ ruta.trip__route__origin__name }} → {{ ruta.trip__route__destination__name }}</td>
+                                    <td style="text-align: center;">{{ ruta.cantidad }}</td>
+                                    <td style="text-align: right;">${{ ruta.total|floatformat:0 }}</td>
+                                    <td style="text-align: right;">${{ ruta.promedio|floatformat:0 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>📅 Ventas por Día</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Boletos</th>
+                                    <th>Total</th>
+                                    <th>Promedio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for venta in ventas_por_dia %}
+                                <tr>
+                                    <td>{{ venta.fecha }}</td>
+                                    <td style="text-align: center;">{{ venta.cantidad }}</td>
+                                    <td style="text-align: right;">${{ venta.total|floatformat:0 }}</td>
+                                    <td style="text-align: right;">${{ venta.promedio|floatformat:0 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div style="margin-top: 40px; text-align: center; color: #666; font-size: 12px;">
+                        <p>Reporte generado automáticamente por el Sistema POS de Buses</p>
+                    </div>
+                </body>
+            </html>
+        `);
+        ventana.document.close();
+        setTimeout(() => {
+            ventana.print();
+        }, 500);
+    }
+    
+    function exportarExcel() {
+        // Crear datos para Excel
+        let csvContent = "Ruta,Boletos Vendidos,Total Recaudado,Ticket Promedio\\n";
+        
+        {% for ruta in rutas_populares %}
+        csvContent += "{{ ruta.trip__route__origin__name }} → {{ ruta.trip__route__destination__name }},{{ ruta.cantidad }},{{ ruta.total }},{{ ruta.promedio }}\\n";
+        {% endfor %}
+        
+        // Crear y descargar archivo
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `reporte_ventas_{{ fecha_inicio }}_al_{{ fecha_fin }}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        alert('✅ Archivo CSV descargado exitosamente');
+    }
+    
+    // Inicializar gráficos cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', inicializarGraficos);
+</script>
+{% endblock %}

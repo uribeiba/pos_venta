@@ -1,0 +1,149 @@
+[
+  {
+    "model": "booking.city",
+    "pk": 1,
+    "fields": {
+      "name": "Santiago",
+      "slug": "santiago"
+    }
+  },
+  {
+    "model": "booking.city",
+    "pk": 2,
+    "fields": {
+      "name": "Valparaíso",
+      "slug": "valparaiso"
+    }
+  },
+  {
+    "model": "booking.city",
+    "pk": 3,
+    "fields": {
+      "name": "Viña del Mar",
+      "slug": "vina-del-mar"
+    }
+  },
+  {
+    "model": "booking.city",
+    "pk": 4,
+    "fields": {
+      "name": "La Serena",
+      "slug": "la-serena"
+    }
+  },
+  {
+    "model": "booking.city",
+    "pk": 5,
+    "fields": {
+      "name": "Los Vilos",
+      "slug": "los-vilos"
+    }
+  },
+  {
+    "model": "booking.company",
+    "pk": 1,
+    "fields": {
+      "name": "CEJER",
+      "logo": ""
+    }
+  },
+  {
+    "model": "booking.bus",
+    "pk": 1,
+    "fields": {
+      "company": 1,
+      "plate": "ABCJ11",
+      "model": "Marcopolo",
+      "year": 2022,
+      "decks": 1,
+      "rows_upper": 0,
+      "rows_lower": 12,
+      "seats_per_row": 4,
+      "has_wc": true,
+      "has_climate": true
+    }
+  },
+  {
+    "model": "booking.route",
+    "pk": 1,
+    "fields": {
+      "origin": 1,
+      "destination": 2,
+      "duration_minutes": 120,
+      "base_price": "7990"
+    }
+  },
+  {
+    "model": "booking.route",
+    "pk": 2,
+    "fields": {
+      "origin": 1,
+      "destination": 3,
+      "duration_minutes": 120,
+      "base_price": "7990"
+    }
+  },
+  {
+    "model": "booking.route",
+    "pk": 3,
+    "fields": {
+      "origin": 1,
+      "destination": 4,
+      "duration_minutes": 420,
+      "base_price": "19990"
+    }
+  },
+  {
+    "model": "booking.route",
+    "pk": 4,
+    "fields": {
+      "origin": 2,
+      "destination": 1,
+      "duration_minutes": 120,
+      "base_price": "7990"
+    }
+  },
+  {
+    "model": "booking.route",
+    "pk": 5,
+    "fields": {
+      "origin": 3,
+      "destination": 1,
+      "duration_minutes": 120,
+      "base_price": "7990"
+    }
+  },
+  {
+    "model": "booking.trip",
+    "pk": 1,
+    "fields": {
+      "route": 1,
+      "bus": 1,
+      "departure": "2025-08-17 13:00:00+00:00",
+      "arrival": "2025-08-17 15:00:00+00:00",
+      "seats_total": 48
+    }
+  },
+  {
+    "model": "booking.trip",
+    "pk": 2,
+    "fields": {
+      "route": 2,
+      "bus": 1,
+      "departure": "2025-08-17 14:00:00+00:00",
+      "arrival": "2025-08-17 16:00:00+00:00",
+      "seats_total": 48
+    }
+  },
+  {
+    "model": "booking.trip",
+    "pk": 3,
+    "fields": {
+      "route": 3,
+      "bus": 1,
+      "departure": "2025-08-17 09:00:00+00:00",
+      "arrival": "2025-08-17 16:00:00+00:00",
+      "seats_total": 48
+    }
+  }
+]

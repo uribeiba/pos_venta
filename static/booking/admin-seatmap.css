@@ -1,0 +1,187 @@
+/* booking/static/booking/admin-seatmap.css */
+
+/* =========================
+   Variables y normalización
+   ========================= */
+   :root{
+    --seat-gap: 8px;
+    --seat-size: 34px;
+    --seat-radius: 10px;
+    --seat-border: #dcdfe3;
+    --seat-paper: #f7f8fa;
+    --seat-text: #222;
+    --seat-muted: #98a1aa;
+  }
+  
+  /* Previene que estilos del admin sobrescriban nuestra grilla */
+  .booking-seat-wrap * { box-sizing: border-box; }
+  .booking-seat-wrap { color: var(--seat-text); }
+  
+  /* =========================
+     Contenedor/Grilla
+     ========================= */
+  .booking-seat-grid{
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 4), var(--seat-size));
+    gap: var(--seat-gap);
+    width: max-content;
+    background: transparent;
+  }
+  
+  /* =========================
+     Celda base
+     ========================= */
+  .booking-seat-cell{
+    width: var(--seat-size);
+    height: var(--seat-size);
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--seat-border);
+    background: var(--seat-paper);
+    border-radius: var(--seat-radius);
+    font: 700 11px/1 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    color: var(--seat-text);
+    user-select: none;
+  }
+  
+  /* Asiento libre */
+  .booking-seat-cell--L{
+    background: #e8f5e9 !important;
+    border-color: #cfe6d3 !important;
+  }
+  
+  /* Bloqueo/hueco permanente */
+  .booking-seat-cell--X{
+    background: #f6f6f6 !important;
+    border-color: #eeeeee !important;
+    color: #b3bac2 !important;
+  }
+  
+  /* Escalera / Puerta / Baño */
+  .booking-seat-cell--E{ background:#fff3e0 !important; border-color:#ffd2a8 !important; }
+  .booking-seat-cell--D{ background:#e8f2ff !important; border-color:#bbdefb !important; }
+  .booking-seat-cell--B{ background:#fde7ef !important; border-color:#f8bbd0 !important; }
+  
+  /* 🚶 Pasillo: sin fondo ni borde (queda “hueco”) */
+  .booking-seat-cell--P{
+    background: transparent !important;
+    border: 0 !important;
+    border-style: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  
+  /* Evitar efectos hover heredados sobre pasillo */
+  .booking-seat-cell--P:hover{
+    background: transparent !important;
+    border: 0 !important;
+    border-style: none !important;
+  }
+  
+  /* Número dentro de la celda (si lo renderizas) */
+  .booking-seat-num{
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* =========================
+     Leyenda (opcional)
+     ========================= */
+  .booking-seat-legend{
+    display: flex; align-items: center; gap: 10px;
+    color: var(--seat-muted); margin: 8px 0 12px;
+    font: 12px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  }
+  .booking-seat-legend i{
+    display:inline-block; width:12px; height:12px; border-radius:3px;
+    margin-right:6px; vertical-align:-2px; border:1px solid var(--seat-border);
+  }
+  .booking-seat-legend .i-seat{ background:#e8f5e9; border-color:#cfe6d3; }
+  .booking-seat-legend .i-void{ background:transparent; border-style:none; }
+  .booking-seat-legend .i-stairs{ background:#fff3e0; border-color:#ffd2a8; }
+  .booking-seat-legend .i-door{ background:#e8f2ff; border-color:#bbdefb; }
+  .booking-seat-legend .i-wc{ background:#fde7ef; border-color:#f8bbd0; }
+  
+  /* =========================
+     Compatibilidad:
+     si tu widget usa clases .cell / .cell--X / etc.
+     (dejamos las mismas reglas para cubrir ambos casos)
+     ========================= */
+  .cell{ width: var(--seat-size); height: var(--seat-size); border-radius: var(--seat-radius); }
+  .grid .cell{ border: 1px solid var(--seat-border) !important; background: var(--seat-paper) !important; }
+  .cell--L{ background:#e8f5e9 !important; border-color:#cfe6d3 !important; }
+  .cell--X{ background:#f6f6f6 !important; border-color:#eeeeee !important; color:#b3bac2 !important; }
+  .cell--E{ background:#fff3e0 !important; border-color:#ffd2a8 !important; }
+  .cell--D{ background:#e8f2ff !important; border-color:#bbdefb !important; }
+  .cell--B{ background:#fde7ef !important; border-color:#f8bbd0 !important; }
+  .grid .cell.cell--P,
+  .cell.cell--P{
+    background: transparent !important;
+    border: 0 !important;
+    border-style: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  .grid .cell.cell--P:hover{ background: transparent !important; border: 0 !important; }
+  
+/* ==== Modal vanilla para el mapa ==== */
+.seatmap-modal { position: fixed; inset: 0; display: none; z-index: 10000; }
+.seatmap-modal.is-open { display: block; }
+.seatmap-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.35); }
+
+
+.seatmap-dialog {
+  position: absolute;
+  top: 2%; right: 2%; bottom: 2%; left: 2%;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  display: flex; flex-direction: column;
+  max-width: 1100px;
+}
+
+ 
+.seatmap-header, .seatmap-footer {
+  padding: 10px 14px;
+  border-bottom: 1px solid #e7e9ec;
+  display:flex; align-items:center; gap:10px;
+}
+
+.seatmap-footer { border-top: 1px solid #e7e9ec; border-bottom: none; justify-content: flex-end; }
+.seatmap-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.seatmap-close { margin-left: auto; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; }
+
+/* ⬇️ El body ocupa todo el espacio entre header y footer */
+.seatmap-body { padding: 0; flex: 1 1 auto; min-height: 0; }
+
+/* ⬇️ El iframe toma el 100% del alto disponible en el body */
+#seatmapFrame { width: 100%; height: 100%; border: 0; }
+
+
+/* El body del modal ya lo dejamos con altura por JS; aquí reforzamos y
+   controlamos el modo pantalla completa */
+   #seatmapModal .modal-body {
+    height: 78vh;           /* puedes subir a 82–85vh si quieres aún más alto */
+    overflow: hidden;
+  }
+  
+  .seatmap-iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+  
+  /* Cuando el modal (o su dialog) entra en Fullscreen, usamos todo el viewport */
+  :fullscreen #seatmapModal .modal-body,
+  #seatmapModal:fullscreen .modal-body,
+  #seatmapModal .modal-dialog:fullscreen .modal-body,
+  #seatmapModal .modal-content:fullscreen .modal-body {
+    height: calc(100vh - 96px); /* header+footer aprox; ajusta si cambias padding */
+  }
+  
+  :fullscreen #seatmapModal .modal-content,
+  #seatmapModal:fullscreen .modal-content,
+  #seatmapModal .modal-dialog:fullscreen .modal-content {
+    border-radius: 0;
+  }
+  

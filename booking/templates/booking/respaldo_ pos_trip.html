@@ -1,0 +1,1011 @@
+{% extends "booking/pos_base.html" %}
+
+{% block title %}POS — Selección de Asientos{% endblock %}
+
+{% block content %}
+<style>
+    .pos-trip-container {
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        gap: 20px;
+        height: calc(100vh - 120px);
+    }
+    
+    .seatmap-section {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        overflow: auto;
+    }
+    
+    .checkout-section {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .trip-header {
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .trip-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 8px;
+    }
+    
+    .trip-meta {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        color: #374151;
+        font-size: 14px;
+    }
+    
+    .trip-meta b {
+        color: #111827;
+    }
+    
+    .legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        align-items: center;
+        font-size: 12px;
+        color: #4b5563;
+        margin: 16px 0;
+        padding: 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+    }
+    
+    .legend i {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        vertical-align: -2px;
+        margin-right: 6px;
+        border: 1px solid;
+    }
+    
+    .i-free { background: #e8f5e9; border-color: #cfe6d3; }
+    .i-sel { background: #111827; border-color: #111827; }
+    .i-occ { background: #f3f4f6; border-color: #e5e7eb; }
+    .i-hold { background: #fff7ed; border-color: #fed7aa; }
+    .i-door { background: #e8f2ff; border-color: #bbdefb; }
+    .i-wc { background: #fde7ef; border-color: #f8bbd0; }
+    .i-st { background: #fff3e0; border-color: #ffd2a8; }
+    .i-pas { background: transparent; border: 0; }
+    
+    .deck {
+        margin: 20px 0;
+    }
+    
+    .deck-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #334155;
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .grid {
+        display: grid;
+        gap: 6px;
+        width: max-content;
+        background: transparent;
+        margin-bottom: 16px;
+    }
+    
+    .cell {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        user-select: none;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        font-weight: 700;
+        font-size: 11px;
+        transition: all 0.1s ease;
+        cursor: pointer;
+    }
+    
+    .cell:hover {
+        transform: scale(1.05);
+    }
+    
+    /* Estados de los asientos */
+    .cell-free { background: #e8f5e9; border-color: #cfe6d3; }
+    .cell-sel { background: #111827; color: #fff; border-color: #111827; }
+    .cell-occ { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; cursor: not-allowed; }
+    .cell-hold { background: #fff7ed; border-color: #fed7aa; cursor: not-allowed; }
+    
+    /* Otros tipos de celdas */
+    .cell--P { background: transparent !important; border: 0 !important; box-shadow: none !important; cursor: default; }
+    .cell--X { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+    .cell--D { background: #e8f2ff; border-color: #bbdefb; cursor: not-allowed; }
+    .cell--B { background: #fde7ef; border-color: #f8bbd0; cursor: not-allowed; }
+    .cell--E { background: #fff3e0; border-color: #ffd2a8; cursor: not-allowed; }
+    
+    .checkout-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 16px;
+    }
+    
+    .selected-list {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        max-height: 200px;
+        overflow: auto;
+        background: #fff;
+        flex: 1;
+        margin-bottom: 16px;
+    }
+    
+    .selected-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px dashed #e5e7eb;
+        padding: 8px 0;
+    }
+    
+    .selected-item:last-child {
+        border-bottom: 0;
+    }
+    
+    .empty-state {
+        color: #9ca3af;
+        font-style: italic;
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 16px 0;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .total-amount {
+        font-size: 20px;
+        font-weight: 800;
+        color: #111827;
+    }
+    
+    .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .form-label {
+        display: block;
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+    
+    .form-input {
+        width: 100%;
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .form-input:focus {
+        outline: none;
+        border-color: #111827;
+    }
+    
+    .actions {
+        display: flex;
+        gap: 12px;
+        margin-top: auto;
+    }
+    
+    .btn-checkout {
+        flex: 2;
+        background: #10b981;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    
+    .btn-checkout:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+    }
+    
+    .btn-back {
+        flex: 1;
+        background: #f3f4f6;
+        color: #111827;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        text-align: center;
+        font-size: 14px;
+    }
+    
+    /* ✅ NUEVOS ESTILOS PARA SISTEMA DE CLIENTES */
+    .customer-section {
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    
+    .customer-search {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    
+    .customer-search input {
+        flex: 1;
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    
+    .customer-results {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        max-height: 150px;
+        overflow-y: auto;
+        background: white;
+        display: none;
+        position: relative;
+        z-index: 1000;
+    }
+    
+    .customer-result {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    
+    .customer-result:hover {
+        background: #f3f4f6;
+    }
+    
+    .customer-result:last-child {
+        border-bottom: none;
+    }
+    
+    .customer-selected {
+        background: #e8f5e9;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 10px;
+        display: none;
+    }
+    
+    .new-customer-form {
+        background: #fff3e0;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 10px;
+        display: none;
+    }
+    
+    .new-customer-form input {
+        margin-bottom: 8px;
+        height: 36px;
+        font-size: 13px;
+    }
+    
+    .customer-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+    }
+    
+    .customer-actions .btn {
+        flex: 1;
+        height: 36px;
+        font-size: 13px;
+        padding: 0 12px;
+    }
+
+    /* ✅ NUEVO: Estilos para modo manual */
+    .manual-mode {
+        background: #eff6ff;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 10px;
+        display: none;
+    }
+    
+    @media (max-width: 1200px) {
+        .pos-trip-container {
+            grid-template-columns: 1fr;
+            height: auto;
+        }
+        
+        .checkout-section {
+            order: -1;
+        }
+    }
+</style>
+
+<div class="pos-trip-container">
+    <!-- Sección del Mapa de Asientos -->
+    <div class="seatmap-section">
+        <div class="trip-header">
+            <h1 class="trip-title">Selección de Asientos</h1>
+            <div class="trip-meta">
+                <span><b>Ruta:</b> {{ trip.route.origin.name }} → {{ trip.route.destination.name }}</span>
+                <span><b>Salida:</b> {{ trip.departure|date:"Y-m-d H:i" }}</span>
+                <span><b>Bus:</b> {{ trip.bus.plate }}</span>
+                {% if trip.route.base_price %}
+                    <span><b>Tarifa:</b> ${{ trip.route.base_price }}</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="legend">
+            <span><i class="i-free"></i>Libre</span>
+            <span><i class="i-sel"></i>Seleccionado</span>
+            <span><i class="i-occ"></i>Ocupado</span>
+            <span><i class="i-hold"></i>Reservado</span>
+            <span><i class="i-pas"></i>Pasillo</span>
+            <span><i class="i-st"></i>Escalera</span>
+            <span><i class="i-door"></i>Puerta</span>
+            <span><i class="i-wc"></i>WC</span>
+        </div>
+
+        {% if grid_upper %}
+        <div class="deck">
+            <h3 class="deck-title">Piso Superior</h3>
+            <div id="gridU" class="grid"></div>
+        </div>
+        {% endif %}
+
+        <div class="deck">
+            <h3 class="deck-title">Piso Inferior</h3>
+            <div id="gridL" class="grid"></div>
+        </div>
+    </div>
+
+    <!-- Sección de Checkout MEJORADA -->
+    <div class="checkout-section">
+        <h2 class="checkout-title">Resumen de Venta</h2>
+        
+        <!-- ✅ NUEVA SECCIÓN: Sistema de Clientes -->
+        <div class="customer-section">
+            <h3 style="margin: 0 0 12px; font-size: 14px; color: #374151;">👤 Datos del Pasajero</h3>
+            
+            <!-- Búsqueda de cliente existente -->
+            <div class="customer-search">
+                <input type="text" id="customerSearch" placeholder="Buscar por RUT o nombre..." 
+                       class="form-input" style="margin-bottom: 0;">
+                <button type="button" onclick="searchCustomer()" class="btn btn-light" 
+                        style="white-space: nowrap; height: 40px; padding: 0 12px;">🔍 Buscar</button>
+            </div>
+            
+            <!-- Resultados de búsqueda -->
+            <div id="customerResults" class="customer-results"></div>
+            
+            <!-- Cliente seleccionado -->
+            <div id="customerSelected" class="customer-selected">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong id="selectedName"></strong>
+                        <div style="font-size: 12px; color: #6b7280;" id="selectedRut"></div>
+                    </div>
+                    <button type="button" onclick="clearCustomer()" class="btn btn-light" 
+                            style="padding: 4px 8px; font-size: 12px;">Cambiar</button>
+                </div>
+            </div>
+            
+            <!-- Formulario para nuevo cliente -->
+            <div id="newCustomerForm" class="new-customer-form">
+                <div style="font-size: 12px; color: #92400e; margin-bottom: 8px;">
+                    💡 Cliente nuevo - Complete los datos (solo RUT obligatorio):
+                </div>
+                <input type="text" id="newRut" placeholder="RUT *" class="form-input">
+                <input type="text" id="newName" placeholder="Nombre completo" class="form-input">
+                <input type="text" id="newPhone" placeholder="Teléfono (opcional)" class="form-input">
+                <input type="email" id="newEmail" placeholder="Email (opcional)" class="form-input">
+                <div class="customer-actions">
+                    <button type="button" onclick="saveNewCustomer()" class="btn btn-success">💾 Guardar Cliente</button>
+                    <button type="button" onclick="cancelNewCustomer()" class="btn btn-light">❌ Cancelar</button>
+                </div>
+            </div>
+
+            <!-- ✅ NUEVO: Modo manual para entrada directa -->
+            <div id="manualMode" class="manual-mode">
+                <div style="font-size: 12px; color: #1e40af; margin-bottom: 8px;">
+                    💡 Ingreso manual - Complete los datos:
+                </div>
+                <input type="text" id="manualName" placeholder="Nombre del pasajero *" class="form-input" style="margin-bottom: 8px;">
+                <input type="text" id="manualRut" placeholder="RUT/Documento" class="form-input" style="margin-bottom: 8px;">
+                <div class="customer-actions">
+                    <button type="button" onclick="saveManualData()" class="btn btn-primary">✅ Usar Datos</button>
+                    <button type="button" onclick="cancelManualMode()" class="btn btn-light">❌ Cancelar</button>
+                </div>
+            </div>
+            
+            <!-- Botones de acción -->
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <button type="button" id="btnNewCustomer" onclick="showNewCustomerForm()" 
+                        class="btn btn-light" style="flex: 1; height: 36px; font-size: 13px;">
+                    👤➕ Nuevo Cliente
+                </button>
+                <button type="button" id="btnManual" onclick="showManualMode()" 
+                        class="btn btn-light" style="flex: 1; height: 36px; font-size: 13px;">
+                    📝 Ingreso Manual
+                </button>
+            </div>
+        </div>
+        
+        <!-- Lista de asientos seleccionados -->
+        <div class="selected-list" id="selList">
+            <div class="empty-state">No hay asientos seleccionados</div>
+        </div>
+        
+        <div class="summary-row">
+            <div style="color: #6b7280;">Cantidad: <b id="qty">0</b></div>
+            <div class="total-amount">$<span id="total">0</span></div>
+        </div>
+
+        <!-- Formulario de checkout (compatible con versión anterior) -->
+        <form method="post" action="{% url 'pos_checkout' trip.id %}" id="checkoutForm">
+            {% csrf_token %}
+            <input type="hidden" name="seats" id="seatsField" value="">
+            <input type="hidden" name="customer_id" id="customerId" value="">
+            
+            <!-- Campos ocultos para compatibilidad con código existente -->
+            <input type="hidden" name="buyer" id="buyerName">
+            <input type="hidden" name="document" id="documentNumber">
+            
+            <!-- ✅ CAMPOS VISIBLES PARA COMPATIBILIDAD (se llenan automáticamente) -->
+            <div class="form-group" id="compatibilityFields">
+                <label class="form-label">Nombre del Pasajero *</label>
+                <input type="text" id="buyerNameDisplay" class="form-input" placeholder="Se completará automáticamente" readonly style="background: #f9fafb;">
+            </div>
+            
+            <div class="form-group" id="compatibilityDocFields">
+                <label class="form-label">Documento</label>
+                <input type="text" id="documentNumberDisplay" class="form-input" placeholder="Se completará automáticamente" readonly style="background: #f9fafb;">
+            </div>
+            
+            <div class="actions">
+                <button type="submit" class="btn-checkout" id="btnEmit" disabled>
+                    🎫 Emitir Boletos
+                </button>
+                <a href="{% url 'pos_home' %}" class="btn-back">← Volver</a>
+            </div>
+        </form>
+
+        <div style="margin-top: 16px; text-align: center;">
+            <small style="color: #6b7280;">💡 Haga clic en los asientos libres para seleccionarlos</small>
+        </div>
+    </div>
+</div>
+
+<script>
+    // =============================================
+    // CÓDIGO EXISTENTE DEL MAPA DE ASIENTOS (MANTENIDO)
+    // =============================================
+    const cols = Number({{ cols|default:4 }});
+    const price = Number({{ trip.route.base_price|default:0 }});
+    const lower = {{ grid_lower|safe }};
+    const upper = {{ grid_upper|safe }};
+
+    const selectedSeats = new Map(); // key = "deck:number"
+
+function seatKey(deck, seatNumber) {
+  return `${deck}:${seatNumber}`;
+}
+
+function toggleSeat(seatElement) {
+  const seatNumber = seatElement.dataset.number;
+  const deck = seatElement.dataset.deck;
+
+  if (!seatNumber || !deck) return;
+
+  const key = seatKey(deck, seatNumber);
+
+  if (selectedSeats.has(key)) {
+    selectedSeats.delete(key);
+    seatElement.classList.remove('cell-sel');
+    seatElement.classList.add('cell-free');
+  } else {
+    selectedSeats.set(key, {
+      deck: deck,
+      number: seatNumber,
+      row: seatElement.dataset.row,
+      col: seatElement.dataset.col
+    });
+    seatElement.classList.remove('cell-free');
+    seatElement.classList.add('cell-sel');
+  }
+
+  updateSummary();
+}
+
+function removeSeat(deck, seatNumber) {
+  const key = seatKey(deck, seatNumber);
+  selectedSeats.delete(key);
+
+  document.querySelectorAll('.cell').forEach(cell => {
+    if (cell.dataset.number === seatNumber && cell.dataset.deck === String(deck)) {
+      cell.classList.remove('cell-sel');
+      cell.classList.add('cell-free');
+    }
+  });
+
+  updateSummary();
+}
+
+
+    function updateSummary() {
+        const listElement = document.getElementById('selList');
+        const quantityElement = document.getElementById('qty');
+        const totalElement = document.getElementById('total');
+        const seatsField = document.getElementById('seatsField');
+        const emitButton = document.getElementById('btnEmit');
+        
+        // Limpiar lista
+        listElement.innerHTML = '';
+        
+        if (selectedSeats.size === 0) {
+            listElement.innerHTML = '<div class="empty-state">No hay asientos seleccionados</div>';
+        } else {
+            // Ordenar asientos por número
+            const sortedSeats = Array.from(selectedSeats.values()).sort((a, b) => {
+             return (Number(a.deck) - Number(b.deck)) || a.number.localeCompare(b.number, undefined, { numeric: true });
+            });
+
+            
+            sortedSeats.forEach(seat => {
+                const item = document.createElement('div');
+                item.className = 'selected-item';
+                item.innerHTML = `
+                    <span>Asiento <b>${seat.number}</b> (Piso ${seat.deck})</span>
+                    <button type="button" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;" 
+                    onclick="removeSeat('${seat.deck}','${seat.number}')"
+                `;
+                listElement.appendChild(item);
+            });
+        }
+        
+        // Actualizar cantidades y total
+        const quantity = selectedSeats.size;
+        const total = price * quantity;
+        
+        quantityElement.textContent = quantity;
+        totalElement.textContent = total.toLocaleString();
+        
+        // Habilitar/deshabilitar botón (ahora también valida datos del pasajero)
+        const hasPassengerData = document.getElementById('buyerNameDisplay').value.trim() !== '';
+        emitButton.disabled = quantity === 0 || !hasPassengerData;
+        
+        // Actualizar campo hidden
+        seatsField.value = JSON.stringify(Array.from(selectedSeats.values()));
+    }
+
+    function removeSeat(seatNumber) {
+        // Quitar del mapa
+        selectedSeats.delete(seatNumber);
+        
+        // Quitar selección visual
+        document.querySelectorAll('.cell').forEach(cell => {
+            if (cell.dataset.number === seatNumber) {
+                cell.classList.remove('cell-sel');
+                cell.classList.add('cell-free');
+            }
+        });
+        
+        updateSummary();
+    }
+
+    // =============================================
+    // ✅ CÓDIGO MEJORADO PARA SISTEMA DE CLIENTES
+    // =============================================
+    let selectedCustomer = null;
+
+    // ✅ Función MEJORADA para buscar clientes
+    function searchCustomer() {
+        const query = document.getElementById('customerSearch').value.trim();
+        if (query.length < 2) {
+            alert('Ingrese al menos 2 caracteres para buscar');
+            return;
+        }
+
+        console.log('🔍 Buscando cliente:', query);
+        
+        // Mostrar loading
+        const searchBtn = document.querySelector('.customer-search .btn');
+        const originalText = searchBtn.textContent;
+        searchBtn.textContent = '⏳ Buscando...';
+        searchBtn.disabled = true;
+
+        fetch(`{% url 'search_customer' %}?q=${encodeURIComponent(query)}`)
+
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error HTTP: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('✅ Resultados de búsqueda:', data);
+                
+                const resultsDiv = document.getElementById('customerResults');
+                resultsDiv.innerHTML = '';
+                
+                if (data.customers && data.customers.length === 0) {
+                    resultsDiv.innerHTML = '<div class="customer-result">No se encontraron clientes</div>';
+                } else if (data.customers) {
+                    data.customers.forEach(customer => {
+                        const div = document.createElement('div');
+                        div.className = 'customer-result';
+                        div.innerHTML = `
+                            <strong>${customer.full_name}</strong>
+                            <div style="font-size: 12px; color: #6b7280;">RUT: ${customer.national_id}</div>
+                            ${customer.phone ? `<div style="font-size: 12px; color: #6b7280;">Tel: ${customer.phone}</div>` : ''}
+                        `;
+                        div.onclick = () => selectCustomer(customer);
+                        resultsDiv.appendChild(div);
+                    });
+                } else {
+                    resultsDiv.innerHTML = '<div class="customer-result">Error en la búsqueda</div>';
+                }
+                
+                resultsDiv.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('❌ Error buscando cliente:', error);
+                alert('Error al buscar clientes. Verifique la consola para más detalles.');
+            })
+            .finally(() => {
+                // Restaurar botón
+                searchBtn.textContent = originalText;
+                searchBtn.disabled = false;
+            });
+    }
+
+    // ✅ Función para seleccionar cliente
+    function selectCustomer(customer) {
+        selectedCustomer = customer;
+        
+        console.log('👤 Cliente seleccionado:', customer);
+        
+        // Mostrar cliente seleccionado
+        document.getElementById('customerSelected').style.display = 'block';
+        document.getElementById('selectedName').textContent = customer.full_name;
+        document.getElementById('selectedRut').textContent = `RUT: ${customer.national_id}`;
+        
+        // Ocultar otros elementos
+        document.getElementById('customerResults').style.display = 'none';
+        document.getElementById('newCustomerForm').style.display = 'none';
+        document.getElementById('manualMode').style.display = 'none';
+        document.getElementById('btnNewCustomer').style.display = 'block';
+        document.getElementById('btnManual').style.display = 'block';
+        document.getElementById('customerSearch').value = '';
+        
+        // Actualizar campos del formulario
+        document.getElementById('customerId').value = customer.id;
+        document.getElementById('buyerName').value = customer.full_name;
+        document.getElementById('documentNumber').value = customer.national_id;
+        
+        // Actualizar campos visibles (compatibilidad)
+        document.getElementById('buyerNameDisplay').value = customer.full_name;
+        document.getElementById('documentNumberDisplay').value = customer.national_id;
+        
+        // Validar checkout
+        validateCheckout();
+    }
+
+    // ✅ Función para limpiar selección de cliente
+    function clearCustomer() {
+        selectedCustomer = null;
+        
+        // Ocultar cliente seleccionado
+        document.getElementById('customerSelected').style.display = 'none';
+        
+        // Limpiar campos
+        document.getElementById('customerId').value = '';
+        document.getElementById('buyerName').value = '';
+        document.getElementById('documentNumber').value = '';
+        document.getElementById('buyerNameDisplay').value = '';
+        document.getElementById('documentNumberDisplay').value = '';
+        
+        // Mostrar botones
+        document.getElementById('btnNewCustomer').style.display = 'block';
+        document.getElementById('btnManual').style.display = 'block';
+        
+        // Validar checkout
+        validateCheckout();
+    }
+
+    // ✅ Mostrar formulario de nuevo cliente
+    function showNewCustomerForm() {
+        document.getElementById('newCustomerForm').style.display = 'block';
+        document.getElementById('manualMode').style.display = 'none';
+        document.getElementById('btnNewCustomer').style.display = 'none';
+        document.getElementById('btnManual').style.display = 'none';
+        document.getElementById('customerResults').style.display = 'none';
+    }
+
+    // ✅ Cancelar formulario de nuevo cliente
+    function cancelNewCustomer() {
+        document.getElementById('newCustomerForm').style.display = 'none';
+        document.getElementById('btnNewCustomer').style.display = 'block';
+        document.getElementById('btnManual').style.display = 'block';
+        
+        // Limpiar campos del formulario nuevo
+        document.getElementById('newRut').value = '';
+        document.getElementById('newName').value = '';
+        document.getElementById('newPhone').value = '';
+        document.getElementById('newEmail').value = '';
+    }
+
+    // ✅ Función MEJORADA para guardar cliente
+    function saveNewCustomer() {
+        const rut = document.getElementById('newRut').value.trim();
+        const name = document.getElementById('newName').value.trim();
+        const phone = document.getElementById('newPhone').value.trim();
+        const email = document.getElementById('newEmail').value.trim();
+        
+        console.log('📝 Intentando guardar cliente:', { rut, name, phone, email });
+        
+        if (!rut) {
+            alert('❌ RUT es obligatorio');
+            return;
+        }
+
+        // Si no viene nombre, usar valor por defecto
+        const finalName = name || "Cliente";
+
+        // Mostrar loading
+        const saveBtn = document.querySelector('#newCustomerForm .btn-success');
+        const originalText = saveBtn.textContent;
+        saveBtn.textContent = '⏳ Guardando...';
+        saveBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('national_id', rut);
+        formData.append('full_name', finalName);
+        formData.append('phone', phone);
+        formData.append('email', email);
+
+        console.log('📤 Enviando datos al servidor...');
+        
+        fetch("{% url 'create_customer' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value
+            }
+        })
+        .then(response => {
+            console.log('📥 Respuesta del servidor - Status:', response.status);
+            if (!response.ok) {
+                throw new Error(`Error HTTP ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('✅ Respuesta JSON del servidor:', data);
+            
+            if (data.success) {
+                // ✅ ÉXITO: Cliente guardado
+                selectCustomer(data.customer);
+                cancelNewCustomer();
+                alert('✅ Cliente guardado exitosamente');
+            } else {
+                // ❌ ERROR: Mostrar mensaje
+                alert('❌ Error: ' + (data.error || 'No se pudo guardar el cliente'));
+            }
+        })
+        .catch(error => {
+            console.error('❌ Error guardando cliente:', error);
+            alert('❌ Error de conexión: ' + error.message);
+        })
+        .finally(() => {
+            // Restaurar botón
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = false;
+        });
+    }
+
+    // ✅ NUEVO: Mostrar modo manual
+    function showManualMode() {
+        document.getElementById('manualMode').style.display = 'block';
+        document.getElementById('newCustomerForm').style.display = 'none';
+        document.getElementById('btnNewCustomer').style.display = 'none';
+        document.getElementById('btnManual').style.display = 'none';
+        document.getElementById('customerResults').style.display = 'none';
+    }
+
+    // ✅ NUEVO: Cancelar modo manual
+    function cancelManualMode() {
+        document.getElementById('manualMode').style.display = 'none';
+        document.getElementById('btnNewCustomer').style.display = 'block';
+        document.getElementById('btnManual').style.display = 'block';
+        
+        // Limpiar campos manuales
+        document.getElementById('manualName').value = '';
+        document.getElementById('manualRut').value = '';
+    }
+
+    // ✅ NUEVO: Guardar datos manuales
+    function saveManualData() {
+        const name = document.getElementById('manualName').value.trim();
+        const rut = document.getElementById('manualRut').value.trim();
+        
+        if (!name) {
+            alert('❌ El nombre del pasajero es obligatorio');
+            return;
+        }
+
+        // Actualizar campos del formulario
+        document.getElementById('customerId').value = ''; // No hay cliente asociado
+        document.getElementById('buyerName').value = name;
+        document.getElementById('documentNumber').value = rut;
+        
+        // Actualizar campos visibles
+        document.getElementById('buyerNameDisplay').value = name;
+        document.getElementById('documentNumberDisplay').value = rut;
+        
+        // Ocultar modo manual
+        cancelManualMode();
+        
+        // Mostrar confirmación
+        document.getElementById('customerSelected').style.display = 'block';
+        document.getElementById('selectedName').textContent = name;
+        document.getElementById('selectedRut').textContent = rut ? `RUT: ${rut}` : 'Sin documento';
+        
+        // Validar checkout
+        validateCheckout();
+        
+        alert('✅ Datos del pasajero guardados');
+    }
+
+    // ✅ Función de validación mejorada
+    function validateCheckout() {
+        const hasSeats = selectedSeats.size > 0;
+        const hasPassengerData = document.getElementById('buyerNameDisplay').value.trim() !== '';
+        document.getElementById('btnEmit').disabled = !(hasSeats && hasPassengerData);
+    }
+
+    // ✅ Función para probar las URLs de clientes
+    function testCustomerURLs() {
+        console.log('🧪 Probando URLs de clientes...');
+        
+        fetch('/booking/customer/test/')
+            .then(response => response.json())
+            .then(data => {
+                console.log('✅ Test URL funcionando:', data);
+                alert('✅ URLs de clientes funcionando correctamente');
+            })
+            .catch(error => {
+                console.error('❌ Test URL falló:', error);
+                alert('❌ Error en URLs de clientes. Verifique la consola.');
+            });
+    }
+
+    // Modificar la función updateSummary para incluir validación
+    const originalUpdateSummary = updateSummary;
+    updateSummary = function() {
+        originalUpdateSummary();
+        validateCheckout();
+    };
+
+    // Cerrar resultados al hacer click fuera
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.customer-section')) {
+            document.getElementById('customerResults').style.display = 'none';
+        }
+    });
+
+    // Búsqueda en tiempo real
+    let searchTimeout;
+    document.getElementById('customerSearch').addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            if (e.target.value.trim().length >= 2) {
+                searchCustomer();
+            }
+        }, 500);
+    });
+
+    // ✅ NUEVO: Permitir presionar Enter en la búsqueda
+    document.getElementById('customerSearch').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchCustomer();
+        }
+    });
+
+    // ✅ NUEVO: Permitir presionar Enter en formularios
+    document.getElementById('newRut').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            saveNewCustomer();
+        }
+    });
+
+    document.getElementById('manualName').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            saveManualData();
+        }
+    });
+
+    // =============================================
+    // INICIALIZACIÓN MEJORADA
+    // =============================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Inicializar mapa de asientos (código existente)
+        drawGrid(document.getElementById('gridL'), lower, 1);
+        if (upper && upper.length > 0) {
+            drawGrid(document.getElementById('gridU'), upper, 2);
+        }
+        
+        // Validación inicial
+        validateCheckout();
+        
+        console.log('✅ Sistema de venta inicializado correctamente');
+        console.log('🔗 URLs de clientes disponibles:');
+        console.log('   - /booking/customer/search/');
+        console.log('   - /booking/customer/create/');
+        console.log('   - /booking/customer/test/');
+        
+        // Probar URLs automáticamente (solo en desarrollo)
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            setTimeout(testCustomerURLs, 1000);
+        }
+    });
+
+    // ✅ NUEVO: Función de utilidad para debug
+    function debugCustomerSystem() {
+        console.log('=== DEBUG SISTEMA CLIENTES ===');
+        console.log('Selected Customer:', selectedCustomer);
+        console.log('Selected Seats:', Array.from(selectedSeats.values()));
+        console.log('Form Data:', {
+            customerId: document.getElementById('customerId').value,
+            buyerName: document.getElementById('buyerName').value,
+            documentNumber: document.getElementById('documentNumber').value,
+            buyerNameDisplay: document.getElementById('buyerNameDisplay').value,
+            documentNumberDisplay: document.getElementById('documentNumberDisplay').value
+        });
+        console.log('Checkout Enabled:', !document.getElementById('btnEmit').disabled);
+    }
+
+    // ✅ NUEVO: Exponer funciones para debugging
+    window.debugCustomerSystem = debugCustomerSystem;
+    window.testCustomerURLs = testCustomerURLs;
+</script>
+{% endblock %}

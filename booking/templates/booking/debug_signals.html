@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Depuración de Señales</title>
+</head>
+<body>
+    <h1>Señales registradas para User</h1>
+    <p>Total: {{ total_signals }}</p>
+    <ul>
+    {% for signal in signals %}
+        <li>{{ signal }}</li>
+    {% endfor %}
+    </ul>
+</body>
+</html>

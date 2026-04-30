@@ -1,0 +1,290 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Mapa de asientos — {{ bus.plate }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  {# Opcional: reutiliza los mismos colores que usamos en el admin #}
+  <link rel="stylesheet" href="{% static 'booking/admin-seatmap.css' %}">
+
+  <style>
+    /* Estilos propios para la vista (lo básico) */
+    :root{
+      --gap:8px; --cell:38px; --radius:10px;
+      --border:#dcdfe3; --paper:#f7f8fa;
+      --txt:#222; --muted:#98a1aa;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:24px;
+      font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+      color:var(--txt); background:#fff;
+    }
+    header{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+    .legend{display:flex; align-items:center; gap:10px; margin-left:auto; color:#5b6670; font-size:12px}
+    .legend i{display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:6px; vertical-align:-2px}
+  
+    .deck{ 
+      margin:18px 0 28px; 
+      /* ⬇️ añadido: centramos título y grilla de cada piso */
+      display:flex; 
+      flex-direction:column; 
+      align-items:center; 
+    }
+    .deck h2{ 
+      font-size:15px; margin:0 0 10px; color:#334155; 
+      /* ⬇️ añadido: por si acaso, nos aseguramos de que el título se centre */
+      align-self:center;
+    }
+  
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(var(--cols), var(--cell));
+      gap: var(--gap);
+      width:max-content; background:transparent;
+      /* ⬇️ añadido: centramos la grilla dentro del deck */
+      margin: 0 auto;
+    }
+    .cell{
+      width:var(--cell); height:var(--cell);
+      display:grid; place-items:center;
+      border:1px solid var(--border);
+      background:var(--paper);
+      border-radius: var(--radius);
+      font-weight:700; font-size:12px;
+      user-select:none;
+    }
+    /* Tipos */
+    .cell--L { background:#e8f5e9; border-color:#cfe6d3; }
+    .cell--X { background:#f6f6f6; border-color:#eee; color:#b3bac2; }
+    .cell--E { background:#fff3e0; border-color:#ffd2a8; }
+    .cell--D { background:#e8f2ff; border-color:#bbdefb; }
+    .cell--B { background:#fde7ef; border-color:#f8bbd0; }
+  
+    /* 🚶 Pasillo: sin fondo ni borde (a prueba de todo) */
+    .grid .cell.cell--P,
+    .cell.cell--P{
+      background: transparent !important;
+      border: 0 !important;
+      border-style: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+    }
+    .grid .cell.cell--P:hover{ background:transparent !important; border:0 !important; }
+  
+    .num{font-variant-numeric:tabular-nums}
+
+    /* Contenedor centrado para todo el contenido del mapa */
+.page {
+  max-width: 1100px;      /* ajusta si tu bus es más ancho */
+  margin: 0 auto;         /* centra horizontalmente */
+  display: flex;
+  flex-direction: column;
+  align-items: center;    /* centra header + decks dentro del wrapper */
+}
+
+/* el header ocupará el ancho del wrapper */
+.page > header { 
+  width: 100%;
+}
+
+/* opcional: evita que el iframe muestre una barra horizontal por padding lateral */
+html, body { overflow-x: hidden; }
+
+  </style>
+  
+</head>
+<body>
+  <div class="page">
+    <header>
+      <strong>Bus:</strong> {{ bus.company.name }} — {{ bus.plate }}
+      <span class="legend">
+        <span><i class="cell cell--L" style="width:12px;height:12px;border-radius:2px"></i>Asiento</span>
+        <span><i class="cell cell--P" style="width:12px;height:12px;border-radius:2px;border:0;background:transparent"></i>Pasillo</span>
+        <span><i class="cell cell--E" style="width:12px;height:12px;border-radius:2px"></i>Escalera</span>
+        <span><i class="cell cell--D" style="width:12px;height:12px;border-radius:2px"></i>Puerta</span>
+        <span><i class="cell cell--B" style="width:12px;height:12px;border-radius:2px"></i>WC</span>
+      </span>
+    </header>
+
+    {% if bus.rows_upper %}
+    <div class="deck">
+      <h2>Piso superior</h2>
+      <div id="grid-upper" class="grid"></div>
+    </div>
+    {% endif %}
+
+    <div class="deck">
+      <h2>Piso inferior</h2>
+      <div id="grid-lower" class="grid"></div>
+    </div>
+  </div>
+
+  {# Pasamos los JSON tal como están guardados en el modelo #}
+  {{ bus.effective_layout_upper|json_script:"LAY_U" }}
+  {{ bus.effective_layout_lower|json_script:"LAY_L" }}
+  {{ bus.effective_numbers_upper|json_script:"NUM_U" }}
+  {{ bus.effective_numbers_lower|json_script:"NUM_L" }}
+
+  <<script>
+    // Dimensiones declaradas en el Bus - MEJORADO con valores por defecto más robustos
+    const cols  = Number({{ bus.effective_cols|default:4 }}) || 4;
+    const rowsU = Number({{ bus.effective_rows_upper|default:0 }}) || 0;
+    const rowsL = Number({{ bus.effective_rows_lower|default:0 }}) || 0;
+  
+    // Layouts/Numbers - MEJORADO con manejo de errores
+    const LAY_U = JSON.parse(document.getElementById('LAY_U')?.textContent || "[]");
+    const LAY_L = JSON.parse(document.getElementById('LAY_L')?.textContent || "[]");
+    const NUM_U = JSON.parse(document.getElementById('NUM_U')?.textContent || "[]");
+    const NUM_L = JSON.parse(document.getElementById('NUM_L')?.textContent || "[]");
+
+    // NUEVO: Verificar que los elementos del DOM existan antes de dibujar
+    const gridUpperEl = document.getElementById("grid-upper");
+    const gridLowerEl = document.getElementById("grid-lower");
+
+    function drawGrid(el, rows, cols, types, numbers) {
+        if (!el) {
+            console.error('Elemento del grid no encontrado');
+            return;
+        }
+        
+        el.style.setProperty("--cols", cols);
+        el.innerHTML = "";
+        
+        let i = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++, i++) {
+                const t = (types[i] ?? "L");
+                const n = (numbers[i] ?? "").toString().trim();
+
+                const div = document.createElement("div");
+                div.className = "cell cell--" + t;
+
+                if (t === "P") {
+                    // Blindaje extra para el pasillo
+                    div.style.border = "0";
+                    div.style.borderStyle = "none";
+                    div.style.background = "transparent";
+                    div.style.boxShadow = "none";
+                    div.style.outline = "none";
+                    div.style.cursor = "default";
+                } else if (t === "L") {
+                    // MEJORADO: Mostrar número siempre para asientos, incluso si está vacío
+                    const s = document.createElement("span");
+                    s.className = "num";
+                    
+                    if (n) {
+                        // Si hay número, mostrarlo normalmente
+                        s.textContent = n;
+                        s.style.color = ""; // Color por defecto
+                    } else {
+                        // Si no hay número, mostrar indicador (opcional)
+                        s.textContent = "•";
+                        s.style.color = "#ccc";
+                        s.style.fontSize = "16px";
+                    }
+                    div.appendChild(s);
+                    
+                    // MEJORADO: Agregar tooltip para información adicional
+                    div.title = `Asiento: ${n || 'Sin número'}`;
+                } else {
+                    // Para otros tipos (E, D, B, X) - agregar tooltip descriptivo
+                    const typeNames = {
+                        'E': 'Escalera',
+                        'D': 'Puerta', 
+                        'B': 'Baño',
+                        'X': 'Bloqueado'
+                    };
+                    div.title = typeNames[t] || t;
+                }
+
+                el.appendChild(div);
+            }
+        }
+        
+        // NUEVO: Log para debugging
+        console.log(`Grid dibujado: ${rows} filas × ${cols} columnas, ${types.length} celdas`);
+    }
+
+    // MEJORADO: Verificar dimensiones antes de dibujar
+    function validateDimensions(rows, cols, types, numbers, deckName) {
+        const expectedCells = rows * cols;
+        const actualTypes = types.length;
+        const actualNumbers = numbers.length;
+        
+        if (actualTypes < expectedCells) {
+            console.warn(`${deckName}: Layout tiene ${actualTypes} tipos pero se esperaban ${expectedCells}`);
+        }
+        if (actualNumbers < expectedCells) {
+            console.warn(`${deckName}: Numbers tiene ${actualNumbers} elementos pero se esperaban ${expectedCells}`);
+        }
+        
+        return expectedCells;
+    }
+
+    // MEJORADO: Dibujar grids con validación
+    try {
+        if (rowsU > 0 && gridUpperEl) {
+            const expectedCells = validateDimensions(rowsU, cols, LAY_U, NUM_U, "Piso Superior");
+            console.log(`Piso Superior: ${rowsU}×${cols} = ${expectedCells} celdas`);
+            drawGrid(gridUpperEl, rowsU, cols, LAY_U, NUM_U);
+        } else if (rowsU > 0) {
+            console.error('Elemento grid-upper no encontrado para piso superior');
+        }
+
+        if (rowsL > 0 && gridLowerEl) {
+            const expectedCells = validateDimensions(rowsL, cols, LAY_L, NUM_L, "Piso Inferior");
+            console.log(`Piso Inferior: ${rowsL}×${cols} = ${expectedCells} celdas`);
+            drawGrid(gridLowerEl, rowsL, cols, LAY_L, NUM_L);
+        } else if (rowsL > 0) {
+            console.error('Elemento grid-lower no encontrado para piso inferior');
+        }
+
+        // NUEVO: Mostrar resumen en consola
+        console.log('=== RESUMEN DEL MAPA DE ASIENTOS ===');
+        console.log(`Columnas: ${cols}`);
+        console.log(`Filas Superior: ${rowsU}`);
+        console.log(`Filas Inferior: ${rowsL}`);
+        console.log(`Total celdas superior: ${rowsU * cols}`);
+        console.log(`Total celdas inferior: ${rowsL * cols}`);
+        console.log(`Layout superior: ${LAY_U.length} elementos`);
+        console.log(`Layout inferior: ${LAY_L.length} elementos`);
+        console.log(`Números superior: ${NUM_U.length} elementos`);
+        console.log(`Números inferior: ${NUM_L.length} elementos`);
+
+    } catch (error) {
+        console.error('Error al dibujar el mapa de asientos:', error);
+        
+        // NUEVO: Mostrar mensaje de error en la página si algo falla
+        const errorMessage = document.createElement('div');
+        errorMessage.style.cssText = `
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        `;
+        errorMessage.textContent = `Error al cargar el mapa: ${error.message}`;
+        
+        // Insertar el mensaje de error al inicio del body
+        document.body.insertBefore(errorMessage, document.body.firstChild);
+    }
+
+    // NUEVO: Función para redibujar si es necesario (útil para debugging)
+    window.redrawSeatmap = function() {
+        console.log('Redibujando mapa de asientos...');
+        if (rowsU > 0 && gridUpperEl) {
+            drawGrid(gridUpperEl, rowsU, cols, LAY_U, NUM_U);
+        }
+        if (rowsL > 0 && gridLowerEl) {
+            drawGrid(gridLowerEl, rowsL, cols, LAY_L, NUM_L);
+        }
+    };
+</script>
+  
+</body>
+</html>

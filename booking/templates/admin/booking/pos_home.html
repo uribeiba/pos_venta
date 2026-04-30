@@ -1,0 +1,54 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+<style>
+  .pos-list { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #fff; }
+  .pos-list-header, .pos-item { display: grid; grid-template-columns: 1.2fr 1.2fr .9fr .9fr .7fr; gap: 12px; padding: 12px 14px; align-items: center; }
+  .pos-list-header { background: #f8fafc; font-weight: 600; color: #475569; border-bottom: 1px solid #e5e7eb; }
+  .pos-item { border-bottom: 1px solid #f1f5f9; }
+  .pos-item:last-child { border-bottom: none; }
+  .pill-bus { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid #d1d5db; background:#fff; }
+  .btn { display:inline-block; padding:8px 12px; border:1px solid #c5c5c5; border-radius:6px; background:#fff; text-decoration:none; }
+  .btn.primary { background:#2563eb; color:#fff; border-color:#1d4ed8; }
+  .muted { color:#6b7280; }
+  .wrap { display:grid; gap:14px; }
+  .search { display:flex; gap:8px; align-items:center; }
+  .search input { height:34px; padding:6px 10px; width:260px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>POS — Selecciona un viaje</h1>
+
+<div class="wrap">
+  <div class="search">
+    <span class="muted">Mostrando próximos viajes</span>
+  </div>
+
+  <div class="pos-list">
+    <div class="pos-list-header">
+      <div>Ruta</div>
+      <div>Salida</div>
+      <div>Llegada</div>
+      <div>Bus</div>
+      <div></div>
+    </div>
+
+    {% for t in trips %}
+    <div class="pos-item">
+      <div>{{ t.route }}</div>
+      <div>{{ t.departure|date:"Y-m-d H:i" }}</div>
+      <div>{{ t.arrival|date:"Y-m-d H:i" }}</div>
+      <div><span class="pill-bus">{{ t.bus.plate }}</span></div>
+      <div style="text-align:right;">
+        <a class="btn primary" href="{% url 'pos_trip' t.id %}">Abrir</a>
+      </div>
+    </div>
+    {% empty %}
+    <div class="pos-item">
+      <div class="muted" style="grid-column: 1 / -1;">No hay viajes próximos.</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
