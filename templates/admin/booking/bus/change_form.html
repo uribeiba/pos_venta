@@ -1,0 +1,42 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'booking/seat-editor.css' %}">
+<script src="{% static 'booking/seat-editor.js' %}"></script>
+{% endblock %}
+
+{% block after_related_objects %}
+
+<h2>🎨 Constructor Visual</h2>
+
+<div class="seat-toolbar">
+  <button type="button" class="seat-tool active" data-type="L">Asiento</button>
+  <button type="button" class="seat-tool" data-type="P">Pasillo</button>
+  <button type="button" class="seat-tool" data-type="X">Bloqueo</button>
+  <button type="button" class="seat-tool" data-type="E">Escalera</button>
+  <button type="button" class="seat-tool" data-type="D">Puerta</button>
+  <button type="button" class="seat-tool" data-type="B">Baño</button>
+</div>
+
+<p>
+  <button type="button" id="build-editor">Construir grid</button>
+  <button type="button" id="save-layout">Guardar layout</button>
+  <button type="button" id="save-as-template" class="button">
+    💾 Guardar como plantilla
+  </button>
+</p>
+
+<h3>Piso inferior</h3>
+<div id="editor-lower"></div>
+
+<h3>Piso superior</h3>
+<div id="editor-upper"></div>
+
+<hr>
+
+<h2>👀 Preview en vivo</h2>
+<div id="seat-preview"></div>
+
+{% endblock %}

@@ -1,10 +1,12 @@
 # booking/forms.py
 from __future__ import annotations
 from django import forms
-from .models import Bus
+from .models import Bus, BusLayout
 
 from django.contrib.auth import get_user_model
 from .models import UserProfile
+
+import json
 
 class BusWizardForm(forms.ModelForm):
     """
@@ -198,3 +200,34 @@ class UsuarioEditForm(forms.ModelForm):
             self.fields['terminal'].initial = profile.terminal
             self.fields['commission_rate'].initial = profile.commission_rate
             self.fields['max_discount'].initial = profile.max_discount
+
+
+
+class BusAdminForm(forms.ModelForm):
+    class Meta:
+        model = Bus
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        field = self.fields.get("layout_template")
+        if field:
+            field.widget.attrs["class"] = "js-layout-template"
+
+            # 🔥 Inyectar data en cada opción
+            choices = []
+            for layout in BusLayout.objects.all():
+                choices.append((
+                    layout.id,
+                    layout.name,
+                    {
+                        "data-layout-lower": json.dumps(layout.layout_lower),
+                        "data-layout-upper": json.dumps(layout.layout_upper),
+                        "data-cols": layout.cols,
+                        "data-floors": layout.floors,
+                        "data-rows-lower": layout.rows_lower,
+                        "data-rows-upper": layout.rows_upper,
+                    }
+                ))
+            field.choices = choices

@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls %}
+
+{% block after_field_sets %}
+{{ block.super }}
+<div style="margin-top:10px;">
+  <button type="button" id="selectLayoutCatalogBtn" class="button" style="background:#3b82f6; color:white;">
+    🖼️ Explorar catálogo de plantillas
+  </button>
+  <span style="margin-left:10px; color:#555;">o usa el campo oculto de abajo (solo para referencia)</span>
+</div>
+{% endblock %}

@@ -7,37 +7,37 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import path, reverse
 from django.utils.html import format_html
 from django.views.decorators.clickjacking import xframe_options_exempt
+from django.http import JsonResponse
 from datetime import date, datetime
+import json
+
 from .models import (
     City, Company, Bus, Route, Trip, Seat, SeatHold, Ticket,
     Terminal, BusLayout, CashRegister, DailyReport)
 from .models import UserProfile
+
 from django.contrib.auth import get_user_model
+
 # ---- Form opcional del asistente (si existe) ----
 try:
-    from .forms import BusWizardForm  # si no existe, seguimos sin él
+    from .forms import BusWizardForm
 except Exception:
     BusWizardForm = None
-    
 
 User = get_user_model()
+
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'role', 'terminal', 'is_active', 'commission_rate', 'max_discount', 'created_at')
-    list_filter  = ('role', 'is_active', 'terminal')
-    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email')    
-    
-    
+    list_filter = ('role', 'is_active', 'terminal')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email')
+
 
 # =========================
 # Helpers
 # =========================
 def _build_grid(bus: Bus, deck: int):
-    """
-    Convierte el layout lineal en matriz para el template del mapa (modo Bus).
-    Cada celda: {"type": "L/P/X/E/D/B", "label": "<número>"}
-    """
     cols = int(bus.cols or 0)
     if cols <= 0:
         return [], 0
@@ -68,17 +68,6 @@ def _letters_for_cols(cols: int):
 
 
 def _build_trip_grid(trip: Trip):
-    """
-    Construye matrices para piso 1 y 2 del bus del viaje, marcando estado:
-      {"type": 'L/P/X/E/D/B', "label": str, "status": 'free|occupied|hold', "hold_user": str}
-
-    Notas de robustez añadidas:
-    - Soporta discrepancias entre tamaño de layout y filas*columnas (rellena con 'L').
-    - Tolera posiciones de asiento no mapeables (fallback a columna 0).
-    - Usa el número del Seat (real) como etiqueta; si no existe, intenta con numbers_* del bus.
-    - Devuelve también claves extra no invasivas: "seat_id", "is_window", "deck", "row", "col".
-      (Tu template puede ignorarlas sin problema.)
-    """
     bus = trip.bus
     cols = int(bus.cols or 0)
     if cols <= 0:
@@ -87,21 +76,18 @@ def _build_trip_grid(trip: Trip):
     letters = _letters_for_cols(cols)
     pos2col = {ch: i for i, ch in enumerate(letters)}
 
-    # ---------- indexación Seat -> índice lineal por piso (0-index) ----------
     index_by_deck = {1: {}, 2: {}}
     seats_qs = Seat.objects.filter(bus=bus).only("id", "deck", "row", "position", "number", "is_occupied")
     for s in seats_qs:
-        col = pos2col.get((s.position or "").strip(), 0)   # tolerante a posiciones desconocidas
+        col = pos2col.get((s.position or "").strip(), 0)
         row0 = max(int(s.row or 1) - 1, 0)
         idx = row0 * cols + col
         index_by_deck.setdefault(int(s.deck or 1), {})[idx] = s
 
-    # ---------- estados (tickets y holds activos) ----------
     ticketed_ids = set(Ticket.objects.filter(trip=trip).values_list("seat_id", flat=True))
     holds = list(SeatHold.objects.filter(trip=trip, active=True))
     hold_by_seat = {h.seat_id: h for h in holds}
 
-    # ---------- util para tomar etiqueta fallback desde numbers_* ----------
     def fallback_label(numbers: list, idx: int) -> str:
         try:
             v = numbers[idx]
@@ -109,12 +95,10 @@ def _build_trip_grid(trip: Trip):
         except Exception:
             return ""
 
-    # ---------- genera grid para un piso ----------
     def grid_for(deck: int, rows: int, flat_layout: list, numbers: list):
         out = []
         total_cells = max(int(rows or 0), 0) * cols
 
-        # Normaliza largos de layout/numbers para evitar IndexError
         def _norm(seq: list, filler):
             seq = list(seq or [])
             if len(seq) < total_cells:
@@ -136,12 +120,10 @@ def _build_trip_grid(trip: Trip):
                 hold_user = ""
                 seat_id = None
 
-                # Solo celdas tipo asiento tienen estado y número
                 if t == "L":
                     s = index_by_deck.get(deck, {}).get(i)
                     if s:
                         seat_id = s.id
-                        # Etiqueta: prioriza número real del Seat; si vacío, intenta numbers del bus
                         label = (s.number or "").strip() or fallback_label(numbers, i)
                         if s.id in ticketed_ids or s.is_occupied:
                             status = "occupied"
@@ -149,8 +131,6 @@ def _build_trip_grid(trip: Trip):
                             status = "hold"
                             hold_user = getattr(hold_by_seat[s.id].user, "username", "")
                     else:
-                        # Si no existe Seat mapeado pero el layout marca asiento,
-                        # aún mostramos la etiqueta fallback si la hay.
                         label = fallback_label(numbers, i)
 
                 is_window = (c == 0) or (c == cols - 1)
@@ -159,7 +139,6 @@ def _build_trip_grid(trip: Trip):
                     "label": label,
                     "status": status,
                     "hold_user": hold_user,
-                    # extras no invasivos
                     "seat_id": seat_id,
                     "is_window": is_window,
                     "deck": deck,
@@ -178,13 +157,8 @@ def _build_trip_grid(trip: Trip):
     return lower, upper, cols
 
 
-# ---------- POS: Home con buscador y lista de viajes ----------
+# ---------- POS ----------
 def pos_home(request):
-    """
-    Dashboard POS con buscador (fecha, origen, destino) y listado de viajes.
-    Cada viaje muestra libres/vendidos/total y un botón para abrir el mapa (modal).
-    """
-    # filtros GET
     try:
         sel_date = request.GET.get("date") or ""
         if sel_date:
@@ -197,18 +171,17 @@ def pos_home(request):
         sel_date = query_date.strftime("%Y-%m-%d")
 
     origin_id = request.GET.get("origin_id") or ""
-    dest_id   = request.GET.get("dest_id") or ""
+    dest_id = request.GET.get("dest_id") or ""
 
     trips = Trip.objects.select_related("route", "bus", "route__origin", "route__destination") \
-                        .filter(departure__date=query_date) \
-                        .order_by("departure")
+        .filter(departure__date=query_date) \
+        .order_by("departure")
 
     if origin_id:
         trips = trips.filter(route__origin_id=origin_id)
     if dest_id:
         trips = trips.filter(route__destination_id=dest_id)
 
-    # Conteos rápidos
     sold_map = dict(
         Ticket.objects.filter(trip__in=trips).values("trip").annotate(c=Count("id")).values_list("trip", "c")
     )
@@ -216,12 +189,11 @@ def pos_home(request):
     hold_map = dict(holds_qs.values_list("trip", "c"))
     seats_map = dict(trips.values_list("id", "seats_total"))
 
-    # anota atributos dinámicos solo para mostrar
     for t in trips:
-        t.sold  = int(sold_map.get(t.id, 0))
-        t.hold  = int(hold_map.get(t.id, 0))
+        t.sold = int(sold_map.get(t.id, 0))
+        t.hold = int(hold_map.get(t.id, 0))
         t.total = int(seats_map.get(t.id, 0))
-        t.free  = max(t.total - t.sold - t.hold, 0)
+        t.free = max(t.total - t.sold - t.hold, 0)
 
     ctx = {
         "title": "POS — Salidas",
@@ -233,7 +205,7 @@ def pos_home(request):
     }
     return render(request, "booking/pos_home.html", ctx)
 
-# ---------- POS: Seatmap del viaje (usado por el modal) ----------
+
 def pos_trip(request, trip_id: int):
     trip = get_object_or_404(Trip.objects.select_related("route", "bus"), pk=trip_id)
     grid_lower, grid_upper, cols = _build_trip_grid(trip)
@@ -245,13 +217,12 @@ def pos_trip(request, trip_id: int):
         "cols": cols,
         "grid_lower": grid_lower,
         "grid_upper": grid_upper,
-        "change_url": "",  # en POS no usamos link de edición
+        "change_url": "",
     }
-    # reutilizamos el template único y lindo
     return render(request, "booking/seatmap.html", ctx)
 
+
 def _safe_register(model, admin_class):
-    """Evita AlreadyRegistered si ya fue registrado en otro módulo."""
     try:
         admin.site.unregister(model)
     except Exception:
@@ -279,9 +250,6 @@ class TerminalAdmin(admin.ModelAdmin):
 
 
 class RouteAdmin(admin.ModelAdmin):
-    """
-    Admin de Rutas. No asume que exista 'service'.
-    """
     base_list_display = ["origin", "destination", "duration_minutes", "base_price"]
     base_list_filter = ["origin", "destination"]
     search_fields = ("origin__name", "destination__name")
@@ -314,7 +282,7 @@ class SeatHoldAdmin(admin.ModelAdmin):
 
 
 # =========================
-# TicketAdmin compatible
+# TicketAdmin
 # =========================
 TICKET_FIELDS = {f.name for f in Ticket._meta.get_fields()}
 HAS_BUYER_NAME = "buyer_name" in TICKET_FIELDS
@@ -355,7 +323,7 @@ class TicketAdmin(admin.ModelAdmin):
 
 
 # =========================
-# TripAdmin con “Mapa”
+# TripAdmin
 # =========================
 class TripAdmin(admin.ModelAdmin):
     list_display = ("route", "bus", "departure", "arrival", "seats_total", "seatmap_link")
@@ -415,19 +383,16 @@ def regenerate_seats_action(modeladmin, request, queryset):
         level=messages.SUCCESS if errors == 0 else messages.WARNING,
     )
 
+
 # =========================
-# BusAdmin con “Mapa” (modal) + Guardar como plantilla + Auto-completado
+# BusAdmin (completo y corregido) - VERSIÓN MEJORADA
 # =========================
 class BusAdmin(admin.ModelAdmin):
-    """
-    - Usa BusWizardForm si está disponible.
-    - Botón "Mapa" con modal.
-    - Botón "Guardar como plantilla" que crea un BusLayout desde el bus.
-    - Regenera asientos al guardar (on_commit).
-    - Auto-completa campos cuando se selecciona plantilla.
-    """
     if BusWizardForm:
         form = BusWizardForm
+
+    # Opcional: usar template personalizado para añadir botón catálogo (si existe)
+    change_form_template = "admin/booking_bus_change_form.html"
 
     list_display = (
         "plate", "company", "model", "year", "floors",
@@ -458,14 +423,20 @@ class BusAdmin(admin.ModelAdmin):
     actions = ("regenerate_seats_action", "force_regenerate_seats")
 
     class Media:
-        css = {"all": ("booking/admin-seatmap.css",)}
+        css = {
+            "all": (
+                "booking/admin-seatmap.css",
+                "booking/layout-catalog.css",
+            )
+        }
         js = (
             "admin/js/jquery.init.js",
             "booking/bus_wizard.js",
             "booking/seatmap-modal.js",
+            "booking/layout-catalog.js",
         )
 
-    # -------- Botón "Mapa" (abre modal) --------
+    # -------- Botones --------
     def seatmap_link(self, obj: Bus):
         if not obj.pk:
             return "-"
@@ -473,7 +444,6 @@ class BusAdmin(admin.ModelAdmin):
         return format_html('<a class="button js-seatmap" href="{}" data-seatmap-url="{}">Mapa</a>', url, url)
     seatmap_link.short_description = "Mapa"
 
-    # -------- Botón "Guardar como plantilla" --------
     def save_as_layout_link(self, obj: Bus):
         if not obj.pk:
             return "-"
@@ -481,12 +451,10 @@ class BusAdmin(admin.ModelAdmin):
         return format_html('<a class="button" href="{}">Guardar como plantilla</a>', url)
     save_as_layout_link.short_description = "Guardar como plantilla"
 
-    # -------- CORREGIDO: Guardado: regenerar asientos al confirmar --------
+    # -------- Guardado --------
     def save_model(self, request, obj: Bus, form, change):
-        # CORRECCIÓN: Si hay plantilla, copiar TODOS los datos, no solo dimensiones
         if obj.layout_template:
             template = obj.layout_template
-            # Copiar todos los datos de layout de la plantilla
             obj.floors = template.floors
             obj.rows_lower = template.rows_lower
             obj.rows_upper = template.rows_upper
@@ -497,12 +465,11 @@ class BusAdmin(admin.ModelAdmin):
             obj.numbers_upper = list(template.numbers_upper or [])
             obj.prefix_lower = template.prefix_lower or ""
             obj.prefix_upper = template.prefix_upper or ""
-        
+
         super().save_model(request, obj, form, change)
 
         def _regen():
             try:
-                # CORRECCIÓN: Asegurar layouts ANTES de regenerar asientos
                 obj.ensure_layouts()
                 created = obj.regenerate_seats()
                 self.message_user(request, f"Se generaron {created} asientos para {obj}.", messages.SUCCESS)
@@ -511,58 +478,38 @@ class BusAdmin(admin.ModelAdmin):
 
         transaction.on_commit(_regen)
 
-    # -------- MEJORADO: Auto-completar campos desde plantilla --------
-    def _auto_fill_from_template(self, bus: Bus):
-        """Auto-completa dimensiones desde la plantilla seleccionada"""
-        if bus.layout_template:
-            template = bus.layout_template
-            bus.floors = template.floors
-            bus.rows_lower = template.rows_lower
-            bus.rows_upper = template.rows_upper
-            bus.cols = template.cols
-            # CORRECCIÓN: También copiar los layouts y números
-            bus.layout_lower = list(template.layout_lower or [])
-            bus.layout_upper = list(template.layout_upper or [])
-            bus.numbers_lower = list(template.numbers_lower or [])
-            bus.numbers_upper = list(template.numbers_upper or [])
-            bus.prefix_lower = template.prefix_lower or ""
-            bus.prefix_upper = template.prefix_upper or ""
-
-    # -------- CORREGIDO: Formfield para agregar data-attributes --------
+    # -------- Formfield con preview (mejorado) y catálogo visual --------
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "layout_template":
             from django import forms
-            
+            from .models import BusLayout
+            import json
+
+            layouts = {l.id: l for l in BusLayout.objects.all()}
+
             class TemplateSelect(forms.Select):
                 def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
                     option = super().create_option(name, value, label, selected, index, subindex, attrs)
-                    # CORRECCIÓN: Obtener el valor real del ID
-                    if value and hasattr(value, 'value'):
-                        # value es un ModelChoiceIteratorValue, obtener el valor real
-                        real_value = value.value
-                    else:
-                        real_value = value
-                    
-                    if real_value:
-                        try:
-                            from .models import BusLayout
-                            layout = BusLayout.objects.get(id=real_value)
-                            # Agregar data-attributes para auto-completado
-                            option['attrs']['data-floors'] = layout.floors
-                            option['attrs']['data-rows-lower'] = layout.rows_lower
-                            option['attrs']['data-rows-upper'] = layout.rows_upper
-                            option['attrs']['data-cols'] = layout.cols
-                            # CORRECCIÓN: Agregar más datos para mejor auto-completado
-                            option['attrs']['data-prefix-lower'] = layout.prefix_lower or ""
-                            option['attrs']['data-prefix-upper'] = layout.prefix_upper or ""
-                        except (BusLayout.DoesNotExist, ValueError):
-                            pass
+                    real_value = getattr(value, "value", value)
+
+                    if real_value and real_value in layouts:
+                        layout = layouts[real_value]
+                        option['attrs']['data-floors'] = layout.floors
+                        option['attrs']['data-rows-lower'] = layout.rows_lower
+                        option['attrs']['data-rows-upper'] = layout.rows_upper
+                        option['attrs']['data-cols'] = layout.cols
+                        option['attrs']['data-prefix-lower'] = layout.prefix_lower or ""
+                        option['attrs']['data-prefix-upper'] = layout.prefix_upper or ""
+                        option['attrs']['data-layout-lower'] = json.dumps(layout.layout_lower or [])
+                        option['attrs']['data-layout-upper'] = json.dumps(layout.layout_upper or [])
+
                     return option
-            
+
             kwargs['widget'] = TemplateSelect
+
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-    # -------- URLs personalizadas --------
+    # -------- URLs personalizadas (incluye catálogo y editor) --------
     def get_urls(self):
         urls = super().get_urls()
         custom = [
@@ -581,10 +528,28 @@ class BusAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.template_data_view),
                 name="booking_bus_template_data",
             ),
+            # Editor visual
+            path(
+                "<int:bus_id>/editor/",
+                self.admin_site.admin_view(self.editor_view),
+                name="booking_bus_editor",
+            ),
+            # Guardado AJAX del editor (versión mejorada para ambos pisos)
+            path(
+                "<int:bus_id>/save-layout/",
+                self.admin_site.admin_view(self.save_layout_view),
+                name="booking_bus_save_layout",
+            ),
+            # Catálogo visual de plantillas (modal)
+            path(
+                "layout-catalog-content/",
+                self.admin_site.admin_view(self.layout_catalog_content),
+                name="booking_layout_catalog_content",
+            ),
         ]
         return custom + urls
 
-    # -------- Vista del mapa (en iframe para el modal) --------
+    # -------- Vistas --------
     @xframe_options_exempt
     def seatmap_view(self, request, bus_id: int):
         bus = get_object_or_404(Bus, pk=bus_id)
@@ -605,18 +570,66 @@ class BusAdmin(admin.ModelAdmin):
         )
         return render(request, "booking/seatmap.html", ctx)
 
-    # -------- Crear BusLayout desde Bus --------
+    def editor_view(self, request, bus_id: int):
+        bus = get_object_or_404(Bus, pk=bus_id)
+        bus.ensure_layouts()
+        context = dict(
+            self.admin_site.each_context(request),
+            title=f"Editor de layout - {bus.plate}",
+            bus=bus,
+            rows=bus.rows_lower,
+            cols=bus.cols,
+            layout=json.dumps(bus.layout_lower or []),
+            save_url=reverse("admin:booking_bus_save_layout", args=[bus.id]),
+        )
+        return render(request, "admin/seatmap_editor.html", context)
+
+    def save_layout_view(self, request, bus_id: int):
+        """Endpoint mejorado que acepta layout_lower y layout_upper (editor PRO)"""
+        if request.method != "POST":
+            return JsonResponse({"error": "Método no permitido"}, status=405)
+
+        bus = get_object_or_404(Bus, pk=bus_id)
+        try:
+            data = json.loads(request.body)
+
+            # Soporta tanto el formato antiguo ('layout') como el nuevo ('layout_lower', 'layout_upper')
+            if 'layout_lower' in data:
+                new_layout_lower = data.get('layout_lower', [])
+                new_layout_upper = data.get('layout_upper', [])
+                bus.layout_lower = new_layout_lower
+                bus.layout_upper = new_layout_upper
+                # Opcional: actualizar dimensiones si se envían
+                if 'rows_lower' in data:
+                    bus.rows_lower = data['rows_lower']
+                if 'rows_upper' in data:
+                    bus.rows_upper = data['rows_upper']
+                if 'cols' in data:
+                    bus.cols = data['cols']
+            else:
+                # Formato antiguo (solo un piso)
+                new_layout = data.get('layout', [])
+                if not isinstance(new_layout, list):
+                    raise ValueError("El layout debe ser una lista")
+                bus.layout_lower = new_layout
+
+            bus.save()
+            # Regenerar asientos después de guardar el layout
+            bus.ensure_layouts()
+            bus.regenerate_seats()
+            return JsonResponse({"status": "ok", "message": "Layout guardado y asientos regenerados"})
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
     def save_as_layout_view(self, request, bus_id: int):
         from django.shortcuts import redirect
-        bus = get_object_or_404(Bus, pk=bus_id)
 
-        # Asegura arrays antes de copiar
+        bus = get_object_or_404(Bus, pk=bus_id)
         try:
             bus.ensure_layouts()
         except Exception:
             pass
 
-        # Nombre único sugerido
         base_name = f"Mapa — {bus.plate}"
         name = base_name
         i = 2
@@ -624,7 +637,6 @@ class BusAdmin(admin.ModelAdmin):
             name = f"{base_name} ({i})"
             i += 1
 
-        # Crear plantilla
         new_layout = BusLayout.objects.create(
             name=name,
             floors=int(bus.floors or 1),
@@ -640,19 +652,13 @@ class BusAdmin(admin.ModelAdmin):
         )
 
         self.message_user(request, f"Plantilla creada desde {bus.plate}: «{new_layout.name}».", messages.SUCCESS)
-        # Redirigir a editar la plantilla
         return redirect(reverse("admin:booking_buslayout_change", args=[new_layout.pk]))
 
-    # -------- API para datos de plantilla (JSON) --------
     def template_data_view(self, request, bus_id: int):
-        """Endpoint que devuelve datos de plantilla en JSON"""
-        import json
-        from django.http import JsonResponse
-        
         bus = get_object_or_404(Bus, pk=bus_id)
         if not bus.layout_template:
             return JsonResponse({'error': 'No template selected'}, status=400)
-        
+
         template = bus.layout_template
         data = {
             'floors': template.floors,
@@ -668,19 +674,29 @@ class BusAdmin(admin.ModelAdmin):
         }
         return JsonResponse(data)
 
-    # -------- Acción masiva de regenerar seats --------
+    def layout_catalog_content(self, request):
+        """Vista que devuelve el HTML del catálogo de plantillas (modal)"""
+        layouts = BusLayout.objects.all()
+        # Para cada layout, generar una preview reducida (primeras 30 celdas)
+        for l in layouts:
+            preview = []
+            flat = (l.layout_lower or [])[:30]
+            for cell in flat:
+                preview.append(cell if cell in ['L','P','X','E','D','B'] else 'L')
+            l.preview_cells = preview
+        return render(request, "admin/layout_catalog_modal.html", {"layouts": layouts})
+
+    # -------- Acciones --------
     def regenerate_seats_action(self, request, queryset):
         return globals()["regenerate_seats_action"](self, request, queryset)
     regenerate_seats_action.short_description = "Regenerar asientos desde layout"
 
-    # -------- NUEVA ACCIÓN: Forzar regeneración completa --------
     @admin.action(description="Forzar regeneración completa de asientos")
     def force_regenerate_seats(self, request, queryset):
         total = 0
         errors = 0
         for bus in queryset:
             try:
-                # Forzar la sincronización con la plantilla si existe
                 if bus.layout_template:
                     template = bus.layout_template
                     bus.floors = template.floors
@@ -692,64 +708,49 @@ class BusAdmin(admin.ModelAdmin):
                     bus.numbers_lower = list(template.numbers_lower or [])
                     bus.numbers_upper = list(template.numbers_upper or [])
                     bus.save()
-                
+
                 bus.ensure_layouts()
                 created = bus.regenerate_seats()
                 total += created
-                self.message_user(
-                    request, 
-                    f"{bus.plate}: {created} asientos regenerados", 
-                    messages.SUCCESS
-                )
+                self.message_user(request, f"{bus.plate}: {created} asientos regenerados", messages.SUCCESS)
             except Exception as e:
                 errors += 1
-                self.message_user(
-                    request, 
-                    f"{bus.plate}: Error - {e}", 
-                    messages.ERROR
-                )
-        
+                self.message_user(request, f"{bus.plate}: Error - {e}", messages.ERROR)
+
         if errors == 0:
-            self.message_user(
-                request, 
-                f"Se regeneraron {total} asientos en {queryset.count()} bus(es).", 
-                messages.SUCCESS
-            )
+            self.message_user(request, f"Se regeneraron {total} asientos en {queryset.count()} bus(es).", messages.SUCCESS)
         else:
-            self.message_user(
-                request, 
-                f"Se regeneraron {total} asientos con {errors} error(es).", 
-                messages.WARNING
-            )
+            self.message_user(request, f"Se regeneraron {total} asientos con {errors} error(es).", messages.WARNING)
+
 
 # =========================
-# BusLayout (mapas) — modal + labels ES
+# BusLayoutAdmin (ya incluye duplicado)
 # =========================
 class BusLayoutAdminForm(forms.ModelForm):
     class Meta:
         model = BusLayout
         fields = "__all__"
         labels = {
-            "layout_lower":  "Piso inferior (layout)",
-            "layout_upper":  "Piso superior (layout)",
+            "layout_lower": "Piso inferior (layout)",
+            "layout_upper": "Piso superior (layout)",
             "numbers_lower": "Números inferiores",
             "numbers_upper": "Números superiores",
-            "rows_lower":    "Filas piso inferior",
-            "rows_upper":    "Filas piso superior",
-            "cols":          "Asientos por fila",
-            "floors":        "Pisos",
-            "prefix_lower":  "Prefijo piso inferior",
-            "prefix_upper":  "Prefijo piso superior",
+            "rows_lower": "Filas piso inferior",
+            "rows_upper": "Filas piso superior",
+            "cols": "Asientos por fila",
+            "floors": "Pisos",
+            "prefix_lower": "Prefijo piso inferior",
+            "prefix_upper": "Prefijo piso superior",
         }
         help_texts = {
-            "layout_lower":  "Lista lineal de celdas (L/P/X/E/D/B) con tamaño filas×columnas.",
-            "layout_upper":  "Lista lineal de celdas (L/P/X/E/D/B) con tamaño filas×columnas.",
+            "layout_lower": "Lista lineal de celdas (L/P/X/E/D/B) con tamaño filas×columnas.",
+            "layout_upper": "Lista lineal de celdas (L/P/X/E/D/B) con tamaño filas×columnas.",
             "numbers_lower": "Lista lineal con numeración (o vacío) del piso inferior.",
             "numbers_upper": "Lista lineal con numeración (o vacío) del piso superior.",
         }
         widgets = {
-            "layout_lower":  forms.Textarea(attrs={"rows": 7, "cols": 80}),
-            "layout_upper":  forms.Textarea(attrs={"rows": 7, "cols": 80}),
+            "layout_lower": forms.Textarea(attrs={"rows": 7, "cols": 80}),
+            "layout_upper": forms.Textarea(attrs={"rows": 7, "cols": 80}),
             "numbers_lower": forms.Textarea(attrs={"rows": 5, "cols": 80}),
             "numbers_upper": forms.Textarea(attrs={"rows": 5, "cols": 80}),
         }
@@ -758,7 +759,6 @@ class BusLayoutAdminForm(forms.ModelForm):
 @admin.register(BusLayout)
 class BusLayoutAdmin(admin.ModelAdmin):
     form = BusLayoutAdminForm
-    # ⬇️ añadimos duplicate_link a las columnas
     list_display = ("name", "floors", "rows_lower", "rows_upper", "cols", "seatmap_link", "duplicate_link")
     search_fields = ("name", "slug")
     fieldsets = (
@@ -768,14 +768,12 @@ class BusLayoutAdmin(admin.ModelAdmin):
         ("Numeración automática (opcional)", {"fields": ("prefix_lower", "prefix_upper")}),
     )
 
-    # ⬇️ acción masiva para duplicar
     actions = ("duplicate_selected_layouts",)
 
     class Media:
         css = {"all": ("booking/admin-seatmap.css",)}
         js = ("booking/seatmap-modal.js",)
 
-    # -------- Botones por fila --------
     def seatmap_link(self, obj):
         url = reverse("admin:booking_layout_seatmap", args=[obj.pk])
         return format_html('<a class="button js-seatmap" href="{}" data-seatmap-url="{}">Mapa</a>', url, url)
@@ -786,7 +784,6 @@ class BusLayoutAdmin(admin.ModelAdmin):
         return format_html('<a class="button" href="{}">Duplicar</a>', url)
     duplicate_link.short_description = "Duplicar"
 
-    # -------- URLs personalizadas --------
     def get_urls(self):
         urls = super().get_urls()
         custom = [
@@ -803,13 +800,11 @@ class BusLayoutAdmin(admin.ModelAdmin):
         ]
         return custom + urls
 
-    # -------- Vista: mapa (en iframe para modal) --------
     @xframe_options_exempt
     def seatmap_view(self, request, layout_id: int):
         layout = get_object_or_404(BusLayout, pk=layout_id)
 
         class _FakeBus:
-            """Wrapper para reutilizar seatmap.html tal cual."""
             company = type("C", (), {"name": "Plantilla"})
             plate = layout.name
             floors = layout.floors
@@ -829,7 +824,6 @@ class BusLayoutAdmin(admin.ModelAdmin):
         )
         return render(request, "booking/seatmap.html", ctx)
 
-    # -------- Vista: duplicar un layout --------
     def duplicate_view(self, request, layout_id: int):
         layout = get_object_or_404(BusLayout, pk=layout_id)
 
@@ -855,7 +849,6 @@ class BusLayoutAdmin(admin.ModelAdmin):
         )
 
         self.message_user(request, f"Mapa duplicado como “{new_obj.name}”.")
-        # redirigimos al change del nuevo objeto sin tocar imports globales
         from django.shortcuts import redirect
         change_url = reverse(
             f"admin:{new_obj._meta.app_label}_{new_obj._meta.model_name}_change",
@@ -863,7 +856,6 @@ class BusLayoutAdmin(admin.ModelAdmin):
         )
         return redirect(change_url)
 
-    # -------- Acción masiva: duplicar seleccionados --------
     @admin.action(description="Duplicar mapas seleccionados")
     def duplicate_selected_layouts(self, request, queryset):
         created = 0
@@ -896,32 +888,29 @@ class BusLayoutAdmin(admin.ModelAdmin):
 # =========================
 # Modelos de Caja y Reportes
 # =========================
-
 class CashRegisterAdmin(admin.ModelAdmin):
     list_display = ("user", "opening_date", "closing_date", "total_sales", "total_tickets", "status")
     list_filter = ("status", "opening_date", "user")
     search_fields = ("user__username",)
     readonly_fields = ("opening_date", "closing_date")
-    
+
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user')
+
 
 class DailyReportAdmin(admin.ModelAdmin):
     list_display = ("date", "total_tickets", "total_revenue", "total_cash_registers", "created_at")
     list_filter = ("date",)
     readonly_fields = ("created_at",)
     search_fields = ("date",)
-    
+
     def has_add_permission(self, request):
-        return False  # Los reportes se generan automáticamente
+        return False
+
 
 # =========================
-# Registro seguro de los nuevos modelos
+# Registro seguro de modelos
 # =========================
-
-# AGREGAR ESTAS LÍNEAS ANTES de los registros existentes:
-
-# Registrar modelos de caja de forma segura
 try:
     admin.site.register(CashRegister, CashRegisterAdmin)
 except admin.sites.AlreadyRegistered:
@@ -932,7 +921,6 @@ try:
 except admin.sites.AlreadyRegistered:
     pass
 
-# Luego mantén todos tus registros existentes:
 _safe_register(City, CityAdmin)
 _safe_register(Company, CompanyAdmin)
 _safe_register(Route, RouteAdmin)
@@ -942,5 +930,3 @@ _safe_register(Ticket, TicketAdmin)
 _safe_register(Trip, TripAdmin)
 _safe_register(Bus, BusAdmin)
 _safe_register(Terminal, TerminalAdmin)
-
-

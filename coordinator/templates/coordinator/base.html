@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Coordinador - Cejer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f1f5f9; }
+        .sidebar { background: #0f172a; min-height: 100vh; }
+        .sidebar a { color: #cbd5e1; text-decoration: none; padding: 12px 20px; display: block; }
+        .sidebar a:hover { background: #1e293b; color: white; }
+        .sidebar a.active { background: #3b82f6; color: white; }
+        .content { padding: 20px; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-2 sidebar p-0">
+            <div class="text-center py-4"><h4 class="text-white">Cejer</h4><small class="text-muted">Coordinador</small></div>
+            <nav>
+                <a href="{% url 'coordinator:bus_list' %}">🚍 Buses</a>
+                <a href="{% url 'coordinator:trip_list' %}">📅 Viajes</a>
+                <a href="{% url 'pos_caja' %}" target="_blank">💰 POS</a>
+                <a href="{% url 'admin:index' %}">⚙️ Admin</a>
+            </nav>
+        </div>
+        <div class="col-md-10 content">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>{% block title %}Dashboard{% endblock %}</h1>
+                <form method="post" action="{% url 'admin:logout' %}">{% csrf_token %}<button class="btn btn-outline-danger">Salir</button></form>
+            </div>
+            {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}{% endif %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

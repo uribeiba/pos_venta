@@ -24,7 +24,7 @@ from django.core.exceptions import ValidationError
 from .models import (
     City, Route, Trip, Bus, Seat, Ticket, SeatHold,
     Terminal, UserProfile, CashRegister, DailyReport,
-    Customer,
+    Customer, BusLayout,
 )
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -1606,3 +1606,35 @@ def create_customer(request):
     except Exception as e:
         print(f"❌ Error creando cliente: {e}")  # Debug
         return JsonResponse({'success': False, 'error': str(e)})
+    
+
+
+@csrf_exempt
+def save_layout_template(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Método no permitido"}, status=400)
+
+    try:
+        data = json.loads(request.body)
+
+        layout = BusLayout.objects.create(
+            name=data.get("name"),
+            floors=data.get("floors"),
+            rows_lower=data.get("rows_lower"),
+            rows_upper=data.get("rows_upper"),
+            cols=data.get("cols"),
+
+            layout_lower=data.get("layout_lower", []),
+            layout_upper=data.get("layout_upper", []),
+
+            numbers_lower=data.get("numbers_lower", []),
+            numbers_upper=data.get("numbers_upper", []),
+
+            prefix_lower=data.get("prefix_lower", ""),
+            prefix_upper=data.get("prefix_upper", "")
+        )
+
+        return JsonResponse({"success": True, "id": layout.id})
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

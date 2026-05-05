@@ -1,0 +1,210 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Listado de Buses{% endblock %}
+
+{% block extra_css %}
+<!-- Font Awesome 6 (si no está ya en base.html) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+    .table-hover tbody tr:hover {
+        background-color: #f8fafc;
+        transition: 0.2s;
+    }
+    .btn-sm i {
+        margin-right: 5px;
+    }
+    .badge-piso {
+        background-color: #e2e8f0;
+        color: #1e293b;
+        padding: 4px 8px;
+        border-radius: 30px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .badge-asientos {
+        background-color: #dbeafe;
+        color: #1e40af;
+    }
+    .card-header i {
+        margin-right: 8px;
+    }
+    .table th {
+        background-color: #f1f5f9;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .action-buttons {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center bg-white">
+        <h3 class="mb-0"><i class="fa-solid fa-bus"></i> Buses Registrados</h3>
+        <div>
+            <a href="{% url 'coordinator:bus_new' %}" class="btn btn-primary">
+                <i class="fa-solid fa-plus"></i> Nuevo Bus
+            </a>
+            <button id="deleteSelectedBtn" class="btn btn-danger" style="display:none;">
+                <i class="fa-solid fa-trash-can"></i> Eliminar seleccionados
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="selectAll"></th>
+                        <th><i class="fa-solid fa-building"></i> Empresa</th>
+                        <th><i class="fa-solid fa-plate-wheat"></i> Patente</th>
+                        <th><i class="fa-solid fa-truck"></i> Modelo</th>
+                        <th><i class="fa-solid fa-layer-group"></i> Pisos</th>
+                        <th><i class="fa-solid fa-chair"></i> Asientos</th>
+                        <th><i class="fa-solid fa-gear"></i> Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bus in buses %}
+                    <tr>
+                        <td><input type="checkbox" class="bus-select" value="{{ bus.id }}"></td>
+                        <td>{{ bus.company.name }}</td>
+                        <td><strong>{{ bus.plate }}</strong></td>
+                        <td>{{ bus.model|default:"—" }}</td>
+                        <td>
+                            {% if bus.floors == 1 %}
+                                <span class="badge-piso"><i class="fa-solid fa-arrow-down"></i> 1 piso</span>
+                            {% else %}
+                                <span class="badge-piso"><i class="fa-solid fa-arrow-up"></i> 2 pisos</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge-piso badge-asientos">
+                                <i class="fa-solid fa-chair"></i> {{ bus.rows_lower }}x{{ bus.cols }}
+                                {% if bus.floors == 2 %} + {{ bus.rows_upper }}x{{ bus.cols }}{% endif %}
+                            </span>
+                        </td>
+                        <td class="action-buttons">
+                            <a href="{% url 'coordinator:bus_editor' bus.id %}" class="btn btn-sm btn-warning" title="Editar">
+                                <i class="fa-solid fa-pencil"></i> Editar
+                            </a>
+                            <a href="{% url 'coordinator:bus_duplicate' bus.id %}" class="btn btn-sm btn-secondary" title="Duplicar">
+                                <i class="fa-solid fa-copy"></i> Duplicar
+                            </a>
+                            <a href="{% url 'coordinator:trip_new' %}?bus={{ bus.id }}" class="btn btn-sm btn-success" title="Crear viaje">
+                                <i class="fa-solid fa-calendar-plus"></i> Viaje
+                            </a>
+                            <button class="btn btn-sm btn-danger delete-single" data-id="{{ bus.id }}" data-plate="{{ bus.plate }}" title="Eliminar bus">
+                                <i class="fa-solid fa-trash-can"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5">
+                            <i class="fa-regular fa-circle-xmark fa-2x text-muted"></i>
+                            <p class="mt-2">No hay buses registrados. <a href="{% url 'coordinator:bus_new' %}">Crea uno nuevo</a></p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function getCsrfToken() {
+        return document.cookie.split('; ').find(row => row.startsWith('csrftoken'))?.split('=')[1];
+    }
+
+    // Seleccionar todos
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.bus-select');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+    function updateDeleteButtonVisibility() {
+        const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+        deleteSelectedBtn.style.display = anyChecked ? 'inline-block' : 'none';
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            updateDeleteButtonVisibility();
+        });
+    }
+
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateDeleteButtonVisibility);
+    });
+
+    // Eliminar individual con cascada
+    async function deleteBus(busId, plate, cascade = false) {
+        const formData = new FormData();
+        if (cascade) formData.append('cascade', 'true');
+        
+        const response = await fetch(`/coordinador/buses/eliminar/${busId}/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() },
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else if (data.protected) {
+            const msg = data.message || `El bus ${plate} tiene viajes y tickets asociados.`;
+            const confirmCascade = confirm(
+                `${msg}\n\n¿Eliminar también todos sus viajes y tickets? (No se puede deshacer)`
+            );
+            if (confirmCascade) {
+                await deleteBus(busId, plate, true);
+            }
+        } else {
+            alert(data.error || data.message || 'Error desconocido al eliminar');
+        }
+    }
+
+    document.querySelectorAll('.delete-single').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const busId = this.dataset.id;
+            const plate = this.dataset.plate;
+            if (confirm(`¿Eliminar bus ${plate}? Se perderán los viajes asociados.`)) {
+                deleteBus(busId, plate, false);
+            }
+        });
+    });
+
+    // Eliminar seleccionados (masivo)
+    deleteSelectedBtn.addEventListener('click', async function() {
+        const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+        if (selected.length === 0) return;
+        
+        const confirmCascade = confirm(
+            `¿Eliminar ${selected.length} bus(es)?\n` +
+            `Si tienen viajes asociados, se te preguntará por cada uno.`
+        );
+        
+        const response = await fetch('/coordinador/buses/eliminar-masivo/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({ ids: selected, cascade: confirmCascade })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else if (data.partial) {
+            alert(`Se eliminaron ${data.deleted} buses.\nErrores: ${data.errors.join(', ')}`);
+            location.reload();
+        } else {
+            alert(data.error || 'Error al eliminar buses');
+        }
+    });
+</script>
+{% endblock %}

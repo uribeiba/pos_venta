@@ -1,0 +1,32 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Viajes{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <h3>Programación de Viajes</h3>
+        <a href="{% url 'coordinator:trip_new' %}" class="btn btn-primary">+ Nuevo Viaje</a>
+    </div>
+    <div class="card-body">
+        <table class="table table-striped">
+            <thead><tr><th>Ruta</th><th>Bus</th><th>Salida</th><th>Llegada</th><th>Asientos</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for trip in trips %}
+                <tr>
+                    <td>{{ trip.route }}</td>
+                    <td>{{ trip.bus.plate }}</td>
+                    <td>{{ trip.departure|date:"d/m/Y H:i" }}</td>
+                    <td>{{ trip.arrival|date:"d/m/Y H:i"|default:"-" }}</td>
+                    <td>{{ trip.seats_total }}</td>
+                    <td>
+                        <a href="{% url 'coordinator:trip_edit' trip.id %}" class="btn btn-sm btn-warning">Editar</a>
+                        <a href="{% url 'admin:booking_trip_seatmap' trip.id %}" target="_blank" class="btn btn-sm btn-info">Mapa</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">No hay viajes programados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

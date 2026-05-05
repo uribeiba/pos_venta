@@ -1,0 +1,111 @@
+#id_layout_template {
+    display: none;
+  }
+  
+  .layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 15px;
+  }
+  
+  .layout-card {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .layout-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  }
+  
+  .layout-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+  
+  .layout-preview {
+    display: grid;
+    gap: 3px;
+    margin-bottom: 10px;
+  }
+  
+  .layout-btn {
+    display: block;
+    width: 100%;
+    padding: 6px;
+    border-radius: 6px;
+    border: none;
+    background: #22c55e;
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  /* layout-catalog.css */
+.layout-catalog-modal {
+  display: none;
+  position: fixed;
+  z-index: 100000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+}
+.layout-catalog-content {
+  background: white;
+  margin: 5% auto;
+  padding: 20px;
+  width: 80%;
+  max-width: 1000px;
+  border-radius: 24px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.layout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+.layout-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 16px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.layout-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+.layout-preview {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+  justify-content: center;
+}
+.preview-cell {
+  width: 28px;
+  height: 28px;
+  background: #cbd5e1;
+  border-radius: 6px;
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.preview-cell.L { background: #22c55e; }
+.preview-cell.P { background: transparent; border: 1px dashed #94a3b8; }
+.preview-cell.X { background: #e2e8f0; }
