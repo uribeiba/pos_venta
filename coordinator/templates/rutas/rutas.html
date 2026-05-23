@@ -1,0 +1,193 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Rutas - Cejer{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/rutas.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="#">Configuración</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Rutas</li>
+        </ol>
+    </nav>
+
+    <!-- Card del formulario -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 text-uppercase fw-semibold">
+                <i class="fas fa-road me-2 text-primary"></i>
+                {% if edit_mode %}EDITAR RUTA{% else %}REGISTRAR RUTA{% endif %}
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="post" id="routeForm">
+                {% csrf_token %}
+                <!-- Nav tabs -->
+                <ul class="nav nav-tabs mb-4" id="routeTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="main-tab" data-bs-toggle="tab" data-bs-target="#main" type="button" role="tab">Datos de la ruta</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="stops-tab" data-bs-toggle="tab" data-bs-target="#stops" type="button" role="tab">Paradas intermedias</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <!-- Pestaña principal -->
+                    <div class="tab-pane fade show active" id="main" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.origin.label }}</label>
+                                {{ form.origin }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.destination.label }}</label>
+                                {{ form.destination }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.origin_terminal.label }}</label>
+                                {{ form.origin_terminal }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.destination_terminal.label }}</label>
+                                {{ form.destination_terminal }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.duration_minutes.label }}</label>
+                                {{ form.duration_minutes }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.base_price.label }}</label>
+                                {{ form.base_price }}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check form-switch mt-4">
+                                    {{ form.is_active }}
+                                    <label class="form-check-label ms-2 fw-semibold" for="id_is_active">{{ form.is_active.label }}</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Pestaña de paradas -->
+                    <div class="tab-pane fade" id="stops" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle" id="stops-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Orden</th><th>Ciudad</th><th>Terminal</th><th>Precio adicional</th><th>Obligatoria</th><th>Notas</th><th>Eliminar</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stops-tbody">
+                                    {{ formset.management_form }}
+                                    {% for stop_form in formset.forms %}
+                                        <tr class="stop-row">
+                                            <td>{{ stop_form.order }}{{ stop_form.id }}{% if stop_form.instance.pk %}{{ stop_form.DELETE }}{% endif %}</td>
+                                            <td>{{ stop_form.city }}</td>
+                                            <td>{{ stop_form.terminal }}</td>
+                                            <td>{{ stop_form.extra_price }}</td>
+                                            <td class="text-center">{{ stop_form.is_mandatory }}</td>
+                                            <td>{{ stop_form.notes }}</td>
+                                            <td class="text-center">{% if stop_form.instance.pk %}<button type="button" class="btn btn-sm btn-outline-danger remove-stop">🗑️</button>{% else %}<button type="button" class="btn btn-sm btn-outline-danger remove-stop">🗑️</button>{% endif %}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <button type="button" class="btn btn-sm btn-secondary mt-2" id="add-stop"><i class="fas fa-plus"></i> Agregar parada</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="fas fa-save me-2"></i> {% if edit_mode %}Actualizar{% else %}Guardar Ruta{% endif %}
+                    </button>
+                    {% if edit_mode %}
+                        <a href="{% url 'coordinator:routes_dashboard' %}" class="btn btn-secondary px-4 ms-2">
+                            <i class="fas fa-times me-2"></i> Cancelar
+                        </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Card de listado -->
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap">
+            <h5 class="mb-0 text-uppercase fw-semibold">
+                <i class="fas fa-list me-2 text-primary"></i> LISTA DE RUTAS REGISTRADAS
+            </h5>
+            <div class="mt-2 mt-sm-0">
+                <form method="get" class="d-flex" id="searchForm">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control" placeholder="Buscar por origen o destino" value="{{ query }}">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ORIGEN</th><th>DESTINO</th><th>TERMINAL ORIGEN</th><th>TERMINAL DESTINO</th>
+                            <th>DURACIÓN</th><th>PRECIO BASE</th><th>ACTIVO</th><th>ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for route in routes %}
+                        <tr>
+                            <td>{{ route.origin.name }}</td><td>{{ route.destination.name }}</td>
+                            <td>{{ route.origin_terminal.name|default:"—" }}</td><td>{{ route.destination_terminal.name|default:"—" }}</td>
+                            <td>{{ route.duration_minutes }} min</td><td>${{ route.base_price|floatformat:0 }}</td>
+                            <td>
+                                {% if route.is_active %}<span class="badge bg-success rounded-pill">Activo</span>{% else %}<span class="badge bg-secondary rounded-pill">Inactivo</span>{% endif %}
+                            </td>
+                            <td>
+                                <a href="?edit={{ route.id }}" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="fas fa-edit"></i></a>
+                                <button type="button" class="btn btn-sm btn-outline-danger delete-route" data-id="{{ route.id }}" data-name="{{ route.origin.name }} → {{ route.destination.name }}">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="8" class="text-center py-4">No hay rutas registradas.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if routes.has_other_pages %}
+            <div class="d-flex justify-content-center mt-4">
+                <nav><ul class="pagination">
+                    {% if routes.has_previous %}<li class="page-item"><a class="page-link" href="?page=1{% if query %}&q={{ query }}{% endif %}">&laquo;</a></li>{% endif %}
+                    <li class="page-item active"><span class="page-link">{{ routes.number }}</span></li>
+                    {% if routes.has_next %}<li class="page-item"><a class="page-link" href="?page={{ routes.next_page_number }}{% if query %}&q={{ query }}{% endif %}">&raquo;</a></li>{% endif %}
+                </ul></nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de eliminación -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Confirmar eliminación</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">¿Estás seguro de eliminar la ruta <strong id="deleteRouteName"></strong>?<br><small class="text-danger">Esta acción eliminará también las paradas asociadas.</small></div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <form method="post" action="{% url 'coordinator:route_delete' 0 %}" id="deleteForm">{% csrf_token %}<button type="submit" class="btn btn-danger">Eliminar</button></form>
+        </div>
+    </div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/rutas.js' %}"></script>
+{% endblock %}

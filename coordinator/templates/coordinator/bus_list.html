@@ -1,7 +1,8 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
 
-{% block title %}Listado de Buses{% endblock %}
+
+{% block title %}Listado de Buses - Editor de asientos{% endblock %}
 
 {% block extra_css %}
 <!-- Font Awesome 6 (si no está ya en base.html) -->
@@ -98,6 +99,8 @@
                             <a href="{% url 'coordinator:trip_new' %}?bus={{ bus.id }}" class="btn btn-sm btn-success" title="Crear viaje">
                                 <i class="fa-solid fa-calendar-plus"></i> Viaje
                             </a>
+
+                            <a href="{% url 'coordinator:bus_documents' bus.id %}" class="btn btn-sm btn-info">Documentos</a> 
                             <button class="btn btn-sm btn-danger delete-single" data-id="{{ bus.id }}" data-plate="{{ bus.plate }}" title="Eliminar bus">
                                 <i class="fa-solid fa-trash-can"></i> Eliminar
                             </button>

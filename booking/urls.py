@@ -40,5 +40,4 @@ urlpatterns = [
     path("api/trips/<int:trip_id>/seats/", views.trip_seats, name="api_trip_seats"),
     
     path("booking/api/save-layout-template/", views.save_layout_template, name="save_layout_template"),
-
 ]

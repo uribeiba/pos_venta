@@ -1,0 +1,267 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Cambiar bus del viaje{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bus-selector {
+        margin-bottom: 24px;
+        background: white;
+        padding: 16px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+    }
+    .two-columns {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+    }
+    .column {
+        flex: 1;
+        min-width: 300px;
+        background: #f8fafc;
+        padding: 16px;
+        border-radius: 16px;
+    }
+    .seat-grid {
+        display: grid;
+        gap: 8px;
+        margin-top: 16px;
+        overflow-x: auto;
+    }
+    .seat {
+        width: 60px;
+        height: 60px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.1s;
+        background: white;
+        border: 1px solid #cbd5e1;
+    }
+    .seat.occupied {
+        background: #fee2e2;
+        border-color: #f87171;
+        cursor: grab;
+    }
+    .seat.free {
+        background: #e6f7e6;
+        border-color: #86efac;
+    }
+    .seat.selected {
+        outline: 3px solid #f59e0b;
+        transform: scale(1.02);
+    }
+    .seat.drag-over {
+        background: #c7d2fe;
+        border: 2px dashed #4f46e5;
+    }
+    .seat small {
+        font-size: 10px;
+        color: #4b5563;
+    }
+    .ticket-info {
+        font-size: 11px;
+        font-weight: normal;
+        margin-top: 4px;
+    }
+    .btn-primary {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 40px;
+        cursor: pointer;
+    }
+    .btn-secondary {
+        background: #e2e8f0;
+        color: #1e293b;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 40px;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Cambiar bus del viaje: {{ trip.route }} ({{ trip.departure|date:"d/m/Y H:i" }})</h3>
+    </div>
+    <div class="card-body">
+        <form method="post" id="reassignForm">
+            {% csrf_token %}
+            <div class="bus-selector">
+                <label>Nuevo bus:</label>
+                <select name="new_bus" id="newBusSelect" required class="form-select" style="width: auto; display: inline-block; margin-left: 10px;">
+                    <option value="">-- Seleccionar bus --</option>
+                    {% for bus in buses %}
+                        <option value="{{ bus.id }}">{{ bus.company.name }} - {{ bus.plate }} ({{ bus.rows_lower }}x{{ bus.cols }})</option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="loadNewBusBtn" class="btn-secondary" style="margin-left: 10px;">Cargar mapa</button>
+            </div>
+
+            <div class="two-columns">
+                <!-- Columna izquierda: asientos actuales ocupados -->
+                <div class="column">
+                    <h4>Asientos actuales (con pasajeros)</h4>
+                    <div id="currentSeats" class="seat-grid" style="grid-template-columns: repeat({{ cols }}, 60px);">
+                        {% for row in current_lower %}
+                            {% for cell in row %}
+                                {% if cell.type == 'L' and cell.status == 'occupied' %}
+                                    <div class="seat occupied" data-seat-id="{{ cell.seat_id }}" data-seat-number="{{ cell.label }}" draggable="true">
+                                        {{ cell.label }}
+                                        <small>Pasajero</small>
+                                    </div>
+                                {% elif cell.type == 'L' and cell.status == 'free' %}
+                                    <div class="seat free" data-seat-id="{{ cell.seat_id }}" data-seat-number="{{ cell.label }}">
+                                        {{ cell.label }}
+                                        <small>libre</small>
+                                    </div>
+                                {% elif cell.type == 'L' %}
+                                    <div class="seat" style="background:#e2e8f0;">{{ cell.label }}</div>
+                                {% else %}
+                                    <div class="seat" style="background:transparent; border:none;"></div>
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Columna derecha: nuevos asientos (se cargarán dinámicamente) -->
+                <div class="column">
+                    <h4>Nuevo bus <span id="newBusName"></span></h4>
+                    <div id="newBusSeats" class="seat-grid" style="grid-template-columns: repeat(4, 60px);">
+                        <p>Seleccione un bus para ver los asientos</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn-primary" id="submitBtn" disabled>Guardar reasignación</button>
+                <a href="{% url 'coordinator:trip_list' %}" class="btn-secondary">Cancelar</a>
+            </div>
+            <input type="hidden" id="reassignMap" name="reassign_map" value="{}">
+        </form>
+    </div>
+</div>
+
+<script>
+    let reassignments = {};  // old_seat_id -> new_seat_id
+    let currentSeats = document.querySelectorAll('#currentSeats .seat.occupied');
+    let newBusLayout = null;
+    let selectedOldSeat = null;
+
+    // Cargar mapa del nuevo bus vía AJAX
+    document.getElementById('loadNewBusBtn').addEventListener('click', function() {
+        const busId = document.getElementById('newBusSelect').value;
+        if (!busId) {
+            alert('Seleccione un bus');
+            return;
+        }
+        fetch(`/coordinador/api/bus/${busId}/`)
+            .then(response => response.json())
+            .then(data => {
+                newBusLayout = data;
+                document.getElementById('newBusName').innerText = `${data.plate}`;
+                renderNewBusSeats(data);
+                document.getElementById('submitBtn').disabled = false;
+            })
+            .catch(err => alert('Error al cargar bus: ' + err));
+    });
+
+    function renderNewBusSeats(busData) {
+        const container = document.getElementById('newBusSeats');
+        const cols = busData.cols;
+        const rows = busData.rows_lower;
+        const layout = busData.layout_lower;
+        const numbers = busData.numbers_lower;
+        container.style.gridTemplateColumns = `repeat(${cols}, 60px)`;
+        container.innerHTML = '';
+
+        let idx = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const typ = layout[idx] || 'L';
+                const num = numbers[idx] || '';
+                const cell = document.createElement('div');
+                cell.className = 'seat free';
+                if (typ !== 'L') {
+                    cell.className = 'seat';
+                    cell.style.background = 'transparent';
+                    cell.style.border = 'none';
+                    cell.innerHTML = typ === 'P' ? '🚶' : (typ === 'E' ? '⬆️' : (typ === 'D' ? '🚪' : ''));
+                } else {
+                    cell.innerHTML = num + '<small>libre</small>';
+                    cell.dataset.seatId = idx;
+                    cell.dataset.seatNumber = num;
+                    cell.dataset.busSeatId = idx;  // índice temporal
+                    // Evento para recibir el drop
+                    cell.addEventListener('dragover', (e) => e.preventDefault());
+                    cell.addEventListener('drop', handleDrop);
+                }
+                container.appendChild(cell);
+                idx++;
+            }
+        }
+    }
+
+    // Drag start en asiento ocupado actual
+    document.querySelectorAll('#currentSeats .seat.occupied').forEach(seat => {
+        seat.addEventListener('dragstart', function(e) {
+            selectedOldSeat = this;
+            e.dataTransfer.setData('text/plain', this.dataset.seatId);
+            e.dataTransfer.effectAllowed = 'move';
+        });
+    });
+
+    function handleDrop(e) {
+        e.preventDefault();
+        const targetCell = e.target.closest('.seat');
+        if (!targetCell || !targetCell.dataset.seatId) return;
+        const oldSeatId = selectedOldSeat?.dataset.seatId;
+        if (!oldSeatId) return;
+        const newSeatId = targetCell.dataset.busSeatId; // índice
+        const newSeatNumber = targetCell.dataset.seatNumber;
+        if (!newSeatId) return;
+
+        // Guardar reasignación
+        reassignments[oldSeatId] = newSeatId;
+        updateReassignMapInput();
+
+        // Marcar visualmente el nuevo asiento como ocupado
+        targetCell.classList.remove('free');
+        targetCell.classList.add('occupied');
+        targetCell.innerHTML = targetCell.dataset.seatNumber + '<small>asignado</small>';
+        targetCell.style.background = '#fee2e2';
+
+        // Marcar el asiento antiguo como reasignado (deshabilitar drag)
+        selectedOldSeat.style.opacity = '0.5';
+        selectedOldSeat.setAttribute('draggable', 'false');
+        selectedOldSeat.classList.add('disabled');
+        selectedOldSeat.removeEventListener('dragstart', () => {});
+
+        selectedOldSeat = null;
+    }
+
+    function updateReassignMapInput() {
+        document.getElementById('reassignMap').value = JSON.stringify(reassignments);
+    }
+
+    // Al enviar el formulario, se incluye el mapa en el POST
+    document.getElementById('reassignForm').addEventListener('submit', function(e) {
+        if (Object.keys(reassignments).length === 0 && document.querySelectorAll('#currentSeats .seat.occupied:not(.disabled)').length > 0) {
+            e.preventDefault();
+            alert('Debe reasignar todos los pasajeros a asientos del nuevo bus.');
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Documentos de {{ driver.full_name }}{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <h3>Documentos de {{ driver.full_name }}</h3>
+        <a href="{% url 'coordinator:driver_document_new' driver.id %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nuevo documento
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr><th>Tipo</th><th>Número</th><th>Fecha emisión</th><th>Fecha vencimiento</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.get_doc_type_display }}</td>
+                    <td>{{ doc.doc_number|default:"—" }}</td>
+                    <td>{{ doc.issue_date|date:"d/m/Y"|default:"—" }}</td>
+                    <td>{{ doc.expiry_date|date:"d/m/Y"|default:"—" }}</td>
+                    <td>
+                        {% if doc.expiry_date %}
+                            {% if doc.expiry_date < today %}
+                                <span class="badge bg-danger">Vencido</span>
+                            {% elif doc.expiry_date <= expiry_warning %}
+                                <span class="badge bg-warning">Próximo a vencer</span>
+                            {% else %}
+                                <span class="badge bg-success">Vigente</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-secondary">Sin fecha</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'coordinator:driver_document_edit' doc.id %}" class="btn btn-sm btn-warning">Editar</a>
+                        <a href="{% url 'coordinator:driver_document_delete' doc.id %}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar?')">Eliminar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center">No hay documentos registrados</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer">
+        <a href="{% url 'coordinator:driver_list' %}" class="btn btn-secondary">Volver a choferes</a>
+    </div>
+</div>
+{% endblock %}

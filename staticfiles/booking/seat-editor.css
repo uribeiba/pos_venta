@@ -1,0 +1,47 @@
+.seat-editor-grid {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  
+  .seat-editor-cell {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+  }
+  
+  .seat-editor-cell.L { background: #e8f5e9; }
+  .seat-editor-cell.P { background: #f3f4f6; }
+  .seat-editor-cell.X { background: #fde8e8; }
+  .seat-editor-cell.E { background: #fff7ed; }
+  .seat-editor-cell.D { background: #eef2ff; }
+  .seat-editor-cell.B { background: #fdf2f8; }
+  
+  .seat-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  
+  .seat-tool {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    border-radius: 6px;
+    background: white;
+  }
+  
+  .seat-tool.active {
+    background: #111;
+    color: white;
+  }
+
+  .preview-deck {
+    margin-top: 20px;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}

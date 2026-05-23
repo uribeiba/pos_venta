@@ -1,0 +1,114 @@
+/* ======= Contenedor y toolbar ======= */
+.seat-widget {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+.seat-widget .toolbar {
+  display: flex;
+  gap: .4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: .6rem;
+}
+.seat-widget .toolbar .tool,
+.seat-widget .toolbar .btn {
+  padding: .35rem .6rem;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.seat-widget .toolbar .tool.active { outline: 3px solid #2b7b2b; }
+.seat-widget .toolbar .spacer { margin-left: auto; }
+
+/* ======= Grid ======= */
+.seat-widget .seat-grid {
+  --cell: 36px;
+  display: grid;
+  gap: .35rem;
+  background: #f8f8f8;
+  padding: .6rem;
+  border: 1px solid #eee;
+  border-radius: 10px;
+}
+
+/* ======= Celda base (con imagen de fondo) ======= */
+.seat-widget .cell {
+  position: relative;               /* para posicionar el número encima */
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: 8px;
+  user-select: none;
+  cursor: pointer;
+  border: 1px solid #e5e7eb;
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;           /* los PNG de 128x128 escalan bien */
+}
+.seat-widget .cell:hover { outline: 2px solid #60a5fa; }
+
+/* ======= Mapeo visual por tipo ======= */
+/* P = Pasillo: transparente y sin borde */
+.seat-widget .cell.P {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+/* X = Bloqueo */
+.seat-widget .cell.X {
+  background-image: var(--img-grey);
+}
+
+/* L = Asiento disponible (verde) */
+.seat-widget .cell.L {
+  background-image: var(--img-green);
+}
+
+/* B = Baño — admite --img-bano (es) o --img-bath (en) */
+.seat-widget .cell.B {
+  background-image: var(--img-bano, var(--img-bath));
+}
+
+/* E = Escalera — admite --img-escalera (es) o --img-stairs (en) */
+.seat-widget .cell.E {
+  background-image: var(--img-escalera, var(--img-stairs));
+}
+
+/* Puerta: soporta 'U' (tu clase previa) o 'R' (door) */
+/* Usa --img-puerta (es) o --img-door (en) */
+.seat-widget .cell.U,
+.seat-widget .cell.R {
+  background-image: var(--img-puerta, var(--img-door));
+}
+
+/* ======= Número centrado y sin fondo ======= */
+.seat-widget .cell .num {
+  position: absolute;
+  inset: 0;                          /* ocupa todo para centrar fácil */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 12px/1 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: #111;                       /* negro; se lee bien sobre tus PNG */
+  text-shadow: 0 0 1px rgba(255,255,255,.75);
+  pointer-events: none;              /* que no interfiera con el click */
+}
+
+/* Toggle “123”: si NO está .show-nums, escondemos los números */
+.seat-widget .seat-grid:not(.show-nums) .cell .num {
+  display: none;
+}
+
+/* Mensaje ayuda */
+.seat-widget .hint { margin-top: .4rem; color: #666; }
+
+
+/* Por defecto el número está oculto */
+.seat-grid .cell .num { display: none; }
+
+/* Al pulsar 123, mostramos números */
+.seat-grid.show-nums .cell .num { display: flex; }

@@ -7,7 +7,6 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models, transaction, connection
-from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.utils import timezone
 from django.utils.text import slugify
@@ -39,10 +38,6 @@ class City(models.Model):
 
 
 class Terminal(models.Model):
-    """
-    Terminal/Estación de buses de una ciudad.
-    Es opcional para las rutas/viajes (puedes usar solo City).
-    """
     nombre = models.CharField("Nombre", max_length=120, default="Terminal Principal")
     city = models.ForeignKey(City, on_delete=models.PROTECT, related_name="terminals", verbose_name="Ciudad")
     name = models.CharField("Nombre", max_length=160)
@@ -73,13 +68,109 @@ class Company(models.Model):
 
 
 # =========================================================
+# Chofer (Conductor)
+# =========================================================
+class Driver(models.Model):
+    full_name = models.CharField("Nombre completo", max_length=140)
+    rut = models.CharField("RUT", max_length=20, unique=True, db_index=True)
+    email = models.EmailField("Correo electrónico", blank=True, default="")
+    phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
+    license_number = models.CharField("N° Licencia", max_length=30, blank=True)
+    is_active = models.BooleanField("Activo", default=True)
+
+    # Nuevos campos para el módulo de choferes
+    photo = models.ImageField(
+        "Foto", upload_to='drivers/photos/', null=True, blank=True
+    )
+    medical_cert_expiry = models.DateField(
+        "Vencimiento certificado médico", null=True, blank=True
+    )
+    background_check_expiry = models.DateField(
+        "Vencimiento antecedentes", null=True, blank=True
+    )
+    notes = models.TextField("Observaciones", blank=True)
+
+    class Meta:
+        verbose_name = "Chofer"
+        verbose_name_plural = "Choferes"
+        ordering = ("full_name",)
+
+    def __str__(self):
+        return f"{self.full_name} ({self.rut})"
+
+
+class Assistant(models.Model):
+    full_name = models.CharField("Nombre completo", max_length=140)
+    rut = models.CharField("RUT", max_length=20, unique=True, db_index=True)
+    email = models.EmailField("Correo electrónico", blank=True, default="")
+    phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
+    is_active = models.BooleanField("Activo", default=True)
+# NUEVOS CAMPOS
+    photo = models.ImageField(
+        "Foto", upload_to='assistants/photos/', null=True, blank=True
+    )
+    notes = models.TextField("Observaciones", blank=True)
+
+    class Meta:
+        verbose_name = "Auxiliar"
+        verbose_name_plural = "Auxiliares"
+        ordering = ("full_name",)
+
+    def __str__(self):
+        return f"{self.full_name} ({self.rut})"
+
+
+# =========================================================
+# Plantilla de diseño de bus (BusLayout)
+# =========================================================
+class BusLayout(models.Model):
+    name = models.CharField("Nombre del mapa", max_length=120, unique=True)
+    slug = models.SlugField(max_length=140, unique=True, blank=True)
+
+    floors = models.PositiveSmallIntegerField(default=1)
+    rows_lower = models.PositiveSmallIntegerField(default=0)
+    rows_upper = models.PositiveSmallIntegerField(default=0)
+    cols = models.PositiveSmallIntegerField(default=4)
+
+    layout_lower = models.JSONField(default=list, blank=True)
+    layout_upper = models.JSONField(default=list, blank=True)
+    numbers_lower = models.JSONField(default=list, blank=True)
+    numbers_upper = models.JSONField(default=list, blank=True)
+
+    prefix_lower = models.CharField(max_length=10, blank=True, default="")
+    prefix_upper = models.CharField(max_length=10, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mapa de bus"
+        verbose_name_plural = "Mapas de bus"
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name)[:130]
+            slug = base
+            i = 1
+            while BusLayout.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{i}"
+                i += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+
+# =========================================================
+# Bus con diseño de asientos (layout)
+# =========================================================
+# =========================================================
 # Bus con diseño de asientos (layout)
 # =========================================================
 class Bus(models.Model):
-    """
-    Bus con layout por pisos. 
-    Tipos: L (asiento), P (pasillo), X (bloqueo), E (escalera), D (puerta), B (baño)
-    """
+    # --- Campos existentes (no se tocan) ---
     company = models.ForeignKey(Company, verbose_name="Empresa", on_delete=models.PROTECT)
 
     plate = models.CharField("Patente", max_length=30, unique=True)
@@ -96,6 +187,9 @@ class Bus(models.Model):
     prefix_upper = models.CharField("Prefijo piso superior", max_length=5, blank=True, default="")
     prefix_lower = models.CharField("Prefijo piso inferior", max_length=5, blank=True, default="")
 
+    services_lower = models.JSONField("Servicios inferiores", default=list, blank=True)
+    services_upper = models.JSONField("Servicios superiores", default=list, blank=True)
+
     layout_upper = models.JSONField("Layout superior", default=list, blank=True)
     layout_lower = models.JSONField("Layout inferior", default=list, blank=True)
     numbers_upper = models.JSONField("Números superiores", default=list, blank=True)
@@ -107,6 +201,102 @@ class Bus(models.Model):
         on_delete=models.SET_NULL,
         verbose_name="Mapa (plantilla)"
     )
+
+    # ==================== NUEVOS CAMPOS ====================
+    # Datos del propietario
+    owner_first_name = models.CharField(
+        "Nombres del propietario", max_length=100, blank=True
+    )
+    owner_last_name = models.CharField(
+        "Apellidos del propietario", max_length=100, blank=True
+    )
+
+    # Documentos y registro
+    circulation_card = models.CharField(
+        "Tarjeta de circulación", max_length=50, blank=True, unique=True, null=True
+    )
+    vehicle_class = models.CharField(
+        "Clase", max_length=50, blank=True,
+        choices=[
+            ('BUS RURAL', 'BUS RURAL'),
+            ('BUS URBANO', 'BUS URBANO'),
+            ('OMNIBUS', 'OMNIBUS'),
+            ('N3-CAMION', 'N3-CAMION'),
+            ('OTRO', 'OTRO'),
+        ],
+        default='BUS RURAL'
+    )
+    brand = models.CharField("Marca", max_length=80, blank=True)
+    manufacturing_year = models.PositiveIntegerField(
+        "Año fabricación", null=True, blank=True
+    )
+    fuel_type = models.CharField(
+        "Tipo combustible", max_length=30, blank=True,
+        choices=[
+            ('Gasolina', 'Gasolina'),
+            ('Diesel', 'Diesel'),
+            ('Gas Licuado de Petróleo', 'GLP'),
+            ('Eléctrico', 'Eléctrico'),
+        ],
+        default='Diesel'
+    )
+    bodywork = models.CharField("Carrocería", max_length=50, blank=True)
+    axles = models.PositiveSmallIntegerField("Ejes", default=2)
+    color = models.CharField("Color", max_length=100, blank=True)
+    engine_number = models.CharField("N° Motor", max_length=50, blank=True)
+    cylinders = models.PositiveSmallIntegerField(
+        "Cantidad de cilindros", null=True, blank=True
+    )
+    serial_number = models.CharField(
+        "N° Serie (VIN)", max_length=50, blank=True, unique=True, null=True
+    )
+    wheels_count = models.PositiveSmallIntegerField("Cantidad de ruedas", default=6)
+    dry_weight = models.DecimalField(
+        "Peso seco (kg)", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    gross_weight = models.DecimalField(
+        "Peso bruto (kg)", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    length = models.DecimalField(
+        "Longitud (m)", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    height = models.DecimalField(
+        "Altura (m)", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    width = models.DecimalField(
+        "Ancho (m)", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    total_passengers = models.PositiveSmallIntegerField("Total pasajeros", default=0)
+    total_seats = models.PositiveSmallIntegerField("Total asientos", default=0)
+    service_type = models.CharField(
+        "Tipo servicio", max_length=30, blank=True,
+        choices=[
+            ('semi_cama', 'Semi Cama'),
+            ('cama', 'Cama'),
+            ('ejecutivo', 'Ejecutivo'),
+            ('rural', 'Rural'),
+        ],
+        default='semi_cama'
+    )
+
+    # Fechas de documentos (nuevas)
+    technical_review_expiry = models.DateField(
+        "Vencimiento revisión técnica", null=True, blank=True
+    )
+    insurance_expiry = models.DateField(
+        "Vencimiento seguro", null=True, blank=True
+    )
+    permit_expiry = models.DateField(
+        "Vencimiento permiso circulación", null=True, blank=True
+    )
+    last_maintenance = models.DateField(
+        "Último mantenimiento", null=True, blank=True
+    )
+
+    # Estado activo/inactivo
+    is_active = models.BooleanField("Activo", default=True)
+
+    # ========== FIN NUEVOS CAMPOS ==========
 
     class Meta:
         verbose_name = "Bus"
@@ -121,7 +311,6 @@ class Bus(models.Model):
             parts.append(self.plate)
         return " — ".join(parts) or f"Bus #{self.pk}"
 
-    # ======= Métodos efectivos =======
     def effective_floors(self) -> int:
         return int(self.floors or 1)
 
@@ -134,7 +323,6 @@ class Bus(models.Model):
     def effective_rows_upper(self) -> int:
         return int(self.rows_upper or 0)
 
-    # -------- Dimensiones --------
     def grid_len_lower(self) -> int:
         return self.effective_rows_lower() * self.effective_cols()
 
@@ -149,24 +337,77 @@ class Bus(models.Model):
             for c in range(cols):
                 yield r, c, (r * cols + c)
 
-    # -------- Normalización Mejorada (Solo para nuevos o vacíos) --------
     def ensure_layouts(self):
         """
-        Asegura que los arrays existan. Si están vacíos, los inicializa como Asientos (L).
-        Si ya tienen datos (como tus pasillos 'P'), NO los toca.
+        Asegura que layout, numbers y services tengan el tamaño correcto.
+        Si una celda tipo 'L' no tiene número, asigna uno provisional usando el prefijo.
         """
         gl_lower = self.grid_len_lower()
+
+        # PISO INFERIOR
         if not self.layout_lower or len(self.layout_lower) == 0:
             self.layout_lower = ["L"] * gl_lower
-            self.numbers_lower = [""] * gl_lower
+        elif len(self.layout_lower) < gl_lower:
+            self.layout_lower.extend(["L"] * (gl_lower - len(self.layout_lower)))
+        else:
+            self.layout_lower = self.layout_lower[:gl_lower]
 
+        if not self.numbers_lower or len(self.numbers_lower) == 0:
+            self.numbers_lower = [""] * gl_lower
+        elif len(self.numbers_lower) < gl_lower:
+            self.numbers_lower.extend([""] * (gl_lower - len(self.numbers_lower)))
+        else:
+            self.numbers_lower = self.numbers_lower[:gl_lower]
+
+        if not self.services_lower or len(self.services_lower) == 0:
+            self.services_lower = ["semi_cama"] * gl_lower
+        elif len(self.services_lower) < gl_lower:
+            self.services_lower.extend(["semi_cama"] * (gl_lower - len(self.services_lower)))
+        else:
+            self.services_lower = self.services_lower[:gl_lower]
+
+        counter = 1
+        for i, typ in enumerate(self.layout_lower):
+            if typ == "L" and (i >= len(self.numbers_lower) or not self.numbers_lower[i]):
+                prefix = getattr(self, 'prefix_lower', '')
+                self.numbers_lower[i] = f"{prefix}{counter}"
+                counter += 1
+
+        # PISO SUPERIOR
         if self.effective_floors() >= 2:
             gl_upper = self.grid_len_upper()
             if not self.layout_upper or len(self.layout_upper) == 0:
                 self.layout_upper = ["L"] * gl_upper
-                self.numbers_upper = [""] * gl_upper
+            elif len(self.layout_upper) < gl_upper:
+                self.layout_upper.extend(["L"] * (gl_upper - len(self.layout_upper)))
+            else:
+                self.layout_upper = self.layout_upper[:gl_upper]
 
-    # -------- Regeneración de asientos (REVISADO) --------
+            if not self.numbers_upper or len(self.numbers_upper) == 0:
+                self.numbers_upper = [""] * gl_upper
+            elif len(self.numbers_upper) < gl_upper:
+                self.numbers_upper.extend([""] * (gl_upper - len(self.numbers_upper)))
+            else:
+                self.numbers_upper = self.numbers_upper[:gl_upper]
+
+            if not self.services_upper or len(self.services_upper) == 0:
+                self.services_upper = ["semi_cama"] * gl_upper
+            elif len(self.services_upper) < gl_upper:
+                self.services_upper.extend(["semi_cama"] * (gl_upper - len(self.services_upper)))
+            else:
+                self.services_upper = self.services_upper[:gl_upper]
+
+            counter = 1
+            for i, typ in enumerate(self.layout_upper):
+                if typ == "L" and (i >= len(self.numbers_upper) or not self.numbers_upper[i]):
+                    prefix = getattr(self, 'prefix_upper', '')
+                    self.numbers_upper[i] = f"{prefix}{counter}"
+                    counter += 1
+        else:
+            self.layout_upper = []
+            self.numbers_upper = []
+            self.services_upper = []
+
     def regenerate_seats(self) -> int:
         SeatModel = apps.get_model(self._meta.app_label, "Seat")
         TripModel = apps.get_model(self._meta.app_label, "Trip")
@@ -174,26 +415,24 @@ class Bus(models.Model):
         with transaction.atomic():
             SeatModel.objects.filter(bus=self).delete()
             created = 0
-
             POSITIONS = ["A", "B", "C", "D", "E", "F"]
 
-            def _create_for(deck_num: int, rows: int, layout: list, numbers: list, prefix: str):
+            def _create_for(deck_num, rows, layout, numbers, services, prefix):
                 nonlocal created
                 counter = 1
-
                 for r, c, idx in self._iter_cells(rows):
                     if idx >= len(layout):
                         continue
-
                     typ = layout[idx]
-
                     if typ == "L":
                         custom_num = str(numbers[idx]).strip() if idx < len(numbers) else ""
                         number = custom_num if custom_num else f"{prefix}{counter}"
                         if not custom_num:
                             counter += 1
-
                         position = POSITIONS[c] if c < len(POSITIONS) else "A"
+                        service = "semi_cama"
+                        if idx < len(services) and services[idx] in ['semi_cama', 'cama', 'ejecutivo']:
+                            service = services[idx]
 
                         SeatModel.objects.create(
                             bus=self,
@@ -201,7 +440,8 @@ class Bus(models.Model):
                             row=r + 1,
                             position=position,
                             number=number,
-                            is_occupied=False
+                            is_occupied=False,
+                            seat_service=service
                         )
                         created += 1
 
@@ -210,15 +450,16 @@ class Bus(models.Model):
                 self.effective_rows_lower(),
                 self.layout_lower,
                 self.numbers_lower,
+                self.services_lower,
                 self.prefix_lower
             )
-
             if self.effective_floors() >= 2:
                 _create_for(
                     2,
                     self.effective_rows_upper(),
                     self.layout_upper,
                     self.numbers_upper,
+                    self.services_upper,
                     self.prefix_upper
                 )
 
@@ -228,12 +469,63 @@ class Bus(models.Model):
         return created
 
     def save(self, *args, **kwargs):
-        # Aseguramos que existan layouts básicos antes de guardar si es nuevo
         if not self.pk:
             self.ensure_layouts()
         super().save(*args, **kwargs)
 
+# =========================================================
+# Documentos de Chofer
+# =========================================================
+class DriverDocument(models.Model):
+    DOC_TYPES = (
+        ('license', 'Licencia de conducir'),
+        ('medical', 'Certificado médico'),
+        ('background', 'Antecedentes'),
+        ('other', 'Otro'),
+    )
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='documents')
+    doc_type = models.CharField("Tipo", max_length=20, choices=DOC_TYPES)
+    document_number = models.CharField("Número documento", max_length=50, blank=True)
+    issue_date = models.DateField("Fecha emisión", null=True, blank=True)
+    expiry_date = models.DateField("Fecha vencimiento")
+    notes = models.TextField("Observaciones", blank=True)
+    file = models.FileField("Archivo", upload_to='driver_docs/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        verbose_name = "Documento de chofer"
+        verbose_name_plural = "Documentos de choferes"
+        ordering = ('expiry_date',)
+
+    def __str__(self):
+        return f"{self.driver.full_name} - {self.get_doc_type_display()}"
+
+# =========================================================
+# Documentos de Vehículo (Bus)
+# =========================================================
+class BusDocument(models.Model):
+    DOC_TYPES = (
+        ('technical', 'Revisión técnica'),
+        ('insurance', 'Seguro'),
+        ('permit', 'Permiso de circulación'),
+        ('other', 'Otro'),
+    )
+    bus = models.ForeignKey(Bus, on_delete=models.CASCADE, related_name='documents')
+    doc_type = models.CharField("Tipo", max_length=20, choices=DOC_TYPES)
+    document_number = models.CharField("Número documento", max_length=50, blank=True)
+    issue_date = models.DateField("Fecha emisión", null=True, blank=True)
+    expiry_date = models.DateField("Fecha vencimiento")
+    notes = models.TextField("Observaciones", blank=True)
+    file = models.FileField("Archivo", upload_to='bus_docs/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento de bus"
+        verbose_name_plural = "Documentos de buses"
+        ordering = ('expiry_date',)
+
+    def __str__(self):
+        return f"{self.bus.plate} - {self.get_doc_type_display()}"
 # =========================================================
 # Rutas y viajes
 # =========================================================
@@ -256,12 +548,15 @@ class Route(models.Model):
     )
     duration_minutes = models.PositiveIntegerField("Duración (min)", default=120)
     base_price = models.DecimalField("Precio base", max_digits=10, decimal_places=2)
+    
+    is_active = models.BooleanField("Activa", default=True)
 
     class Meta:
         unique_together = ("origin", "destination", "origin_terminal", "destination_terminal")
         verbose_name = "Ruta"
         verbose_name_plural = "Rutas"
         ordering = ("origin__name", "destination__name")
+        
 
     def __str__(self) -> str:
         base = f"{self.origin} → {self.destination}"
@@ -279,6 +574,20 @@ class Trip(models.Model):
     arrival = models.DateTimeField("Llegada")
     seats_total = models.PositiveIntegerField("Asientos totales", default=0)
 
+    # 🔥 NUEVOS CAMPOS: choferes y auxiliar (CORREGIDO: driver1 ahora usa Driver)
+    driver1 = models.ForeignKey(
+        Driver, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="trips_as_driver1", verbose_name="Chofer principal"
+    )
+    driver2 = models.ForeignKey(
+        Driver, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="trips_as_driver2", verbose_name="Segundo chofer"
+    )
+    assistant = models.ForeignKey(
+        Assistant, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="trips", verbose_name="Auxiliar"
+    )
+
     class Meta:
         verbose_name = "Viaje"
         verbose_name_plural = "Viajes"
@@ -289,7 +598,17 @@ class Trip(models.Model):
 
 
 # =========================================================
-# Asientos, Holds y Tickets
+# Tipos de servicio de asiento
+# =========================================================
+SEAT_SERVICE_CHOICES = [
+    ('semi_cama', 'Semi Cama'),
+    ('cama', 'Cama'),
+    ('ejecutivo', 'Ejecutivo'),
+]
+
+
+# =========================================================
+# Asientos
 # =========================================================
 class Seat(models.Model):
     bus = models.ForeignKey(Bus, on_delete=models.CASCADE, related_name="seats")
@@ -297,15 +616,24 @@ class Seat(models.Model):
     row = models.PositiveSmallIntegerField("Fila")
     position = models.CharField(
         "Posición", max_length=1,
-        choices=[("A","A"),("B","B"),("C","C"),("D","D"),("E","E"),("F","F")]
+        choices=[("A", "A"), ("B", "B"), ("C", "C"), ("D", "D"), ("E", "E"), ("F", "F")]
     )
     number = models.CharField("Número", max_length=10)
+    seat_service = models.CharField(
+        "Tipo de asiento",
+        max_length=20,
+        choices=SEAT_SERVICE_CHOICES,
+        default='semi_cama'
+    )
     is_window = models.BooleanField("Ventana", default=False)
     is_occupied = models.BooleanField("Ocupado", default=False)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["bus", "deck", "number"], name="uniq_seat_per_bus_deck_number")
+            models.UniqueConstraint(
+                fields=["bus", "deck", "number"],
+                name="uniq_seat_per_bus_deck_number"
+            )
         ]
         verbose_name = "Asiento"
         verbose_name_plural = "Asientos"
@@ -315,9 +643,44 @@ class Seat(models.Model):
         return f"{self.bus.plate} D{self.deck} #{self.number}"
 
 
+# =========================================================
+# Cliente (definido antes de Ticket para evitar importaciones circulares)
+# =========================================================
+class Customer(models.Model):
+    national_id = models.CharField("RUT/Documento", max_length=40, unique=True, db_index=True)
+    full_name = models.CharField("Nombre completo", max_length=140)
+    phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
+    email = models.EmailField("Email", blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Cliente"
+        verbose_name_plural = "Clientes"
+        ordering = ("full_name",)
+
+    def __str__(self):
+        return f"{self.full_name} ({self.national_id})"
+
+    def save(self, *args, **kwargs):
+        if self.national_id:
+            self.national_id = self._clean_rut(self.national_id)
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def _clean_rut(rut: str) -> str:
+        rut = rut.upper().replace(".", "").replace("-", "").strip()
+        if rut and rut[-1] in "0123456789K":
+            return rut
+        return rut
+
+
+# =========================================================
+# Bloqueos temporales (SeatHold)
+# =========================================================
 class SeatHold(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="holds")
-    seat = models.ForeignKey("Seat", on_delete=models.CASCADE, related_name="holds")
+    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, related_name="holds")
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="seat_holds")
     expires_at = models.DateTimeField()
     active = models.BooleanField(default=True)
@@ -342,10 +705,6 @@ class SeatHold(models.Model):
 
     @classmethod
     def hold(cls, trip, seat, user, minutes: int = 10):
-        from datetime import timedelta
-        from django.db import transaction
-        from .models import Ticket
-
         now = timezone.now()
         new_expire = now + timedelta(minutes=minutes)
 
@@ -353,6 +712,8 @@ class SeatHold(models.Model):
             cls.cleanup()
             s = Seat.objects.select_for_update().get(pk=seat.pk)
 
+            # Verificar si el asiento ya está vendido
+            Ticket = apps.get_model('booking', 'Ticket')  # Reemplaza 'booking' por tu app_label
             if Ticket.objects.filter(trip=trip, seat=s).exists() or getattr(s, "is_occupied", False):
                 raise ValueError("Asiento ocupado.")
 
@@ -379,13 +740,15 @@ class SeatHold(models.Model):
 
     @classmethod
     def release(cls, trip, seat, user) -> int:
-        from django.db import transaction
         with transaction.atomic():
             return cls.objects.filter(
                 trip=trip, seat=seat, user=user, active=True
             ).update(active=False)
 
 
+# =========================================================
+# Boletos (Ticket)
+# =========================================================
 class Ticket(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.PROTECT, related_name="tickets")
     seat = models.ForeignKey(Seat, on_delete=models.PROTECT, related_name="tickets")
@@ -394,7 +757,7 @@ class Ticket(models.Model):
     national_id = models.CharField("Documento", max_length=40, blank=True, default="")
 
     customer = models.ForeignKey(
-        'Customer',
+        Customer,
         on_delete=models.SET_NULL,
         null=True, blank=True,
         verbose_name="Cliente",
@@ -468,8 +831,8 @@ class Ticket(models.Model):
 
             if not customer and national_id:
                 try:
-                    from .models import Customer
-                    customer_obj, _ = Customer.objects.get_or_create(
+                    CustomerModel = apps.get_model(cls._meta.app_label, "Customer")
+                    customer_obj, _ = CustomerModel.objects.get_or_create(
                         national_id=national_id,
                         defaults={'full_name': buyer_name}
                     )
@@ -523,8 +886,8 @@ class Ticket(models.Model):
 
             if not customer and national_id:
                 try:
-                    from .models import Customer
-                    customer_obj, created = Customer.objects.get_or_create(
+                    CustomerModel = apps.get_model(cls._meta.app_label, "Customer")
+                    customer_obj, created = CustomerModel.objects.get_or_create(
                         national_id=national_id,
                         defaults={'full_name': buyer_name}
                     )
@@ -561,8 +924,8 @@ class Ticket(models.Model):
             return self.customer
         if self.national_id:
             try:
-                from .models import Customer
-                customer, created = Customer.objects.get_or_create(
+                CustomerModel = apps.get_model(self._meta.app_label, "Customer")
+                customer, created = CustomerModel.objects.get_or_create(
                     national_id=self.national_id,
                     defaults={'full_name': self.buyer_name}
                 )
@@ -584,46 +947,6 @@ class Ticket(models.Model):
         if self.customer:
             return self.customer.national_id
         return self.national_id
-
-
-class BusLayout(models.Model):
-    name = models.CharField("Nombre del mapa", max_length=120, unique=True)
-    slug = models.SlugField(max_length=140, unique=True, blank=True)
-
-    floors = models.PositiveSmallIntegerField(default=1)
-    rows_lower = models.PositiveSmallIntegerField(default=0)
-    rows_upper = models.PositiveSmallIntegerField(default=0)
-    cols = models.PositiveSmallIntegerField(default=4)
-
-    layout_lower  = models.JSONField(default=list, blank=True)
-    layout_upper  = models.JSONField(default=list, blank=True)
-    numbers_lower = models.JSONField(default=list, blank=True)
-    numbers_upper = models.JSONField(default=list, blank=True)
-
-    prefix_lower = models.CharField(max_length=10, blank=True, default="")
-    prefix_upper = models.CharField(max_length=10, blank=True, default="")
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = "Mapa de bus"
-        verbose_name_plural = "Mapas de bus"
-        ordering = ("name",)
-
-    def __str__(self):
-        return self.name
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base = slugify(self.name)[:130]
-            slug = base
-            i = 1
-            while BusLayout.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base}-{i}"
-                i += 1
-            self.slug = slug
-        super().save(*args, **kwargs)
 
 
 # =========================================================
@@ -668,13 +991,13 @@ class DailyReport(models.Model):
 
 
 # =========================================================
-# Perfil de Usuario (UNIFICADO)
+# Perfil de Usuario
 # =========================================================
 class UserProfile(models.Model):
     ROLE_CHOICES = (
         ('admin', 'Administrador'),
         ('supervisor', 'Supervisor'),
-        ('coordinator', 'Coordinador'), 
+        ('coordinator', 'Coordinador'),
         ('vendedor', 'Vendedor'),
         ('cajero', 'Cajero'),
     )
@@ -732,49 +1055,42 @@ class UserProfile(models.Model):
         except Exception:
             role_display = self.role
         return f"{getattr(self.user, 'username', 'user')} - {role_display}"
+    
+    
+class RouteStop(models.Model):
+    route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name='stops')
+    city = models.ForeignKey(City, on_delete=models.PROTECT, verbose_name="Ciudad")
+    terminal = models.ForeignKey(Terminal, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Terminal (opcional)")
+    order = models.PositiveSmallIntegerField("Orden", help_text="Orden de la parada en la ruta (1,2,3...)")
+    extra_price = models.DecimalField("Precio adicional", max_digits=10, decimal_places=2, default=0)
+    is_mandatory = models.BooleanField("Parada obligatoria", default=True)
+    notes = models.CharField("Notas", max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['order']
+        unique_together = [['route', 'order']]
+        verbose_name = "Parada intermedia"
+        verbose_name_plural = "Paradas intermedias"
+
+    def __str__(self):
+        return f"{self.route} - {self.order}: {self.city}"
+    
 
 
-# =========================================================
-# Señales: creación/actualización automática del perfil
-# =========================================================
-# (Comentadas – se pueden activar si se desea crear perfil automáticamente)
-# @receiver(post_save, sender=settings.AUTH_USER_MODEL)
-# def create_or_update_user_profile(sender, instance, created, **kwargs):
-#     if created:
-#         UserProfile.objects.create(user=instance)
-#     else:
-#         UserProfile.objects.get_or_create(user=instance)
-#         if hasattr(instance, 'profile'):
-#             instance.profile.save()
-
-
-# =========================================================
-# Modelo de Cliente para ventas recurrentes
-# =========================================================
-class Customer(models.Model):
-    national_id = models.CharField("RUT/Documento", max_length=40, unique=True, db_index=True)
-    full_name = models.CharField("Nombre completo", max_length=140)
-    phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
-    email = models.EmailField("Email", blank=True, default="")
+class Agency(models.Model):
+    name = models.CharField("Nombre de la agencia", max_length=120, unique=True)
+    city = models.ForeignKey(City, on_delete=models.PROTECT, verbose_name="Ciudad")
+    address = models.CharField("Dirección", max_length=200, blank=True)
+    phone = models.CharField("Teléfono", max_length=20, blank=True)
+    email = models.EmailField("Correo electrónico", blank=True)
+    is_active = models.BooleanField("Activa", default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Cliente"
-        verbose_name_plural = "Clientes"
-        ordering = ("full_name",)
+        verbose_name = "Agencia"
+        verbose_name_plural = "Agencias"
+        ordering = ("name",)
 
     def __str__(self):
-        return f"{self.full_name} ({self.national_id})"
-
-    def save(self, *args, **kwargs):
-        if self.national_id:
-            self.national_id = self._clean_rut(self.national_id)
-        super().save(*args, **kwargs)
-
-    @staticmethod
-    def _clean_rut(rut: str) -> str:
-        rut = rut.upper().replace(".", "").replace("-", "").strip()
-        if rut and rut[-1] in "0123456789K":
-            return rut
-        return rut
+        return self.name

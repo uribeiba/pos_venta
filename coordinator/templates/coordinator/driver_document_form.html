@@ -1,0 +1,39 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}{% if doc %}Editar{% else %}Nuevo{% endif %} documento{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3>{% if doc %}Editar documento{% else %}Nuevo documento para {{ driver.full_name }}{% endif %}</h3></div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label>Tipo de documento</label>
+                <select name="doc_type" class="form-select" required>
+                    <option value="">Seleccione</option>
+                    {% for value, label in doc_types %}
+                        <option value="{{ value }}" {% if doc.doc_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label>Número de documento (opcional)</label>
+                <input type="text" name="doc_number" value="{{ doc.doc_number|default:'' }}" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label>Fecha de emisión</label>
+                <input type="date" name="issue_date" value="{{ doc.issue_date|date:'Y-m-d'|default:'' }}" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label>Fecha de vencimiento</label>
+                <input type="date" name="expiry_date" value="{{ doc.expiry_date|date:'Y-m-d'|default:'' }}" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Observaciones</label>
+                <textarea name="notes" class="form-control" rows="3">{{ doc.notes|default:'' }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Guardar</button>
+            <a href="{% url 'coordinator:driver_documents' driver.id %}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

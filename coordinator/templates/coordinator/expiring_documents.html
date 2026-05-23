@@ -1,0 +1,80 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Documentos por vencer{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-file-alt"></i> Documentos próximos a vencer (30 días)</h3>
+    </div>
+    <div class="card-body">
+        <!-- Choferes -->
+        <h4>Choferes</h4>
+        {% if drivers %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nombre</th><th>RUT</th><th>Licencia vence</th><th>Cert. médico vence</th><th>Antecedentes vence</th><th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for driver in drivers %}
+                        <tr>
+                            <td>{{ driver.full_name }}</td>
+                            <td>{{ driver.rut }}</td>
+                            <td class="{% if driver.license_expiry <= today %}text-danger{% elif driver.license_expiry <= threshold %}text-warning{% endif %}">
+                                {{ driver.license_expiry|date:"d/m/Y"|default:"—" }}
+                            </td>
+                            <td class="{% if driver.medical_cert_expiry <= today %}text-danger{% elif driver.medical_cert_expiry <= threshold %}text-warning{% endif %}">
+                                {{ driver.medical_cert_expiry|date:"d/m/Y"|default:"—" }}
+                            </td>
+                            <td class="{% if driver.background_check_expiry <= today %}text-danger{% elif driver.background_check_expiry <= threshold %}text-warning{% endif %}">
+                                {{ driver.background_check_expiry|date:"d/m/Y"|default:"—" }}
+                            </td>
+                            <td><a href="{% url 'coordinator:driver_edit' driver.id %}" class="btn btn-sm btn-warning">Editar</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No hay choferes con documentos próximos a vencer.</p>
+        {% endif %}
+
+        <hr>
+
+        <!-- Buses -->
+        <h4>Vehículos (Buses)</h4>
+        {% if buses %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Patente</th><th>Modelo</th><th>Revisión técnica</th><th>Seguro</th><th>Permiso circulación</th><th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bus in buses %}
+                        <tr>
+                            <td>{{ bus.plate }}</td>
+                            <td>{{ bus.model|default:"—" }}</td>
+                            <td class="{% if bus.technical_review_expiry <= today %}text-danger{% elif bus.technical_review_expiry <= threshold %}text-warning{% endif %}">
+                                {{ bus.technical_review_expiry|date:"d/m/Y"|default:"—" }}
+                            </td>
+                            <td class="{% if bus.insurance_expiry <= today %}text-danger{% elif bus.insurance_expiry <= threshold %}text-warning{% endif %}">
+                                {{ bus.insurance_expiry|date:"d/m/Y"|default:"—" }}
+                            </td>
+                            <td class="{% if bus.permit_expiry <= today %}text-danger{% elif bus.permit_expiry <= threshold %}text-warning{% endif %}">
+                                {{ bus.permit_expiry|date:"d/m/Y"|default:"—" }}
+                            </td>
+                            <td><a href="{% url 'coordinator:bus_editor' bus.id %}" class="btn btn-sm btn-warning">Editar bus</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>No hay buses con documentos próximos a vencer.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

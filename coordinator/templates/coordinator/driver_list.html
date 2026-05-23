@@ -1,0 +1,36 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Choferes{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <h3>Choferes</h3>
+        <a href="{% url 'coordinator:driver_new' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Nuevo chofer</a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th>RUT</th><th>Teléfono</th><th>Email</th><th>Licencia</th><th>Activo</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for driver in drivers %}
+                <tr>
+                    <td>{{ driver.full_name }}</td>
+                    <td>{{ driver.rut }}</td>
+                    <td>{{ driver.phone|default:"—" }}</td>
+                    <td>{{ driver.email|default:"—" }}</td>
+                    <td>{{ driver.license_number|default:"—" }}</td>
+                    <td>{% if driver.is_active %}✅{% else %}❌{% endif %}</td>
+                    <td>
+                        <a href="{% url 'coordinator:driver_edit' driver.id %}" class="btn btn-sm btn-warning">Editar</a>
+                        <a href="{% url 'coordinator:driver_delete' driver.id %}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar?')">Eliminar</a>
+                        <a href="{% url 'coordinator:driver_documents' driver.id %}" class="btn btn-sm btn-info">Documentos</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7">No hay choferes registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

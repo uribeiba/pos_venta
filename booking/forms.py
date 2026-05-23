@@ -2,11 +2,15 @@
 from __future__ import annotations
 from django import forms
 from .models import Bus, BusLayout
-
 from django.contrib.auth import get_user_model
 from .models import UserProfile
-
 import json
+from .models import Driver  # asegúrate de importar Driver
+from .models import Assistant
+from .models import Route, RouteStop, City, Terminal, Agency
+from .models import Trip
+
+
 
 class BusWizardForm(forms.ModelForm):
     """
@@ -231,3 +235,299 @@ class BusAdminForm(forms.ModelForm):
                     }
                 ))
             field.choices = choices
+
+
+class DriverForm(forms.ModelForm):
+    class Meta:
+        model = Driver
+        fields = [
+            'full_name', 'rut', 'phone', 'email', 'license_number',
+            'medical_cert_expiry', 'background_check_expiry', 'photo', 'notes', 'is_active'
+        ]
+        widgets = {
+            'full_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre completo'}),
+            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12.345.678-9'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'conductor@empresa.cl'}),
+            'license_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° licencia'}),
+            'medical_cert_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'background_check_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Observaciones (opcional)'}),
+            'photo': forms.ClearableFileInput(attrs={'class': 'form-control-file'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+        }
+        labels = {
+            'full_name': 'NOMBRE COMPLETO',
+            'rut': 'RUT',
+            'phone': 'TELÉFONO',
+            'email': 'CORREO ELECTRÓNICO',
+            'license_number': 'Nº LICENCIA',
+            'medical_cert_expiry': 'VENCIMIENTO CERT. MÉDICO',
+            'background_check_expiry': 'VENCIMIENTO ANTECEDENTES',
+            'photo': 'FOTO',
+            'notes': 'OBSERVACIONES',
+            'is_active': 'ACTIVO',
+        }
+        
+
+
+class AssistantForm(forms.ModelForm):
+    class Meta:
+        model = Assistant
+        fields = ['full_name', 'rut', 'phone', 'email', 'photo', 'notes', 'is_active']
+        widgets = {
+            'full_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre completo'}),
+            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12.345.678-9'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'auxiliar@empresa.cl'}),
+            'photo': forms.ClearableFileInput(attrs={'class': 'form-control-file'}),
+            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Observaciones (opcional)'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+        }
+        labels = {
+            'full_name': 'NOMBRE COMPLETO',
+            'rut': 'RUT',
+            'phone': 'TELÉFONO',
+            'email': 'CORREO ELECTRÓNICO',
+            'photo': 'FOTO',
+            'notes': 'OBSERVACIONES',
+            'is_active': 'ACTIVO',
+        }
+
+
+class TerminalForm(forms.ModelForm):
+    class Meta:
+        model = Terminal
+        fields = ['name', 'city', 'address', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre de la terminal'}),
+            'city': forms.Select(attrs={'class': 'form-select'}),
+            'address': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Dirección'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+        }
+        labels = {
+            'name': 'NOMBRE',
+            'city': 'CIUDAD',
+            'address': 'DIRECCIÓN',
+            'is_active': 'ACTIVO',
+        }
+        
+  
+class RouteForm(forms.ModelForm):
+    class Meta:
+        model = Route
+        fields = ['origin', 'destination', 'origin_terminal', 'destination_terminal', 'duration_minutes', 'base_price', 'is_active']
+        widgets = {
+            'origin': forms.Select(attrs={'class': 'form-select'}),
+            'destination': forms.Select(attrs={'class': 'form-select'}),
+            'origin_terminal': forms.Select(attrs={'class': 'form-select'}),
+            'destination_terminal': forms.Select(attrs={'class': 'form-select'}),
+            'duration_minutes': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'base_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': 0}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+        }
+        labels = {
+            'origin': 'ORIGEN',
+            'destination': 'DESTINO',
+            'origin_terminal': 'TERMINAL ORIGEN (opcional)',
+            'destination_terminal': 'TERMINAL DESTINO (opcional)',
+            'duration_minutes': 'DURACIÓN (min)',
+            'base_price': 'PRECIO BASE ($)',
+            'is_active': 'ACTIVO',
+        }
+
+# Formset para paradas
+RouteStopFormSet = forms.inlineformset_factory(
+    Route, RouteStop,
+    fields=['city', 'terminal', 'order', 'extra_price', 'is_mandatory', 'notes'],
+    extra=1,
+    can_delete=True,
+    widgets={
+        'city': forms.Select(attrs={'class': 'form-select'}),
+        'terminal': forms.Select(attrs={'class': 'form-select'}),
+        'order': forms.NumberInput(attrs={'class': 'form-control', 'style': 'width:80px'}),
+        'extra_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        'is_mandatory': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        'notes': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Opcional'}),
+    },
+    labels={
+        'city': 'Ciudad',
+        'terminal': 'Terminal (opcional)',
+        'order': 'Orden',
+        'extra_price': 'Precio adicional',
+        'is_mandatory': 'Obligatoria',
+        'notes': 'Notas',
+    }
+)
+
+class CityForm(forms.ModelForm):
+    class Meta:
+        model = City
+        fields = ['name']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Santiago'}),
+        }
+        labels = {
+            'name': 'NOMBRE DE LA CIUDAD',
+        }
+
+class BusFullForm(forms.ModelForm):
+    class Meta:
+        model = Bus
+        fields = [
+            # Empresa y datos básicos (ya existentes)
+            'company', 'plate', 'model', 'year',
+            'floors', 'rows_lower', 'rows_upper', 'cols',
+            'prefix_lower', 'prefix_upper',
+            # Nuevos campos
+            'owner_first_name', 'owner_last_name',
+            'circulation_card', 'vehicle_class', 'brand', 'manufacturing_year',
+            'fuel_type', 'bodywork', 'axles', 'color', 'engine_number',
+            'cylinders', 'serial_number', 'wheels_count', 'dry_weight',
+            'gross_weight', 'length', 'height', 'width', 'total_passengers',
+            'total_seats', 'service_type',
+            # Fechas de documentos
+            'technical_review_expiry', 'insurance_expiry', 'permit_expiry', 'last_maintenance',
+            'is_active',  # si lo tienes, sino agregar
+        ]
+        widgets = {
+            'company': forms.Select(attrs={'class': 'form-select'}),
+            'plate': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ABC-123'}),
+            'model': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Omnibus GX'}),
+            'year': forms.NumberInput(attrs={'class': 'form-control', 'min': 1980, 'max': 2030}),
+            'floors': forms.NumberInput(attrs={'class': 'form-control'}),
+            'rows_lower': forms.NumberInput(attrs={'class': 'form-control'}),
+            'rows_upper': forms.NumberInput(attrs={'class': 'form-control'}),
+            'cols': forms.NumberInput(attrs={'class': 'form-control'}),
+            'prefix_lower': forms.TextInput(attrs={'class': 'form-control'}),
+            'prefix_upper': forms.TextInput(attrs={'class': 'form-control'}),
+            'owner_first_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombres'}),
+            'owner_last_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Apellidos'}),
+            'circulation_card': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° tarjeta'}),
+            'vehicle_class': forms.Select(attrs={'class': 'form-select'}),
+            'brand': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Marca'}),
+            'manufacturing_year': forms.NumberInput(attrs={'class': 'form-control'}),
+            'fuel_type': forms.Select(attrs={'class': 'form-select'}),
+            'bodywork': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Tipo carrocería'}),
+            'axles': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'color': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Color principal'}),
+            'engine_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° motor'}),
+            'cylinders': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'serial_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'VIN'}),
+            'wheels_count': forms.NumberInput(attrs={'class': 'form-control', 'min': 2}),
+            'dry_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'gross_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'length': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'height': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'width': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'total_passengers': forms.NumberInput(attrs={'class': 'form-control'}),
+            'total_seats': forms.NumberInput(attrs={'class': 'form-control'}),
+            'service_type': forms.Select(attrs={'class': 'form-select'}),
+            'technical_review_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'insurance_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'permit_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'last_maintenance': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+        labels = {
+            'company': 'EMPRESA',
+            'plate': 'PATENTE',
+            'model': 'MODELO',
+            'year': 'AÑO',
+            'floors': 'PISOS',
+            'rows_lower': 'FILAS INFERIOR',
+            'rows_upper': 'FILAS SUPERIOR',
+            'cols': 'ASIENTOS POR FILA',
+            'prefix_lower': 'PREFIJO INFERIOR',
+            'prefix_upper': 'PREFIJO SUPERIOR',
+            'owner_first_name': 'NOMBRES DEL PROPIETARIO',
+            'owner_last_name': 'APELLIDOS DEL PROPIETARIO',
+            'circulation_card': 'TARJETA DE CIRCULACIÓN',
+            'vehicle_class': 'CLASE',
+            'brand': 'MARCA',
+            'manufacturing_year': 'AÑO FABRICACIÓN',
+            'fuel_type': 'TIPO COMBUSTIBLE',
+            'bodywork': 'CARROCERÍA',
+            'axles': 'EJES',
+            'color': 'COLOR',
+            'engine_number': 'N° MOTOR',
+            'cylinders': 'CILINDROS',
+            'serial_number': 'N° SERIE',
+            'wheels_count': 'CANT. RUEDAS',
+            'dry_weight': 'PESO SECO (kg)',
+            'gross_weight': 'PESO BRUTO (kg)',
+            'length': 'LONGITUD (m)',
+            'height': 'ALTURA (m)',
+            'width': 'ANCHO (m)',
+            'total_passengers': 'TOTAL PASAJEROS',
+            'total_seats': 'TOTAL ASIENTOS',
+            'service_type': 'TIPO SERVICIO',
+            'technical_review_expiry': 'VENC. REVISIÓN TÉCNICA',
+            'insurance_expiry': 'VENC. SEGURO',
+            'permit_expiry': 'VENC. PERMISO CIRCULACIÓN',
+            'last_maintenance': 'ÚLT. MANTENIMIENTO',
+        }
+        
+        
+
+
+
+class AgencyForm(forms.ModelForm):
+    class Meta:
+        model = Agency
+        fields = ['name', 'city', 'address', 'phone', 'email', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Agencia Central'}),
+            'city': forms.Select(attrs={'class': 'form-select'}),
+            'address': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Calle, número, etc.'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'agencia@ejemplo.cl'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+        }
+        labels = {
+            'name': 'NOMBRE DE LA AGENCIA',
+            'city': 'CIUDAD',
+            'address': 'DIRECCIÓN',
+            'phone': 'TELÉFONO',
+            'email': 'CORREO ELECTRÓNICO',
+            'is_active': 'ACTIVA',
+        }        
+        
+
+class TripForm(forms.ModelForm):
+    class Meta:
+        model = Trip
+        fields = ['route', 'bus', 'driver1', 'driver2', 'assistant', 'departure', 'arrival', 'seats_total']
+        widgets = {
+            'route': forms.Select(attrs={'class': 'form-select'}),
+            'bus': forms.Select(attrs={'class': 'form-select', 'id': 'id_bus'}),
+            'driver1': forms.Select(attrs={'class': 'form-select'}),
+            'driver2': forms.Select(attrs={'class': 'form-select'}),
+            'assistant': forms.Select(attrs={'class': 'form-select'}),
+            'departure': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'arrival': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'seats_total': forms.NumberInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
+        }
+        labels = {
+            'route': 'RUTA',
+            'bus': 'BUS',
+            'driver1': 'CHOFER PRINCIPAL',
+            'driver2': 'SEGUNDO CHOFER (opcional)',
+            'assistant': 'AUXILIAR (opcional)',
+            'departure': 'FECHA Y HORA DE SALIDA',
+            'arrival': 'FECHA Y HORA DE LLEGADA (opcional)',
+            'seats_total': 'TOTAL DE ASIENTOS',
+        }
+        help_texts = {
+            'arrival': 'Opcional. Si no se ingresa, se calculará sumando la duración de la ruta.',
+            'seats_total': 'Se calcula automáticamente según el bus seleccionado.',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Filtrar choferes y auxiliares activos
+        self.fields['driver1'].queryset = Driver.objects.filter(is_active=True)
+        self.fields['driver2'].queryset = Driver.objects.filter(is_active=True)
+        self.fields['assistant'].queryset = Assistant.objects.filter(is_active=True)
+        # Añadir opción vacía para campos opcionales
+        self.fields['driver2'].empty_label = "-- Sin segundo chofer --"
+        self.fields['assistant'].empty_label = "-- Sin auxiliar --"

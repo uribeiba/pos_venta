@@ -1,32 +1,59 @@
 {% extends 'coordinator/base.html' %}
-{% block title %}Viajes{% endblock %}
+{% block title %}Listado de Viajes{% endblock %}
 {% block content %}
 <div class="card">
-    <div class="card-header d-flex justify-content-between">
-        <h3>Programación de Viajes</h3>
-        <a href="{% url 'coordinator:trip_new' %}" class="btn btn-primary">+ Nuevo Viaje</a>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3><i class="fas fa-calendar-alt"></i> Viajes</h3>
+        <a href="{% url 'coordinator:trip_new' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nuevo viaje
+        </a>
     </div>
-    <div class="card-body">
-        <table class="table table-striped">
-            <thead><tr><th>Ruta</th><th>Bus</th><th>Salida</th><th>Llegada</th><th>Asientos</th><th>Acciones</th></tr></thead>
-            <tbody>
-                {% for trip in trips %}
-                <tr>
-                    <td>{{ trip.route }}</td>
-                    <td>{{ trip.bus.plate }}</td>
-                    <td>{{ trip.departure|date:"d/m/Y H:i" }}</td>
-                    <td>{{ trip.arrival|date:"d/m/Y H:i"|default:"-" }}</td>
-                    <td>{{ trip.seats_total }}</td>
-                    <td>
-                        <a href="{% url 'coordinator:trip_edit' trip.id %}" class="btn btn-sm btn-warning">Editar</a>
-                        <a href="{% url 'admin:booking_trip_seatmap' trip.id %}" target="_blank" class="btn btn-sm btn-info">Mapa</a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="6">No hay viajes programados.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Ruta</th>
+                        <th>Bus</th>
+                        <th>Salida</th>
+                        <th>Llegada</th>
+                        <th>Asientos</th>
+                        <th>Chofer principal</th>
+                        <th>Segundo chofer</th>
+                        <th>Auxiliar</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trip in trips %}
+                    <tr>
+                        <td>{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</td>
+                        <td>{{ trip.bus.plate }} ({{ trip.bus.company.name }})</td>
+                        <td>{{ trip.departure|date:"d/m/Y H:i" }}</td>
+                        <td>{{ trip.arrival|date:"d/m/Y H:i"|default:"—" }}</td>
+                        <td>{{ trip.seats_total }}</td>
+                        <td>{{ trip.driver1.full_name|default:"—" }}</td>
+                        <td>{{ trip.driver2.full_name|default:"—" }}</td>
+                        <td>{{ trip.assistant.full_name|default:"—" }}</td>
+                        <td>
+                            <a href="{% url 'coordinator:trip_edit' trip.id %}" class="btn btn-sm btn-warning">
+                                <i class="fas fa-edit"></i> Editar
+                            </a>
+                            <a href="{% url 'coordinator:trip_change_bus' trip.id %}" class="btn btn-sm btn-info">
+                                <i class="fas fa-exchange-alt"></i> Cambiar bus
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4">
+                            No hay viajes registrados. <a href="{% url 'coordinator:trip_new' %}">Crea uno nuevo</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

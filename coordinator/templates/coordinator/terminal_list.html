@@ -1,0 +1,33 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Terminales{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <h3>Terminales</h3>
+        <a href="{% url 'coordinator:terminal_new' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Nueva terminal</a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th>Ciudad</th><th>Dirección</th><th>Activo</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for terminal in terminals %}
+                <tr>
+                    <td>{{ terminal.name }}</td>
+                    <td>{{ terminal.city.name }}</td>
+                    <td>{{ terminal.address|default:"—" }}</td>
+                    <td>{% if terminal.is_active %}✅{% else %}❌{% endif %}</td>
+                    <td>
+                        <a href="{% url 'coordinator:terminal_edit' terminal.id %}" class="btn btn-sm btn-warning">Editar</a>
+                        <a href="{% url 'coordinator:terminal_delete' terminal.id %}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar?')">Eliminar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5">No hay terminales.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

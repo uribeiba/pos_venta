@@ -1,0 +1,65 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% block title %}{% if route.id %}Editar{% else %}Nueva{% endif %} ruta{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3>{% if route.id %}Editar Ruta{% else %}Nueva Ruta{% endif %}</h3></div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Origen</label>
+                    <select name="origin" class="form-select" required>
+                        <option value="">Seleccione</option>
+                        {% for city in cities %}
+                            <option value="{{ city.id }}" {% if route.origin_id == city.id %}selected{% endif %}>{{ city.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label>Destino</label>
+                    <select name="destination" class="form-select" required>
+                        <option value="">Seleccione</option>
+                        {% for city in cities %}
+                            <option value="{{ city.id }}" {% if route.destination_id == city.id %}selected{% endif %}>{{ city.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Terminal origen (opcional)</label>
+                    <select name="origin_terminal" class="form-select">
+                        <option value="">-- Ninguna --</option>
+                        {% for terminal in terminals %}
+                            <option value="{{ terminal.id }}" {% if route.origin_terminal_id == terminal.id %}selected{% endif %}>{{ terminal.name }} ({{ terminal.city.name }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label>Terminal destino (opcional)</label>
+                    <select name="destination_terminal" class="form-select">
+                        <option value="">-- Ninguna --</option>
+                        {% for terminal in terminals %}
+                            <option value="{{ terminal.id }}" {% if route.destination_terminal_id == terminal.id %}selected{% endif %}>{{ terminal.name }} ({{ terminal.city.name }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Duración (minutos)</label>
+                    <input type="number" name="duration_minutes" value="{{ route.duration_minutes|default:120 }}" class="form-control" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label>Precio base ($)</label>
+                    <input type="number" step="0.01" name="base_price" value="{{ route.base_price|default:0 }}" class="form-control" required>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success">Guardar</button>
+            <a href="{% url 'coordinator:route_list' %}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

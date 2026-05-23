@@ -1,0 +1,221 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Buses - Cejer{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/buses.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="#">Flota</a></li>
+            <li class="breadcrumb-item active">Buses</li>
+        </ol>
+    </nav>
+
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 text-uppercase fw-semibold">
+                <i class="fas fa-bus me-2 text-primary"></i>
+                {% if edit_mode %}EDITAR BUS{% else %}REGISTRAR BUS{% endif %}
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="post" id="busForm">
+                {% csrf_token %}
+
+                <!-- Mostrar errores del formulario -->
+                {% if form.errors %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <strong>Error al guardar:</strong> Por favor corrige los siguientes errores:
+                    <ul>
+                    {% for field, errors in form.errors.items %}
+                        <li><strong>{{ field }}:</strong> {{ errors|join:", " }}</li>
+                    {% endfor %}
+                    </ul>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
+
+                <!-- Nav tabs -->
+                <ul class="nav nav-tabs mb-4" id="busTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" type="button" data-bs-toggle="tab" data-bs-target="#tab1" role="tab">Propietario y documentos</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab2" role="tab">Especificaciones técnicas</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab3" role="tab">Dimensiones y pesos</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab4" role="tab">Configuración de asientos</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- Tab 1: Propietario y documentos (agregamos year y model) -->
+                    <div class="tab-pane fade show active" id="tab1" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-6"><label class="form-label">{{ form.company.label }}</label>{{ form.company }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.plate.label }}</label>{{ form.plate }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.model.label }}</label>{{ form.model }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.year.label }}</label>{{ form.year }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.owner_first_name.label }}</label>{{ form.owner_first_name }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.owner_last_name.label }}</label>{{ form.owner_last_name }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.circulation_card.label }}</label>{{ form.circulation_card }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ form.vehicle_class.label }}</label>{{ form.vehicle_class }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.technical_review_expiry.label }}</label>{{ form.technical_review_expiry }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.insurance_expiry.label }}</label>{{ form.insurance_expiry }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.permit_expiry.label }}</label>{{ form.permit_expiry }}</div>
+                            <!-- Campo Activo -->
+                            <div class="col-12 mt-3">
+                                <div class="form-check form-switch">
+                                    {{ form.is_active }}
+                                    <label class="form-check-label" for="id_is_active">{{ form.is_active.label }}</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: Especificaciones técnicas -->
+                    <div class="tab-pane fade" id="tab2" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-4"><label class="form-label">{{ form.brand.label }}</label>{{ form.brand }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.manufacturing_year.label }}</label>{{ form.manufacturing_year }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.fuel_type.label }}</label>{{ form.fuel_type }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.bodywork.label }}</label>{{ form.bodywork }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.axles.label }}</label>{{ form.axles }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.color.label }}</label>{{ form.color }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.engine_number.label }}</label>{{ form.engine_number }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.cylinders.label }}</label>{{ form.cylinders }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.serial_number.label }}</label>{{ form.serial_number }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.wheels_count.label }}</label>{{ form.wheels_count }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.service_type.label }}</label>{{ form.service_type }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Dimensiones y pesos -->
+                    <div class="tab-pane fade" id="tab3" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-4"><label class="form-label">{{ form.dry_weight.label }}</label>{{ form.dry_weight }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.gross_weight.label }}</label>{{ form.gross_weight }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.length.label }}</label>{{ form.length }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.height.label }}</label>{{ form.height }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.width.label }}</label>{{ form.width }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.total_passengers.label }}</label>{{ form.total_passengers }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.total_seats.label }}</label>{{ form.total_seats }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.last_maintenance.label }}</label>{{ form.last_maintenance }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 4: Configuración de asientos -->
+                    <div class="tab-pane fade" id="tab4" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-3"><label class="form-label">{{ form.floors.label }}</label>{{ form.floors }}</div>
+                            <div class="col-md-3"><label class="form-label">{{ form.rows_lower.label }}</label>{{ form.rows_lower }}</div>
+                            <div class="col-md-3"><label class="form-label">{{ form.rows_upper.label }}</label>{{ form.rows_upper }}</div>
+                            <div class="col-md-3"><label class="form-label">{{ form.cols.label }}</label>{{ form.cols }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.prefix_lower.label }}</label>{{ form.prefix_lower }}</div>
+                            <div class="col-md-4"><label class="form-label">{{ form.prefix_upper.label }}</label>{{ form.prefix_upper }}</div>
+                        </div>
+                        <small class="text-muted">Nota: Los asientos se regenerarán automáticamente según el layout actual del bus.</small>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>{% if edit_mode %}Actualizar{% else %}Guardar Bus{% endif %}</button>
+                    {% if edit_mode %}<a href="{% url 'coordinator:buses_dashboard' %}" class="btn btn-secondary px-4 ms-2">Cancelar</a>{% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de listado (sin cambios) -->
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap">
+            <h5 class="mb-0 text-uppercase fw-semibold"><i class="fas fa-list me-2 text-primary"></i> LISTA DE BUSES REGISTRADOS</h5>
+            <div class="mt-2 mt-sm-0">
+                <form method="get" class="d-flex">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control" placeholder="Buscar por placa, modelo, propietario..." value="{{ query }}">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>EMPRESA</th><th>PATENTE</th><th>MODELO</th><th>PROPIETARIO</th>
+                            <th>MARCA</th><th>AÑO</th><th>CLASE</th><th>ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bus in buses %}
+                        <tr>
+                            <td>{{ bus.company.name }}</td><td class="fw-semibold">{{ bus.plate }}</td>
+                            <td>{{ bus.model|default:"—" }}</td>
+                            <td>{{ bus.owner_first_name }} {{ bus.owner_last_name }}</td>
+                            <td>{{ bus.brand|default:"—" }}</td>
+                            <td>{{ bus.year|default:"—" }}</td>
+                            <td>{{ bus.vehicle_class|default:"—" }}</td>
+                            <td>
+                                <a href="?edit={{ bus.id }}" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="fas fa-edit"></i></a>
+                                <button type="button" class="btn btn-sm btn-outline-danger delete-bus" data-id="{{ bus.id }}" data-name="{{ bus.plate }}"><i class="fas fa-trash-alt"></i></button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <td><td colspan="8" class="text-center">No hay buses registrados.{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if buses.has_other_pages %}<div class="d-flex justify-content-center mt-4">{% include "pagination.html" with page_obj=buses %}</div>{% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de eliminación -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Confirmar eliminación</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">¿Estás seguro de eliminar el bus <strong id="deleteBusName"></strong>?<br><small class="text-danger">Se eliminarán también viajes, asientos y tickets asociados.</small></div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <form method="post" action="{% url 'coordinator:bus_delete' 0 %}" id="deleteForm">{% csrf_token %}<button type="submit" class="btn btn-danger">Eliminar</button></form>
+        </div>
+    </div></div>
+</div>
+
+<!-- Script para prevenir envío del formulario al cambiar de pestaña -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const tabButtons = document.querySelectorAll('#busTab button');
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = this.getAttribute('data-bs-target');
+                if (target) {
+                    const tabPane = document.querySelector(target);
+                    if (tabPane) {
+                        document.querySelectorAll('#busTab .nav-link').forEach(t => t.classList.remove('active'));
+                        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('show', 'active'));
+                        this.classList.add('active');
+                        tabPane.classList.add('show', 'active');
+                    }
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/buses.js' %}"></script>
+{% endblock %}

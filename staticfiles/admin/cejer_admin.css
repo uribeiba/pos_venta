@@ -1,0 +1,17 @@
+:root{ --cejer-green:#25A244; --cejer-green-700:#1C7C33; --cejer-red:#CF3541; --cejer-red-700:#B62D38; --cejer-bg:#F6FFF8; }
+#header{ background:linear-gradient(90deg,var(--cejer-green) 0%,#2FB654 100%); color:#fff; border-bottom:3px solid var(--cejer-red); }
+#header a:link, #header a:visited{ color:#fff; }
+#user-tools a{ color:#fff; }
+#site-name .cejer-badge{ display:inline-block; font-weight:800; letter-spacing:1px; margin-right:8px; padding:2px 8px; border-radius:999px; background:var(--cejer-red); color:#fff; box-shadow:0 1px 0 rgba(0,0,0,.15); }
+.module caption, .inline-group h2{ background:var(--cejer-green); color:#fff; }
+.button, .submit-row input.default, .submit-row input, .button.default{ background:var(--cejer-green); border-color:var(--cejer-green-700); color:#fff; }
+.button:hover, .submit-row input.default:hover, .button.default:hover{ background:var(--cejer-green-700); border-color:var(--cejer-green-700); }
+a.deletelink, .deletelink, .button.cancel, .submit-row .deletelink{ background:var(--cejer-red); border-color:var(--cejer-red-700); color:#fff; }
+a.deletelink:hover, .deletelink:hover, .button.cancel:hover{ background:var(--cejer-red-700); }
+a:link, a:visited{ color:var(--cejer-green-700); } a:hover{ color:var(--cejer-green); }
+#content{ background:white; } body{ background:var(--cejer-bg); }
+#changelist-filter{ border-left:4px solid var(--cejer-green); }
+.login #container .submit-row input{ background:var(--cejer-green); border-color:var(--cejer-green-700); }
+.login #container h1 { color: var(--cejer-green-700); }
+ul.messagelist li.success{ background:#e9f7ef; border-left:5px solid var(--cejer-green); }
+ul.messagelist li.error{ background:#fdecea; border-left:5px solid var(--cejer-red); }

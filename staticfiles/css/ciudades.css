@@ -1,0 +1,58 @@
+@media (min-width: 768px) {
+    .row.align-items-end .btn {
+        margin-bottom: 0;
+        height: 38px; /* Ajusta según la altura de tus inputs */
+    }
+}
+
+
+.form-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+    color: #4a5568;
+}
+.card {
+    border-radius: 1rem !important;
+}
+.table th {
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #2d3748;
+    border-bottom-width: 1px;
+}
+.table td {
+    vertical-align: middle;
+    font-size: 0.85rem;
+}
+.breadcrumb-item a {
+    text-decoration: none;
+    color: #3182ce;
+}
+.breadcrumb-item.active {
+    color: #4a5568;
+}
+.pagination .page-link {
+    border-radius: 8px;
+    margin: 0 2px;
+    color: #2c3e50;
+}
+.pagination .active .page-link {
+    background-color: #2c3e50;
+    border-color: #2c3e50;
+}
+.btn-primary {
+    background-color: #2c3e50;
+    border-color: #2c3e50;
+}
+.btn-primary:hover {
+    background-color: #1e2b38;
+}
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.75rem;
+    }
+    .btn-sm {
+        padding: 0.2rem 0.4rem;
+    }
+}

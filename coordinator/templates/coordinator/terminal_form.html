@@ -1,0 +1,35 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}{% if terminal.id %}Editar{% else %}Nueva{% endif %} terminal{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3>{% if terminal.id %}Editar Terminal{% else %}Nueva Terminal{% endif %}</h3></div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label>Nombre</label>
+                <input type="text" name="name" value="{{ terminal.name }}" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Ciudad</label>
+                <select name="city" class="form-select" required>
+                    <option value="">Seleccione</option>
+                    {% for city in cities %}
+                        <option value="{{ city.id }}" {% if terminal.city_id == city.id %}selected{% endif %}>{{ city.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label>Dirección</label>
+                <input type="text" name="address" value="{{ terminal.address }}" class="form-control">
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" name="is_active" class="form-check-input" id="is_active" {% if terminal.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Activo</label>
+            </div>
+            <button type="submit" class="btn btn-success">Guardar</button>
+            <a href="{% url 'coordinator:terminal_list' %}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

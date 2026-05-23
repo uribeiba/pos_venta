@@ -24,6 +24,44 @@
                     {% endfor %}
                 </select>
             </div>
+
+            <!-- 🔥 NUEVO: Choferes y Auxiliar -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>Chofer principal</label>
+                    <select name="driver1" class="form-select">
+                        <option value="">-- Seleccionar --</option>
+                        {% for driver in drivers %}
+                            <option value="{{ driver.id }}" {% if trip.driver1_id == driver.id %}selected{% endif %}>
+                                {{ driver.full_name }} ({{ driver.rut }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>Segundo chofer <small class="text-muted">(opcional)</small></label>
+                    <select name="driver2" class="form-select">
+                        <option value="">-- Sin segundo chofer --</option>
+                        {% for driver in drivers %}
+                            <option value="{{ driver.id }}" {% if trip.driver2_id == driver.id %}selected{% endif %}>
+                                {{ driver.full_name }} ({{ driver.rut }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>Auxiliar <small class="text-muted">(opcional)</small></label>
+                    <select name="assistant" class="form-select">
+                        <option value="">-- Sin auxiliar --</option>
+                        {% for assistant in assistants %}
+                            <option value="{{ assistant.id }}" {% if trip.assistant_id == assistant.id %}selected{% endif %}>
+                                {{ assistant.full_name }} ({{ assistant.rut }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
             <div class="mb-3">
                 <label>Fecha y hora de salida</label>
                 <input type="datetime-local" name="departure" class="form-control" value="{{ trip.departure|date:'Y-m-d\\TH:i' }}" required>

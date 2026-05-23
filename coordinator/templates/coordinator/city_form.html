@@ -1,0 +1,18 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}{% if city.id %}Editar{% else %}Nueva{% endif %} ciudad{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3>{% if city.id %}Editar Ciudad{% else %}Nueva Ciudad{% endif %}</h3></div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label>Nombre</label>
+                <input type="text" name="name" value="{{ city.name }}" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-success">Guardar</button>
+            <a href="{% url 'coordinator:city_list' %}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

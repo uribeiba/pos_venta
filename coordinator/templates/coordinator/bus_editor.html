@@ -1,243 +1,666 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
 
-{% block title %}Editor de Bus{% endblock %}
+{% block title %}Editor de asientos - {{ bus.plate|default:"Nuevo Bus" }}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
+    .editor-container {
+        background: #f8fafc;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
     .editor-toolbar {
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
         margin-bottom: 24px;
         background: white;
-        padding: 16px 24px;
+        padding: 12px 20px;
         border-radius: 20px;
         border: 1px solid #e2e8f0;
+        align-items: center;
     }
     .tool-btn {
-        background: #f8fafc;
+        background: #f1f5f9;
         border: 1px solid #cbd5e1;
-        padding: 8px 20px;
+        padding: 6px 16px;
         border-radius: 40px;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        font-weight: 500;
+        font-size: 0.85rem;
+        transition: all 0.2s;
     }
+    .tool-btn i { font-size: 1rem; }
+    .tool-btn:hover { background: #e2e8f0; transform: translateY(-1px); }
     .tool-btn.active {
         background: #3b82f6;
         color: white;
+        border-color: #3b82f6;
     }
     .deck-tab {
         background: #f1f5f9;
-        padding: 8px 24px;
+        padding: 6px 20px;
         border-radius: 40px;
         cursor: pointer;
         display: inline-block;
         margin-right: 8px;
+        font-weight: 500;
+        font-size: 0.85rem;
     }
     .deck-tab.active {
         background: #3b82f6;
         color: white;
     }
-    .seat-grid {
-        display: grid;
-        gap: 12px;
-        background: white;
-        padding: 24px;
-        border-radius: 24px;
-        overflow-x: auto;
-        user-select: none;
-    }
-    .seat-cell {
-        width: 80px;
-        height: 80px;
-        border-radius: 16px;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        transition: 0.05s linear;
-    }
-    .seat-cell i { font-size: 28px; margin-bottom: 6px; }
-    .seat-cell input {
-        width: 60px;
-        text-align: center;
-        border: 1px solid #cbd5e1;
-        border-radius: 30px;
-        margin-top: 4px;
-        font-size: 11px;
-        padding: 4px 0;
-        background: white;
-    }
-    .type-L { background: #e6f7e6; border: 1px solid #b3e0b3; }
-    .type-P { background: transparent; border: 2px dashed #cbd5e6; }
-    .type-P i, .type-P input { display: none; }
-    .type-X { background: #f1f3f4; border: 1px solid #e2e8f0; }
-    .type-E { background: #fff3e0; border: 1px solid #ffd966; }
-    .type-D { background: #e0f2fe; border: 1px solid #7ac7f4; }
-    .type-B { background: #fce4ec; border: 1px solid #f8bbd0; }
+    
+    /* ==========================================================================
+   ESTRUCTURA DE AJUSTE Y CALIBRACIÓN DE PISOS (CORREGIDO)
+   ========================================================================== */
+.grid-wrapper {
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    margin-top: 20px;
+    min-height: 890px;
+}
+
+.bus-container-frame {
+    position: relative;
+    width: 260px;
+    height: 840px;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    border-radius: 30px;
+    box-sizing: border-box;
+}
+
+/* ==========================================================================
+   PRIMER PISO
+   ========================================================================== */
+.bus-container-frame.floor-1 {
+    background-image: url('{% static "img/inferior.png" %}');
+    padding: 400px 27px 40px 27px;
+
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+
+    /* El contenido puede sobresalir levemente */
+    overflow: visible;
+}
+
+/* ==========================================================================
+   SEGUNDO PISO
+   ========================================================================== */
+.bus-container-frame.floor-2 {
+    background-image: url('{% static "img/superior1.png" %}');
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: 100% 100%;
+
+    /* Espacios internos del bus */
+    padding: 103px 27px 40px 27px;
+
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+
+    /* CLAVE:
+       Evita que el primer asiento cama se corte cuando
+       se escala con transform: scale(1.08, 1.15)
+    */
+    overflow: visible;
+}
+
+/* ==========================================================================
+   SOLUCIÓN DEFINITIVA:
+   Los primeros asientos se cortan porque al escalar la imagen
+   (scale(1.08, 1.15)) parte del asiento sobresale hacia arriba.
+   
+   Esta regla agrega un pequeño padding superior SOLO al grid del piso 2,
+   sin modificar el fondo del bus.
+   ========================================================================== */
+   .bus-container-frame.floor-2 .seat-grid {
+    padding-top: 12px;   /* Ajusta entre 8px y 15px según necesites */
+    box-sizing: border-box;
+}
+
+/* ==========================================================================
+   ÁREA SCROLLABLE
+   ========================================================================== */
+.bus-scrollable-area {
+    width: 100%;
+    height: 100%;
+
+    overflow-y: auto;
+    overflow-x: visible;
+
+    /* Desplaza visualmente el contenido hacia abajo
+       sin agregar espacio real arriba */
+    position: relative;
+}
+
+.bus-container-frame.floor-2 .bus-scrollable-area {
+    top: 18px; /* Ajusta entre 15px y 25px según necesidad */
+}
+
+.bus-scrollable-area::-webkit-scrollbar {
+    width: 4px;
+}
+
+.bus-scrollable-area::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+/* ==========================================================================
+   MALLA DE ASIENTOS
+   ========================================================================== */
+.seat-grid {
+    display: grid;
+    width: 100%;
+    justify-content: center;
+    align-content: start;
+}
+
+/* ==========================================================================
+   CELDAS DEL EDITOR
+   ========================================================================== */
+.seat-cell {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    max-width: 44px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    position: relative;
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+
+    /* Permite que el asiento escalado no sea recortado */
+    overflow: visible;
+}
+
+.seat-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.seat-cell i.special-icon {
+    font-size: 1.1rem;
+    color: #475569;
+}
+
+.type-P {
+    background: transparent;
+}
+
+.type-X {
+    opacity: 0.15;
+}
+
+/* ==========================================================================
+   NÚMERO DEL ASIENTO
+   ========================================================================== */
+.seat-number {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: 800;
+    color: white;
+    text-shadow:
+        1px 1px 2px rgba(0,0,0,0.9),
+       -1px -1px 2px rgba(0,0,0,0.9);
+    pointer-events: none;
+    z-index: 2;
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header"><h3>{% if bus.id %}Editar Bus {{ bus.plate }}{% else %}Nuevo Bus{% endif %}</h3></div>
-    <div class="card-body">
-        <form method="post" id="busForm">
-            {% csrf_token %}
-            
-            <input type="hidden" name="layout_lower" id="id_layout_lower" value='{{ layout_lower_json|default:"[]" }}'>
-            <input type="hidden" name="layout_upper" id="id_layout_upper" value='{{ layout_upper_json|default:"[]" }}'>
-            <input type="hidden" name="numbers_lower" id="id_numbers_lower" value='{{ numbers_lower_json|default:"[]" }}'>
-            <input type="hidden" name="numbers_upper" id="id_numbers_upper" value='{{ numbers_upper_json|default:"[]" }}'>
+<div class="container-fluid px-4">
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Buses</a></li>
+            <li class="breadcrumb-item active">Editor de asientos</li>
+        </ol>
+    </nav>
 
-            <div class="row mb-3">
-                <div class="col-md-3"><label>Empresa</label><select name="company" class="form-select">{% for c in companies %}<option value="{{ c.id }}" {% if bus.company_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
-                <div class="col-md-3"><label>Patente</label><input type="text" name="plate" value="{{ bus.plate }}" class="form-control" required></div>
-                <div class="col-md-3"><label>Modelo</label><input type="text" name="model" value="{{ bus.model }}" class="form-control"></div>
-                <div class="col-md-3"><label>Año</label><input type="number" name="year" value="{{ bus.year }}" class="form-control"></div>
-            </div>
-            <div class="row mb-3">
-                <div class="col-md-2"><label>Pisos</label><select name="floors" id="id_floors" class="form-select"><option value="1">1</option><option value="2" {% if bus.floors == 2 %}selected{% endif %}>2</option></select></div>
-                <div class="col-md-2"><label>Filas piso inf.</label><input type="number" name="rows_lower" id="id_rows_lower" value="{{ bus.rows_lower|default:5 }}" class="form-control"></div>
-                <div class="col-md-2"><label>Filas piso sup.</label><input type="number" name="rows_upper" id="id_rows_upper" value="{{ bus.rows_upper|default:0 }}" class="form-control"></div>
-                <div class="col-md-2"><label>Asientos por fila</label><input type="number" name="cols" id="id_cols" value="{{ bus.cols|default:4 }}" class="form-control"></div>
-                <div class="col-md-2"><label>Prefijo inf.</label><input type="text" name="prefix_lower" value="{{ bus.prefix_lower|default:'' }}" class="form-control"></div>
-                <div class="col-md-2"><label>Prefijo sup.</label><input type="text" name="prefix_upper" value="{{ bus.prefix_upper|default:'' }}" class="form-control"></div>
-            </div>
-            <hr>
-            <h4><i class="fa-solid fa-pen-ruler"></i> Diseño de asientos</h4>
-            <div class="editor-toolbar">
-                <button type="button" class="tool-btn" data-tool="L"><i class="fa-solid fa-couch"></i> Asiento</button>
-                <button type="button" class="tool-btn" data-tool="P"><i class="fa-regular fa-square"></i> Pasillo</button>
-                <button type="button" class="tool-btn" data-tool="X"><i class="fa-solid fa-ban"></i> Bloqueo</button>
-                <button type="button" class="tool-btn" data-tool="E"><i class="fa-solid fa-stairs"></i> Escalera</button>
-                <button type="button" class="tool-btn" data-tool="D"><i class="fa-solid fa-door-open"></i> Puerta</button>
-                <button type="button" class="tool-btn" data-tool="B"><i class="fa-solid fa-restroom"></i> Baño</button>
-                <div style="flex:1"></div>
-                <button type="button" class="deck-tab active" data-deck="1"><i class="fa-solid fa-arrow-down"></i> Piso inferior</button>
-                <button type="button" class="deck-tab" data-deck="2" style="display:{% if bus.floors == 2 %}inline-block{% else %}none{% endif %}"><i class="fa-solid fa-arrow-up"></i> Piso superior</button>
-            </div>
-            
-            <div id="seatGrid" class="seat-grid"></div>
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 text-uppercase fw-semibold">
+                <i class="fas fa-pencil-ruler me-2 text-primary"></i> Editor de asientos - {{ bus.plate }}
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="post" id="busForm">
+                {% csrf_token %}
+                <input type="hidden" name="layout_lower" id="id_layout_lower" value='{{ layout_lower_json|default:"[]" }}'>
+                <input type="hidden" name="layout_upper" id="id_layout_upper" value='{{ layout_upper_json|default:"[]" }}'>
+                <input type="hidden" name="numbers_lower" id="id_numbers_lower" value='{{ numbers_lower_json|default:"[]" }}'>
+                <input type="hidden" name="numbers_upper" id="id_numbers_upper" value='{{ numbers_upper_json|default:"[]" }}'>
+                <input type="hidden" id="id_services_lower" name="services_lower" value='{{ services_lower_json|default:"[]" }}'>
+                <input type="hidden" id="id_services_upper" name="services_upper" value='{{ services_upper_json|default:"[]" }}'>
 
-            <div class="mt-4">
-                <button type="submit" class="btn btn-success"><i class="fa-solid fa-save"></i> Guardar Bus</button>
-                <a href="{% url 'coordinator:bus_list' %}" class="btn btn-secondary">Cancelar</a>
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Empresa</label>
+                        <select name="company" class="form-select">{% for c in companies %}<option value="{{ c.id }}" {% if bus.company_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Patente</label>
+                        <input type="text" name="plate" value="{{ bus.plate }}" class="form-control" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Modelo</label>
+                        <input type="text" name="model" value="{{ bus.model }}" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Año</label>
+                        <input type="number" name="year" value="{{ bus.year }}" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Pisos</label>
+                        <select name="floors" id="id_floors" class="form-select">
+                            <option value="1" {% if bus.floors == 1 %}selected{% endif %}>1 Piso</option>
+                            <option value="2" {% if bus.floors == 2 %}selected{% endif %}>2 Pisos</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Filas piso inf.</label>
+                        <input type="number" name="rows_lower" id="id_rows_lower" value="{{ bus.rows_lower|default:5 }}" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Filas piso sup.</label>
+                        <input type="number" name="rows_upper" id="id_rows_upper" value="{{ bus.rows_upper|default:0 }}" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Distribución Columnas</label>
+                        <select name="cols" id="id_cols" class="form-select">
+                            <option value="3" {% if bus.cols == 3 %}selected{% endif %}>3 Columnas (Salon Cama 2+1)</option>
+                            <option value="4" {% if bus.cols == 4 %}selected{% endif %}>4 Columnas (Semi Cama Simple)</option>
+                            <option value="5" {% if bus.cols == 5 %}selected{% endif %}>5 Columnas (Semi Cama Real 2+Pasillo+2)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Prefijo inf.</label>
+                        <input type="text" name="prefix_lower" value="{{ bus.prefix_lower|default:'' }}" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Prefijo sup.</label>
+                        <input type="text" name="prefix_upper" value="{{ bus.prefix_upper|default:'' }}" class="form-control">
+                    </div>
+                </div>
+
+                <div class="editor-container">
+                    <div class="editor-toolbar">
+                        <button type="button" class="tool-btn" data-tool="L"><i class="fa-solid fa-couch"></i> Asiento</button>
+                        <button type="button" class="tool-btn" data-tool="P"><i class="fa-regular fa-square"></i> Pasillo</button>
+                        <button type="button" class="tool-btn" data-tool="X"><i class="fa-solid fa-ban"></i> Bloqueo</button>
+                        <button type="button" class="tool-btn" data-tool="E"><i class="fa-solid fa-stairs"></i> Escalera</button>
+                        <button type="button" class="tool-btn" data-tool="D"><i class="fa-solid fa-door-open"></i> Puerta</button>
+                        <button type="button" class="tool-btn" data-tool="B"><i class="fa-solid fa-restroom"></i> Baño</button>
+                        <div class="vr"></div>
+                        <button type="button" class="tool-btn service-btn" data-service="semi_cama" title="Doble clic para aplicar a todo el piso"><i class="fa-solid fa-bed"></i> Semi Cama</button>
+                        <button type="button" class="tool-btn service-btn" data-service="cama" title="Doble clic para aplicar a todo el piso"><i class="fa-solid fa-bed"></i> Cama</button>
+                        <button type="button" class="tool-btn service-btn" data-service="ejecutivo" title="Doble clic para aplicar a todo el piso"><i class="fa-solid fa-star"></i> Ejecutivo</button>
+                        <div class="vr"></div>
+                        <button type="button" id="renumberBtn" class="tool-btn"><i class="fa-solid fa-sort-numeric-down"></i> Renumerar</button>
+                        <div style="flex:1"></div>
+                        <div>
+                            <button type="button" class="deck-tab" data-deck="1"><i class="fa-solid fa-arrow-down"></i> Piso 1</button>
+                            <button type="button" class="deck-tab" data-deck="2"><i class="fa-solid fa-arrow-up"></i> Piso 2</button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid-wrapper">
+                        <div id="busFrame" class="bus-container-frame">
+                            <div class="bus-scrollable-area">
+                                <div id="seatGrid" class="seat-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-save"></i> Guardar Bus</button>
+                    <a href="{% url 'coordinator:bus_list' %}" class="btn btn-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editSeatModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content rounded-4">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold">Editar asiento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-        </form>
+            <div class="modal-body">
+                <input type="hidden" id="editSeatIndex">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Número de asiento</label>
+                    <input type="text" id="editSeatNumber" class="form-control" placeholder="Ej: 1, 2, 3...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Tipo de servicio</label>
+                    <select id="editSeatService" class="form-select">
+                        <option value="semi_cama">Semi Cama</option>
+                        <option value="cama">Cama</option>
+                        <option value="ejecutivo">Ejecutivo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="saveSeatChanges">Guardar cambios</button>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-    (function() {
+    function getSeatImage(service) {
+        if (service === 'cama') {
+            return "{% static 'img/eje00.png' %}";
+        } else if (service === 'ejecutivo') {
+            return "{% static 'img/aa1.png' %}";
+        } else {
+            return "{% static 'img/eje0.png' %}";
+        }
+    }
     
     function safeParse(val) {
-    try {
         if (!val || val === "" || val === "None") return [];
-        return JSON.parse(val);
-    } catch (e) {
-        console.warn("JSON inválido:", val);
-        return [];
+        try { return JSON.parse(val); } catch(e) { return []; }
     }
-}
-
-let layoutLower = safeParse(document.getElementById('id_layout_lower').value);
-let layoutUpper = safeParse(document.getElementById('id_layout_upper').value);
-let numbersLower = safeParse(document.getElementById('id_numbers_lower').value);
-let numbersUpper = safeParse(document.getElementById('id_numbers_upper').value);
-
-    let floors = parseInt(document.getElementById('id_floors').value) || 1;
-    let rowsLower = parseInt(document.getElementById('id_rows_lower').value) || 5;
-    let rowsUpper = parseInt(document.getElementById('id_rows_upper').value) || 0;
-    let cols = parseInt(document.getElementById('id_cols').value) || 4;
-
+    
+    const busForm = document.getElementById('busForm');
+    const busFrame = document.getElementById('busFrame');
+    const gridContainer = document.getElementById('seatGrid');
+    const floorsInput = document.getElementById('id_floors');
+    const rowsLowerInput = document.getElementById('id_rows_lower');
+    const rowsUpperInput = document.getElementById('id_rows_upper');
+    const colsInput = document.getElementById('id_cols');
+    
+    let layoutLower = safeParse(document.getElementById('id_layout_lower').value);
+    let layoutUpper = safeParse(document.getElementById('id_layout_upper').value);
+    let numbersLower = safeParse(document.getElementById('id_numbers_lower').value);
+    let numbersUpper = safeParse(document.getElementById('id_numbers_upper').value);
+    let servicesLower = safeParse(document.getElementById('id_services_lower').value);
+    let servicesUpper = safeParse(document.getElementById('id_services_upper').value);
+    
+    let floors = parseInt(floorsInput.value);
+    let rowsLower = parseInt(rowsLowerInput.value);
+    let rowsUpper = parseInt(rowsUpperInput.value);
+    let cols = parseInt(colsInput.value);
+    
     let currentTool = 'L';
+    let currentService = 'semi_cama';
     let currentDeck = 1;
     let painting = false;
     let lastPaintedIndex = -1;
-    const gridContainer = document.getElementById('seatGrid');
-
+    let editModal = null;
+    
     function ensureSizes() {
         const lowerSize = rowsLower * cols;
         while (layoutLower.length < lowerSize) layoutLower.push('L');
         while (numbersLower.length < lowerSize) numbersLower.push('');
-        
+        while (servicesLower.length < lowerSize) servicesLower.push('semi_cama');
+        layoutLower.length = lowerSize;
+        numbersLower.length = lowerSize;
+        servicesLower.length = lowerSize;
+    
         if (floors === 2) {
             const upperSize = rowsUpper * cols;
             while (layoutUpper.length < upperSize) layoutUpper.push('L');
             while (numbersUpper.length < upperSize) numbersUpper.push('');
+            while (servicesUpper.length < upperSize) servicesUpper.push('semi_cama');
+            layoutUpper.length = upperSize;
+            numbersUpper.length = upperSize;
+            servicesUpper.length = upperSize;
+        } else {
+            layoutUpper = [];
+            numbersUpper = [];
+            servicesUpper = [];
         }
     }
-
+    
     function render() {
+        if (!gridContainer || !busFrame) return;
         const currentLayout = currentDeck === 1 ? layoutLower : layoutUpper;
         const currentNumbers = currentDeck === 1 ? numbersLower : numbersUpper;
-        gridContainer.style.gridTemplateColumns = `repeat(${cols}, 80px)`;
-        gridContainer.innerHTML = '';
+        const currentServices = currentDeck === 1 ? servicesLower : servicesUpper;
+        const currentRows = currentDeck === 1 ? rowsLower : rowsUpper;
+    
+        // Cambiar el fondo según el piso
+        if (currentDeck === 1) {
+            busFrame.classList.remove('floor-2');
+            busFrame.classList.add('floor-1');
+        } else {
+            busFrame.classList.remove('floor-1');
+            busFrame.classList.add('floor-2');
+        }
+    
+        // ==========================================================================
+        // DISTRIBUCIÓN HORIZONTAL EXACTA POR COLUMNAS
+        // ==========================================================================
+        if (cols === 4) {
+            gridContainer.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
+            gridContainer.style.columnGap = "14px"; 
+        } else if (cols === 3) {
+            gridContainer.style.gridTemplateColumns = "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)";
+            gridContainer.style.columnGap = "20px";
+        } else {
+            gridContainer.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            gridContainer.style.columnGap = "4px";
+        }
 
-        for (let i = 0; i < (currentDeck === 1 ? rowsLower * cols : rowsUpper * cols); i++) {
-            const type = currentLayout[i] || 'L';
+        // ==========================================================================
+        // CÁLCULO INTELIGENTE DE DISTANCIA (ROW-GAP) VERTICAL
+        // ==========================================================================
+        let camaCount = 0;
+        let seatCount = 0;
+        for (let i = 0; i < currentRows * cols; i++) {
+            if (currentLayout[i] === 'L') {
+                seatCount++;
+                if (currentServices[i] === 'cama') camaCount++;
+            }
+        }
+    
+        const frameHeight = 840; 
+        let paddingTop = currentDeck === 1 ? 340 : 155; 
+        let paddingBottom = 40;  
+        
+        const availableHeight = frameHeight - paddingTop - paddingBottom;
+        const seatSize = 44;
+        const rows = currentRows;
+        
+        let targetGap = 11; 
+        if (seatCount > 0 && (camaCount / seatCount) >= 0.5) {
+            targetGap = 16; 
+        }
+    
+        let gridHeight = (rows * seatSize) + ((rows - 1) * targetGap);
+        
+        if (gridHeight > availableHeight && rows > 1) {
+            let exactGap = (availableHeight - (rows * seatSize)) / (rows - 1);
+            if (exactGap < 1) exactGap = 1; 
+            targetGap = exactGap;
+        }
+    
+        gridContainer.style.rowGap = targetGap + "px";
+        gridContainer.style.justifyContent = "center";
+        gridContainer.style.alignContent = "start";
+    
+        gridContainer.innerHTML = '';
+    
+        for (let i = 0; i < currentRows * cols; i++) {
+            const type = (currentLayout[i] && currentLayout[i] !== 'undefined') ? currentLayout[i] : 'L';
+            const service = (currentServices[i] && currentServices[i] !== 'undefined') ? currentServices[i] : 'semi_cama';
+            const number = (currentNumbers[i] && currentNumbers[i] !== 'undefined') ? currentNumbers[i] : '';
+    
             const cell = document.createElement('div');
             cell.className = `seat-cell type-${type}`;
             cell.dataset.index = i;
+            cell.dataset.type = type;
+    
+            if (type === 'L') {
+    const img = document.createElement('img');
+    img.src = getSeatImage(service);
+    img.alt = "asiento";
+    
+    // ========= AQUÍ AGREGAMOS LA MAGIA =========
+    if (service === 'cama') {
+    // Estira el asiento en ancho (8%) y largo (15%)
+    img.style.transform = 'scale(1.08, 1.15)'; 
+    img.style.transformOrigin = 'center';
+} else {
+    img.style.transform = 'none';
+}
+    // ==========================================
 
-            const icon = document.createElement('i');
-            const icons = { L:'fa-couch', P:'fa-square', X:'fa-ban', E:'fa-stairs', D:'fa-door-open', B:'fa-restroom' };
-            icon.className = `fa-solid ${icons[type] || 'fa-couch'}`;
-            if(type === 'P') icon.style.opacity = "0.1";
-            cell.appendChild(icon);
-
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = currentNumbers[i] || '';
-            input.disabled = (type !== 'L');
-            input.addEventListener('input', (e) => {
-                if (currentDeck === 1) numbersLower[i] = e.target.value;
-                else numbersUpper[i] = e.target.value;
-            });
-            cell.appendChild(input);
+    cell.appendChild(img);
+    
+    const numberSpan = document.createElement('span');
+    numberSpan.className = 'seat-number';
+    numberSpan.textContent = number || '?';
+    cell.appendChild(numberSpan);
+    
+                cell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (editModal && currentTool === 'L') {
+                        document.getElementById('editSeatIndex').value = i;
+                        document.getElementById('editSeatNumber').value = currentNumbers[i];
+                        document.getElementById('editSeatService').value = currentServices[i] || 'semi_cama';
+                        editModal.show();
+                    }
+                });
+            } else if (type === 'B') {
+                cell.innerHTML = '<i class="fa-solid fa-restroom special-icon" title="Baño"></i>';
+            } else if (type === 'E') {
+                cell.innerHTML = '<i class="fa-solid fa-stairs special-icon" title="Escalera"></i>';
+            } else if (type === 'D') {
+                cell.innerHTML = '<i class="fa-solid fa-door-open special-icon" title="Puerta"></i>';
+            } else if (type === 'X') {
+                cell.innerHTML = '<i class="fa-solid fa-ban text-danger opacity-50" title="Bloqueado"></i>';
+            }
+    
             gridContainer.appendChild(cell);
         }
     }
-
+    
     function paintCell(index) {
         if (index === lastPaintedIndex) return;
         lastPaintedIndex = index;
-        let targetLayout = (currentDeck === 1) ? layoutLower : layoutUpper;
-        let targetNumbers = (currentDeck === 1) ? numbersLower : numbersUpper;
-
+        let targetLayout = currentDeck === 1 ? layoutLower : layoutUpper;
+        let targetNumbers = currentDeck === 1 ? numbersLower : numbersUpper;
+        let targetServices = currentDeck === 1 ? servicesLower : servicesUpper;
+        
         targetLayout[index] = currentTool;
-        if (currentTool !== 'L') targetNumbers[index] = '';
+        if (currentTool !== 'L') {
+            targetNumbers[index] = '';
+            targetServices[index] = '';
+        } else {
+            targetServices[index] = currentService;
+            if (!targetNumbers[index]) targetNumbers[index] = '';
+        }
         render();
     }
-
+    
+    function renumberSeats() {
+        const currentLayout = currentDeck === 1 ? layoutLower : layoutUpper;
+        const currentNumbers = currentDeck === 1 ? numbersLower : numbersUpper;
+        let counter = 1;
+        for (let i = 0; i < currentNumbers.length; i++) {
+            if (currentLayout[i] === 'L') {
+                currentNumbers[i] = counter.toString();
+                counter++;
+            } else {
+                currentNumbers[i] = '';
+            }
+        }
+        render();
+    }
+    
     function attachMouseEvents() {
         gridContainer.addEventListener('mousedown', (e) => {
             const cell = e.target.closest('.seat-cell');
-            if (cell) { painting = true; paintCell(parseInt(cell.dataset.index)); }
+            if (!cell) return;
+            const idx = parseInt(cell.dataset.index);
+            painting = true;
+            paintCell(idx);
         });
         gridContainer.addEventListener('mouseover', (e) => {
             const cell = e.target.closest('.seat-cell');
-            if (painting && cell) paintCell(parseInt(cell.dataset.index));
+            if (painting && cell) {
+                paintCell(parseInt(cell.dataset.index));
+            }
         });
-        window.addEventListener('mouseup', () => { painting = false; lastPaintedIndex = -1; });
+        window.addEventListener('mouseup', () => {
+            painting = false;
+            lastPaintedIndex = -1;
+        });
     }
-
+    
     function initToolbar() {
-        document.querySelectorAll('.tool-btn').forEach(btn => {
+        document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
             btn.addEventListener('click', () => {
                 currentTool = btn.dataset.tool;
                 document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             });
         });
+    
+        document.querySelectorAll('.service-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentService = btn.dataset.service;
+                document.querySelectorAll('.service-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+    
+            btn.addEventListener('dblclick', () => {
+                const selectedService = btn.dataset.service;
+                const labelService = btn.textContent.trim();
+                if (confirm(`¿Quieres cambiar TODOS los asientos del Piso ${currentDeck} al servicio ${labelService}?`)) {
+                    let targetServices = currentDeck === 1 ? servicesLower : servicesUpper;
+                    let targetLayout = currentDeck === 1 ? layoutLower : layoutUpper;
+                    
+                    for(let i = 0; i < targetServices.length; i++) {
+                        if (targetLayout[i] === 'L') {
+                            targetServices[i] = selectedService;
+                        }
+                    }
+                    render();
+                }
+            });
+        });
+    
         document.querySelector('.tool-btn[data-tool="L"]').classList.add('active');
-
+        document.querySelector('.service-btn[data-service="semi_cama"]').classList.add('active');
+    
         document.querySelectorAll('.deck-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 currentDeck = parseInt(tab.dataset.deck);
@@ -246,61 +669,75 @@ let numbersUpper = safeParse(document.getElementById('id_numbers_upper').value);
                 render();
             });
         });
+        document.querySelector('.deck-tab[data-deck="1"]').classList.add('active');
+        const renumberBtn = document.getElementById('renumberBtn');
+        if (renumberBtn) renumberBtn.addEventListener('click', renumberSeats);
+    
+        setTimeout(() => {
+            document.querySelector('.deck-tab[data-deck="2"]').click();
+        }, 100);
     }
-
+    
     function initDimensionListeners() {
-        const update = () => {
-            floors = parseInt(document.getElementById('id_floors').value);
-            rowsLower = parseInt(document.getElementById('id_rows_lower').value);
-            rowsUpper = parseInt(document.getElementById('id_rows_upper').value);
-            cols = parseInt(document.getElementById('id_cols').value);
-            document.querySelector('.deck-tab[data-deck="2"]').style.display = floors === 2 ? 'inline-block' : 'none';
+        function updateDimensions() {
+            floors = parseInt(floorsInput.value);
+            rowsLower = parseInt(rowsLowerInput.value);
+            rowsUpper = parseInt(rowsUpperInput.value);
+            cols = parseInt(colsInput.value);
             ensureSizes();
             render();
-        };
-        ['id_floors', 'id_rows_lower', 'id_rows_upper', 'id_cols'].forEach(id => {
-            document.getElementById(id).addEventListener('change', update);
-        });
+        }
+        floorsInput.addEventListener('change', updateDimensions);
+        rowsLowerInput.addEventListener('input', updateDimensions);
+        rowsUpperInput.addEventListener('input', updateDimensions);
+        colsInput.addEventListener('change', updateDimensions);
     }
-
-    // --- 3. EL JAVASCRIPT CORRECTOR (SUBMIT) ---
+    
     function initSubmit() {
-        const form = document.getElementById('busForm');
-        form.onsubmit = function() {
-            console.log("Sincronizando datos antes de enviar...");
-
-            const curRowsLower = parseInt(document.getElementById('id_rows_lower').value) || 0;
-            const curRowsUpper = parseInt(document.getElementById('id_rows_upper').value) || 0;
-            const curCols = parseInt(document.getElementById('id_cols').value) || 0;
-            
+        busForm.onsubmit = function() {
+            const curRowsLower = parseInt(rowsLowerInput.value) || 0;
+            const curRowsUpper = parseInt(rowsUpperInput.value) || 0;
+            const curCols = parseInt(colsInput.value) || 0;
             const lowerSize = curRowsLower * curCols;
             const upperSize = curRowsUpper * curCols;
-
-            // Volcado final forzado a los inputs hidden
             document.getElementById('id_layout_lower').value = JSON.stringify(layoutLower.slice(0, lowerSize));
             document.getElementById('id_numbers_lower').value = JSON.stringify(numbersLower.slice(0, lowerSize));
-            
-            if (parseInt(document.getElementById('id_floors').value) === 2) {
+            document.getElementById('id_services_lower').value = JSON.stringify(servicesLower.slice(0, lowerSize));
+            if (parseInt(floorsInput.value) === 2) {
                 document.getElementById('id_layout_upper').value = JSON.stringify(layoutUpper.slice(0, upperSize));
                 document.getElementById('id_numbers_upper').value = JSON.stringify(numbersUpper.slice(0, upperSize));
+                document.getElementById('id_services_upper').value = JSON.stringify(servicesUpper.slice(0, upperSize));
             } else {
                 document.getElementById('id_layout_upper').value = "[]";
                 document.getElementById('id_numbers_upper').value = "[]";
+                document.getElementById('id_services_upper').value = "[]";
             }
-
-            return true; 
+            return true;
         };
     }
-
-    function init() {
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const modalEl = document.getElementById('editSeatModal');
+        if (modalEl) editModal = new bootstrap.Modal(modalEl);
+        
+        document.getElementById('saveSeatChanges').addEventListener('click', () => {
+            const idx = parseInt(document.getElementById('editSeatIndex').value);
+            const targetNumbers = currentDeck === 1 ? numbersLower : numbersUpper;
+            const targetServices = currentDeck === 1 ? servicesLower : servicesUpper;
+            
+            targetNumbers[idx] = document.getElementById('editSeatNumber').value;
+            targetServices[idx] = document.getElementById('editSeatService').value;
+            
+            if (editModal) editModal.hide();
+            render();
+        });
+    
         ensureSizes();
         attachMouseEvents();
         initToolbar();
         initDimensionListeners();
         initSubmit();
         render();
-    }
-    init();
-})();
+    });
 </script>
 {% endblock %}

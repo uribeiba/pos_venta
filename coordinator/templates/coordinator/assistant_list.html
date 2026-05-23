@@ -1,0 +1,34 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Auxiliares{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <h3>Auxiliares</h3>
+        <a href="{% url 'coordinator:assistant_new' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Nuevo auxiliar</a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr><th>Nombre</th><th>RUT</th><th>Teléfono</th><th>Email</th><th>Activo</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for assistant in assistants %}
+                <tr>
+                    <td>{{ assistant.full_name }}</td>
+                    <td>{{ assistant.rut }}</td>
+                    <td>{{ assistant.phone|default:"—" }}</td>
+                    <td>{{ assistant.email|default:"—" }}</td>
+                    <td>{% if assistant.is_active %}✅{% else %}❌{% endif %}</td>
+                    <td>
+                        <a href="{% url 'coordinator:assistant_edit' assistant.id %}" class="btn btn-sm btn-warning">Editar</a>
+                        <a href="{% url 'coordinator:assistant_delete' assistant.id %}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar?')">Eliminar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">No hay auxiliares registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

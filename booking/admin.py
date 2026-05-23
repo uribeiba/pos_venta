@@ -12,11 +12,12 @@ from datetime import date, datetime
 import json
 
 from .models import (
-    City, Company, Bus, Route, Trip, Seat, SeatHold, Ticket,
+    BusDocument, City, Company, Bus, DriverDocument, Route, Trip, Seat, SeatHold, Ticket,
     Terminal, BusLayout, CashRegister, DailyReport)
 from .models import UserProfile
 
 from django.contrib.auth import get_user_model
+from booking.models import Driver, Assistant
 
 # ---- Form opcional del asistente (si existe) ----
 try:
@@ -280,6 +281,17 @@ class SeatHoldAdmin(admin.ModelAdmin):
         "seat__number",
     )
 
+@admin.register(Driver)
+class DriverAdmin(admin.ModelAdmin):
+    list_display = ("full_name", "rut", "phone", "email", "is_active")
+    search_fields = ("full_name", "rut")
+    list_filter = ("is_active",)
+
+@admin.register(Assistant)
+class AssistantAdmin(admin.ModelAdmin):
+    list_display = ("full_name", "rut", "phone", "email", "is_active")
+    search_fields = ("full_name", "rut")
+    list_filter = ("is_active",)
 
 # =========================
 # TicketAdmin
@@ -326,7 +338,7 @@ class TicketAdmin(admin.ModelAdmin):
 # TripAdmin
 # =========================
 class TripAdmin(admin.ModelAdmin):
-    list_display = ("route", "bus", "departure", "arrival", "seats_total", "seatmap_link")
+    list_display = ("route", "bus", "departure", "arrival", "driver1", "driver2", "assistant", "seats_total", "seatmap_link")
     search_fields = ("route__origin__name", "route__destination__name", "bus__plate")
     list_filter = ("route__origin", "route__destination", "bus")
     autocomplete_fields = ("bus",)
@@ -906,6 +918,20 @@ class DailyReportAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+    
+    
+    
+@admin.register(DriverDocument)
+class DriverDocumentAdmin(admin.ModelAdmin):
+    list_display = ('driver', 'doc_type', 'expiry_date', 'document_number')
+    list_filter = ('doc_type', 'expiry_date')
+    search_fields = ('driver__full_name', 'driver__rut')
+
+@admin.register(BusDocument)
+class BusDocumentAdmin(admin.ModelAdmin):
+    list_display = ('bus', 'doc_type', 'expiry_date', 'document_number')
+    list_filter = ('doc_type', 'expiry_date')
+    search_fields = ('bus__plate',)
 
 
 # =========================

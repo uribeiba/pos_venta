@@ -1,0 +1,68 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}{% if driver.id %}Editar{% else %}Nuevo{% endif %} chofer{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3>{% if driver.id %}Editar Chofer{% else %}Nuevo Chofer{% endif %}</h3></div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Nombre completo</label>
+                    <input type="text" name="full_name" value="{{ driver.full_name }}" class="form-control" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label>RUT</label>
+                    <input type="text" name="rut" value="{{ driver.rut }}" class="form-control" required placeholder="12345678-9">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Teléfono</label>
+                    <input type="text" name="phone" value="{{ driver.phone }}" class="form-control">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label>Correo electrónico</label>
+                    <input type="email" name="email" value="{{ driver.email }}" class="form-control">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label>Número de licencia</label>
+                <input type="text" name="license_number" value="{{ driver.license_number }}" class="form-control">
+            </div>
+
+            <!-- dentro del formulario, después de Número de licencia -->
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label>Vencimiento licencia</label>
+        <input type="date" name="license_expiry" value="{{ driver.license_expiry|date:'Y-m-d' }}" class="form-control">
+    </div>
+    <div class="col-md-6 mb-3">
+        <label>Vencimiento certificado médico</label>
+        <input type="date" name="medical_cert_expiry" value="{{ driver.medical_cert_expiry|date:'Y-m-d' }}" class="form-control">
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label>Vencimiento antecedentes</label>
+        <input type="date" name="background_check_expiry" value="{{ driver.background_check_expiry|date:'Y-m-d' }}" class="form-control">
+    </div>
+    <div class="col-md-12 mb-3">
+        <label>Observaciones</label>
+        <textarea name="notes" class="form-control" rows="3">{{ driver.notes }}</textarea>
+    </div>
+</div>
+
+
+
+
+            <div class="mb-3 form-check">
+                <input type="checkbox" name="is_active" class="form-check-input" id="is_active" {% if driver.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Activo</label>
+            </div>
+            <button type="submit" class="btn btn-success">Guardar</button>
+            <a href="{% url 'coordinator:driver_list' %}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
