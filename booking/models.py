@@ -166,9 +166,6 @@ class BusLayout(models.Model):
 # =========================================================
 # Bus con diseño de asientos (layout)
 # =========================================================
-# =========================================================
-# Bus con diseño de asientos (layout)
-# =========================================================
 class Bus(models.Model):
     # --- Campos existentes (no se tocan) ---
     company = models.ForeignKey(Company, verbose_name="Empresa", on_delete=models.PROTECT)
@@ -592,6 +589,10 @@ class Trip(models.Model):
         verbose_name = "Viaje"
         verbose_name_plural = "Viajes"
         ordering = ("-departure",)
+        indexes = [
+            models.Index(fields=['departure']),   # 🔥 NUEVO ÍNDICE: acelera búsquedas por fecha
+            models.Index(fields=['bus']),         # 🔥 NUEVO ÍNDICE: acelera filtros por bus en reportes
+        ]
 
     def __str__(self) -> str:
         return f"{self.route} {self.departure:%Y-%m-%d %H:%M}"
@@ -688,9 +689,11 @@ class SeatHold(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["trip", "seat"]),
-            models.Index(fields=["active"]),
-            models.Index(fields=["expires_at"]),
+            models.Index(fields=["trip", "seat"]),   # Índice compuesto original
+            models.Index(fields=["active"]),         # Original
+            models.Index(fields=["expires_at"]),     # Original
+            models.Index(fields=["trip"]),           # 🔥 NUEVO ÍNDICE: para limpieza y consultas por viaje
+            models.Index(fields=["user"]),           # 🔥 NUEVO ÍNDICE: para liberar holds de un usuario rápidamente
         ]
         verbose_name = "Bloqueo temporal"
         verbose_name_plural = "Bloqueos temporales"
@@ -785,6 +788,8 @@ class Ticket(models.Model):
             models.Index(fields=["trip"]),
             models.Index(fields=["created_at"]),
             models.Index(fields=["payment_method"]),
+            models.Index(fields=["created_by"]),   # 🔥 NUEVO ÍNDICE: acelera reportes por vendedor
+            models.Index(fields=["customer"]),     # 🔥 NUEVO ÍNDICE: acelera reportes por cliente
         ]
         verbose_name = "Boleto"
         verbose_name_plural = "Boletos"

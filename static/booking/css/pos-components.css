@@ -1,0 +1,165 @@
+/* ========== SEAT MAP ========== */
+.bus-container-frame {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+    background-repeat: no-repeat;
+    background-position: center top;
+    background-size: contain;
+    background-color: #f8fafc;
+    border-radius: 32px;
+    box-shadow: var(--card-shadow);
+    transition: var(--transition);
+}
+.bus-container-frame.floor-1 {
+    background-image: url('/static/img/inferior.png');
+    padding: 265px 14px 30px 14px;
+    min-height: 780px;
+}
+.bus-container-frame.floor-2 {
+    background-image: url('/static/img/superior.png');
+    padding: 110px 14px 30px 14px;
+    min-height: 700px;
+}
+.seat-grid {
+    display: grid;
+    gap: 10px 8px;
+    justify-content: center;
+    align-content: start;
+    margin: 0 auto;
+}
+.seat-cell {
+    aspect-ratio: 1 / 1;
+    width: 44px;
+    cursor: pointer;
+    position: relative;
+    border-radius: 12px;
+    transition: transform 0.15s, box-shadow 0.2s;
+}
+.seat-cell:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 2px #ffc107, 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 5;
+}
+.seat-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    border-radius: 8px;
+}
+.seat-number {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: 800;
+    color: white;
+    text-shadow: 1px 1px 0 black;
+    pointer-events: none;
+    z-index: 2;
+}
+/* Estados */
+.status-free img { filter: none; }
+.status-my-hold img {
+    filter: drop-shadow(0 0 4px #10b981);
+    border: 2px solid #10b981;
+    border-radius: 10px;
+}
+.status-occupied img, .status-sold img {
+    filter: grayscale(0.4) brightness(0.85);
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+/* Pestañas pisos */
+.deck-pills {
+    background: white;
+    border-radius: 60px;
+    padding: 4px;
+    display: inline-flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.deck-pills .btn {
+    border-radius: 40px;
+    padding: 8px 24px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+.deck-pills .btn.active {
+    background-color: var(--primary);
+    color: white;
+}
+/* ========== CUSTOMER SEARCH ========== */
+.customer-search-container {
+    position: relative;
+}
+.customer-results-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+    z-index: 1050;
+    max-height: 260px;
+    overflow-y: auto;
+    margin-top: 4px;
+}
+.customer-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid #edf2f7;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.customer-item:hover {
+    background: #f1f5f9;
+}
+/* ========== SALE SUMMARY (ACORDEON) ========== */
+.seat-summary-accordion .accordion-item {
+    border: none;
+    margin-bottom: 8px;
+    border-radius: 16px !important;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.seat-summary-accordion .accordion-button {
+    background: white;
+    font-weight: 600;
+    padding: 12px 16px;
+}
+.seat-summary-accordion .accordion-button:not(.collapsed) {
+    background: #fef9e6;
+    color: #b45309;
+}
+.btn-copy-data {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    border-radius: 30px;
+}
+.btn-remove-seat {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+/* ========== PAYMENT PANEL ========== */
+.total-amount {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--primary);
+}
+.btn-checkout {
+    background: linear-gradient(135deg, #2c3e50 0%, #1a2a3a 100%);
+    border: none;
+    padding: 14px;
+    font-weight: 700;
+    border-radius: 60px;
+    transition: all 0.2s;
+}
+.btn-checkout:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}

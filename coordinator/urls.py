@@ -78,5 +78,9 @@ urlpatterns = [
     path('viajes/dashboard/', views.trips_dashboard, name='trips_dashboard'),
     path('viajes/eliminar/<int:trip_id>/', views.trip_delete, name='trip_delete'),
     
+    path('generate-trips/', views.generate_trips, name='generate_trips'),
+    path('api/trips-calendar/', views.api_trips_calendar, name='api_trips_calendar'),
+    path('delete-trip-by-date/', views.delete_trip_by_date, name='delete_trip_by_date'),
+    
     
 ]

@@ -1,0 +1,298 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Generar Viajes Recurrentes - Cejer{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+<style>
+    .fc-daygrid-day-events { min-height: 50px; }
+    .fc-day-today { background-color: #fef9e3 !important; }
+    .fc-event-title { font-size: 0.75rem; white-space: normal; }
+    .btn-sm-delete {
+        background: none;
+        border: none;
+        color: #dc2626;
+        font-size: 0.7rem;
+        cursor: pointer;
+        margin-left: 5px;
+    }
+    .btn-sm-delete:hover { color: #b91c1c; }
+    /* Estilos para el formulario mejorado */
+    .form-recurrence label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        color: #475569;
+    }
+    .form-recurrence select, .form-recurrence input {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        margin-bottom: 0.75rem;
+    }
+    .weekdays-checkboxes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .weekdays-checkboxes label {
+        background: #f1f5f9;
+        padding: 4px 12px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: normal;
+        text-transform: none;
+    }
+    .weekdays-checkboxes input {
+        margin-right: 5px;
+        width: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:trips_dashboard' %}">Viajes</a></li>
+            <li class="breadcrumb-item active">Generar recurrente</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <!-- Formulario de generación recurrente (lado izquierdo) -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3 border-0">
+                    <h5 class="mb-0 fw-semibold"><i class="fas fa-calendar-plus me-2 text-primary"></i> Crear viajes recurrentes</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="recurringForm" class="form-recurrence">
+                        {% csrf_token %}
+                        
+                        <!-- Ruta -->
+                        <label>RUTA</label>
+                        <select name="route" required>
+                            <option value="">-- Seleccionar ruta --</option>
+                            {% for route in routes %}
+                            <option value="{{ route.id }}">{{ route }}</option>
+                            {% endfor %}
+                        </select>
+
+                        <!-- Bus -->
+                        <label>BUS</label>
+                        <select name="bus" required>
+                            <option value="">-- Seleccionar bus --</option>
+                            {% for bus in buses %}
+                            <option value="{{ bus.id }}">{{ bus.plate }} - {{ bus.model|default:"Sin modelo" }}</option>
+                            {% endfor %}
+                        </select>
+
+                        <!-- Chofer principal -->
+                        <label>CHOFER PRINCIPAL</label>
+                        <select name="driver1">
+                            <option value="">-- Sin asignar --</option>
+                            {% for driver in drivers %}
+                            <option value="{{ driver.id }}">{{ driver.full_name }} ({{ driver.rut }})</option>
+                            {% endfor %}
+                        </select>
+
+                        <!-- Chofer secundario -->
+                        <label>CHOFER SECUNDARIO</label>
+                        <select name="driver2">
+                            <option value="">-- Sin asignar --</option>
+                            {% for driver in drivers %}
+                            <option value="{{ driver.id }}">{{ driver.full_name }} ({{ driver.rut }})</option>
+                            {% endfor %}
+                        </select>
+
+                        <!-- Auxiliar -->
+                        <label>AUXILIAR</label>
+                        <select name="assistant">
+                            <option value="">-- Sin asignar --</option>
+                            {% for assistant in assistants %}
+                            <option value="{{ assistant.id }}">{{ assistant.full_name }} ({{ assistant.rut }})</option>
+                            {% endfor %}
+                        </select>
+
+                        <!-- Hora de salida -->
+                        <label>HORA DE SALIDA</label>
+                        <input type="time" name="departure_hour" required>
+
+                        <!-- Fecha inicio -->
+                        <label>FECHA INICIO</label>
+                        <input type="date" name="start_date" required>
+
+                        <!-- Fecha fin -->
+                        <label>FECHA FIN</label>
+                        <input type="date" name="end_date" required>
+
+                        <!-- Días de la semana -->
+                        <label>DÍAS DE LA SEMANA</label>
+                        <div class="weekdays-checkboxes">
+                            <label><input type="checkbox" name="weekdays" value="1"> Lunes</label>
+                            <label><input type="checkbox" name="weekdays" value="2"> Martes</label>
+                            <label><input type="checkbox" name="weekdays" value="3"> Miércoles</label>
+                            <label><input type="checkbox" name="weekdays" value="4"> Jueves</label>
+                            <label><input type="checkbox" name="weekdays" value="5"> Viernes</label>
+                            <label><input type="checkbox" name="weekdays" value="6"> Sábado</label>
+                            <label><input type="checkbox" name="weekdays" value="7"> Domingo</label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 mt-2">
+                            <i class="fas fa-sync-alt me-2"></i> Generar viajes
+                        </button>
+                    </form>
+                    <div class="alert alert-info mt-3 small">
+                        <i class="fas fa-info-circle"></i> Se crearán viajes para cada día seleccionado en el rango de fechas, a la misma hora.
+                        Si ya existe un viaje con el mismo bus en horario cercano (±1 hora), se omitirá.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendario (lado derecho) -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-semibold"><i class="fas fa-calendar-week me-2 text-primary"></i> Calendario de viajes</h5>
+                    <div>
+                        <button id="prevMonth" class="btn btn-sm btn-outline-secondary"><i class="fas fa-chevron-left"></i></button>
+                        <button id="nextMonth" class="btn btn-sm btn-outline-secondary ms-1"><i class="fas fa-chevron-right"></i></button>
+                        <button id="todayBtn" class="btn btn-sm btn-outline-primary ms-2">Hoy</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="calendar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación para eliminar viaje -->
+<div class="modal fade" id="deleteTripModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-trash-alt me-2"></i>Eliminar viaje</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de eliminar el viaje del <strong id="deleteDateSpan"></strong>?</p>
+                <p><small id="deleteTripInfo"></small></p>
+                <div id="deleteTicketWarning" class="alert alert-warning d-none">
+                    <i class="fas fa-exclamation-triangle"></i> Este viaje tiene tickets vendidos y no se puede eliminar.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" id="confirmDeleteBtn" class="btn btn-danger">Eliminar viaje</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Variables
+    let currentDeleteTrip = null;
+
+    // Inicializar FullCalendar
+    const calendarEl = document.getElementById('calendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'es',
+        firstDay: 1,
+        headerToolbar: false,
+        events: '/coordinador/api/trips-calendar/',
+        eventClick: function(info) {
+            const trip = info.event.extendedProps;
+            currentDeleteTrip = trip;
+            document.getElementById('deleteDateSpan').innerText = trip.departure_date;
+            document.getElementById('deleteTripInfo').innerHTML = `Ruta: ${trip.route}<br>Bus: ${trip.bus}<br>Hora: ${trip.departure_time}`;
+            const hasTickets = trip.has_tickets;
+            if (hasTickets) {
+                document.getElementById('deleteTicketWarning').classList.remove('d-none');
+                document.getElementById('confirmDeleteBtn').disabled = true;
+            } else {
+                document.getElementById('deleteTicketWarning').classList.add('d-none');
+                document.getElementById('confirmDeleteBtn').disabled = false;
+            }
+            new bootstrap.Modal(document.getElementById('deleteTripModal')).show();
+        }
+    });
+    calendar.render();
+
+    // Botones de navegación del calendario
+    document.getElementById('prevMonth').addEventListener('click', () => calendar.prev());
+    document.getElementById('nextMonth').addEventListener('click', () => calendar.next());
+    document.getElementById('todayBtn').addEventListener('click', () => calendar.today());
+
+    // Confirmar eliminación de viaje
+    document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+        if (!currentDeleteTrip) return;
+        fetch('/coordinador/delete-trip-by-date/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': getCookie('csrftoken')
+    },
+    body: new URLSearchParams({
+        'trip_id': currentDeleteTrip.id
+    })
+})
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                calendar.refetchEvents();
+                bootstrap.Modal.getInstance(document.getElementById('deleteTripModal')).hide();
+                alert(data.message);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(err => alert('Error al eliminar: ' + err));
+    });
+
+    // Envío del formulario de creación recurrente (sin recargar la página, usando fetch)
+    document.getElementById('recurringForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        fetch('/coordinador/generate-trips/', {
+    method: 'POST',
+    body: formData,
+    headers: {
+        'X-CSRFToken': getCookie('csrftoken'),
+        'X-Requested-With': 'XMLHttpRequest'   // ← Esta línea es la clave
+    }
+})
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`✅ ${data.message}`);
+                calendar.refetchEvents(); // actualizar calendario
+                this.reset(); // opcional: limpiar formulario
+            } else {
+                alert(`❌ Error: ${data.error}`);
+            }
+        })
+        .catch(err => alert('Error al generar viajes: ' + err));
+    });
+
+    function getCookie(name) {
+        let value = "; " + document.cookie;
+        let parts = value.split("; " + name + "=");
+        if (parts.length === 2) return parts.pop().split(";").shift();
+    }
+});
+</script>
+{% endblock %}

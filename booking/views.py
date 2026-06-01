@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
+from datetime import datetime, date, timedelta, time
 from typing import Any
-from datetime import datetime, date as _date, date, timedelta, time
+
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.core.paginator import Paginator
 from django.db import transaction, IntegrityError
 from django.db.models import Q, Count, Sum, Avg
 from django.http import JsonResponse, Http404, HttpRequest, HttpResponse
@@ -18,1384 +21,44 @@ from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
-from django.core.exceptions import ValidationError
 
 from coordinator.views import is_coordinator
-
-# ✅ Solo modelos (sin User porque ya lo importamos de auth)
 from .models import (
     City, Route, Trip, Bus, Seat, Ticket, SeatHold,
     Terminal, UserProfile, CashRegister, DailyReport,
-    Customer, BusLayout,
+    Customer, BusLayout, Driver
 )
-
-from django.core.exceptions import ObjectDoesNotExist
-import json
-
-from django.db.models import Count
-
-# booking/views.py
-from django.core.paginator import Paginator
 from .forms import DriverForm
-from .models import Driver
+from booking.utils import validate_chilean_rut
 
 
+# ============================================================================
+# 1. HELPERS Y UTILIDADES
+# ============================================================================
 
-
-# =========================
-# Helpers
-# =========================
 def _letters_for_cols(cols: int):
-    # A, B, C, D, E, F...
+    """Retorna lista de letras mayúsculas para las columnas de un bus."""
     base = [chr(65 + i) for i in range(26)]
-    return base[: max(1, cols)]
-
-
-def _trip_payload(trip: Trip, user) -> dict[str, Any]:
-    """
-    Estructura que consumen los templates del POS.
-    {
-      "trip": {id, route, departure, price},
-      "cols": N,
-      "lower": [celdas...],
-      "upper": [celdas...]  (si hay segundo piso)
-    }
-
-    Celda asiento:
-      {"type":"L","number":"12","seat_id":1,"status":"free|hold|my_hold|occupied"}
-    Celda no-asiento:
-      {"type":"P"}  (o X/E/D/B)
-    """
-    # ✅ Limpieza de holds vencidos antes de computar el estado
-    try:
-        # import local para no tocar imports globales
-        from .models import SeatHold
-        SeatHold.cleanup()
-    except Exception:
-        # si por alguna razón el import falla, no rompemos la vista
-        pass
-
-    bus = trip.bus
-    cols = int(getattr(bus, "cols", 0) or 0)
-
-    def grid_for(deck: int, rows: int, flat_layout: list[str]):
-        # index Seat -> idx lineal por piso
-        letters = _letters_for_cols(cols)
-        pos2col = {ch: i for i, ch in enumerate(letters)}
-        seat_index = {}
-        for s in Seat.objects.filter(bus=bus, deck=deck):
-            c = pos2col.get(s.position, 0)
-            idx = (int(s.row or 1) - 1) * cols + c
-            seat_index[idx] = s
-
-        # estados
-        ticketed_ids = set(Ticket.objects.filter(trip=trip).values_list("seat_id", flat=True))
-
-        # tras cleanup(), con active=True basta (los vencidos ya quedaron inactivos)
-        holds = list(SeatHold.objects.filter(trip=trip, active=True))
-        hold_by_seat = {h.seat_id: h for h in holds}
-
-        out, i = [], 0
-        for _r in range(rows):
-            for _c in range(cols):
-                t = (flat_layout[i] if i < len(flat_layout) else "L") or "L"
-                if t == "L":
-                    s = seat_index.get(i)
-                    if not s:
-                        out.append({"type": "L"})
-                    else:
-                        status = "free"
-                        if s.id in ticketed_ids or getattr(s, "is_occupied", False):
-                            status = "occupied"
-                        elif s.id in hold_by_seat:
-                            status = "hold"
-                            if hold_by_seat[s.id].user_id == getattr(user, "id", 0):
-                                status = "my_hold"
-                        out.append({
-                            "type": "L",
-                            "number": s.number,
-                            "seat_id": s.id,
-                            "status": status,
-                        })
-                else:
-                    out.append({"type": t})
-                i += 1
-        return out
-
-    lower = grid_for(1, int(bus.rows_lower or 0), bus.layout_lower or [])
-    upper = []
-    if int(bus.floors or 1) == 2 and int(bus.rows_upper or 0) > 0:
-        upper = grid_for(2, int(bus.rows_upper or 0), bus.layout_upper or [])
-
-    price = getattr(getattr(trip, "route", None), "base_price", None)
-    return {
-        "trip": {
-            "id": trip.id,
-            "route": str(trip.route),
-            "departure": trip.departure.strftime("%Y-%m-%d %H:%M"),
-            "price": str(price) if price is not None else "0",
-        },
-        "cols": cols,
-        "lower": lower,
-        "upper": upper,
-    }
-
+    return base[:max(1, cols)]
 
 
 def _parse_json(request: HttpRequest) -> dict:
-    """Lee body JSON de manera segura."""
+    """Lee el body JSON de la request de forma segura."""
     try:
         return json.loads(request.body.decode("utf-8") or "{}")
     except Exception:
         return {}
 
 
-def _build_trip_grid(trip: Trip):
-    """
-    Devuelve:
-      - grid_lower, grid_upper: matrices con celdas dict(type, label, status, hold_user)
-      - cols: número de columnas del bus
-    """
-    bus = trip.bus
-    cols = int(bus.cols or 0)
-    if cols <= 0:
-        return [], [], 0
-
-    letters = _letters_for_cols(cols)
-    pos2col = {ch: i for i, ch in enumerate(letters)}
-
-    # Index Seat -> índice lineal por piso (0-index)
-    index_by_deck = {1: {}, 2: {}}
-    for s in Seat.objects.filter(bus=bus).only("id", "deck", "row", "position", "number", "is_occupied"):
-        c = pos2col.get(s.position, 0)
-        idx = (int(s.row or 1) - 1) * cols + c
-        index_by_deck.setdefault(int(s.deck or 1), {})[idx] = s
-
-    # Estados actuales
-    ticketed_ids = set(
-        Ticket.objects.filter(trip=trip).values_list("seat_id", flat=True)
-    )
-    hold_by_seat = {
-        h.seat_id: h
-        for h in SeatHold.objects.filter(trip=trip, active=True).select_related("user")
-    }
-
-    def grid_for(deck: int, rows: int, flat_layout: list[str], labels: list[str]):
-        out, i = [], 0
-        for _r in range(rows):
-            row = []
-            for _c in range(cols):
-                typ = (flat_layout[i] if i < len(flat_layout) else "L") or "L"
-                label, status, hold_user = "", "free", ""
-                if typ == "L":
-                    s = index_by_deck.get(deck, {}).get(i)
-                    if s:
-                        label = s.number
-                        if s.id in ticketed_ids or s.is_occupied:
-                            status = "occupied"
-                        elif s.id in hold_by_seat:
-                            status = "hold"
-                            hold_user = getattr(hold_by_seat[s.id].user, "username", "")
-                row.append({"type": typ, "label": label, "status": status, "hold_user": hold_user})
-                i += 1
-            out.append(row)
-        return out
-
-    lower = grid_for(1, int(bus.rows_lower or 0), bus.layout_lower or [], bus.numbers_lower or [])
-    upper = []
-    if int(bus.floors or 1) == 2 and int(bus.rows_upper or 0) > 0:
-        upper = grid_for(2, int(bus.rows_upper or 0), bus.layout_upper or [], bus.numbers_upper or [])
-
-    return lower, upper, cols
-
-
 def calcular_tendencia(actual, anterior):
-    """Calcular porcentaje de tendencia"""
+    """Calcula porcentaje de tendencia entre dos valores."""
     if anterior == 0:
         return 100 if actual > 0 else 0
     return ((actual - anterior) / anterior) * 100
 
 
-# =========================
-# Decoradores de permisos
-# =========================
-def role_required(allowed_roles, login_url=None, message=None):
-    """
-    Decorador para control de acceso basado en roles.
-    
-    Args:
-        allowed_roles: Lista de roles permitidos ['admin', 'supervisor', 'vendedor', 'cajero']
-        login_url: URL a redirigir si no está autenticado (opcional)
-        message: Mensaje personalizado de error (opcional)
-    """
-    def decorator(view_func):
-        def wrapper(request, *args, **kwargs):
-            # ✅ MANTENIDO: Verificación de autenticación
-            if not request.user.is_authenticated:
-                redirect_url = login_url or 'admin:login'
-                return redirect(redirect_url)
-            
-            # ✅ MANTENIDO: Superusuarios tienen acceso total
-            if request.user.is_superuser:
-                return view_func(request, *args, **kwargs)
-            
-            # ✅ MEJORADO: Verificación de staff para usuarios no-superuser
-            if not request.user.is_staff:
-                messages.error(
-                    request, 
-                    message or "Acceso denegado. Se requieren permisos de staff."
-                )
-                return redirect('pos_caja')
-            
-            # ✅ MEJORADO: Verificación de perfil con manejo de errores robusto
-            if not hasattr(request.user, 'profile'):
-                # Si no tiene perfil pero es staff, crear uno por defecto
-                try:
-                    from .models import UserProfile
-                    UserProfile.objects.get_or_create(
-                        user=request.user,
-                        defaults={'role': 'vendedor'}
-                    )
-                    # Recargar el usuario para obtener el perfil
-                    request.user.refresh_from_db()
-                except Exception as e:
-                    # Si hay error al crear perfil, redirigir con mensaje
-                    messages.error(
-                        request, 
-                        "Error en la configuración de perfil. Contacte al administrador."
-                    )
-                    return redirect('pos_caja')
-            
-            # ✅ MANTENIDO: Verificar rol del usuario
-            user_role = getattr(request.user.profile, 'role', 'vendedor')
-            
-            if user_role in allowed_roles:
-                return view_func(request, *args, **kwargs)
-            
-            # ✅ MEJORADO: Mensaje de error más descriptivo
-            role_display = {
-                'admin': 'Administrador',
-                'supervisor': 'Supervisor', 
-                'vendedor': 'Vendedor',
-                'cajero': 'Cajero'
-            }.get(user_role, user_role)
-            
-            allowed_roles_display = [
-                {
-                    'admin': 'Administrador',
-                    'supervisor': 'Supervisor',
-                    'vendedor': 'Vendedor', 
-                    'cajero': 'Cajero'
-                }.get(role, role) for role in allowed_roles
-            ]
-            
-            messages.error(
-                request,
-                message or (
-                    f"Acceso denegado. Su rol actual ({role_display}) no tiene permisos "
-                    f"para esta sección. Se requieren: {', '.join(allowed_roles_display)}"
-                )
-            )
-            return redirect('pos_caja')
-        
-        return wrapper
-    return decorator
-
-# ✅ NUEVO: Decoradores predefinidos para roles específicos (opcional)
-def admin_required(view_func):
-    """Decorador para acceso exclusivo de administradores"""
-    return role_required(['admin'])(view_func)
-
-def supervisor_required(view_func):
-    """Decorador para acceso de supervisores y administradores"""
-    return role_required(['admin', 'supervisor'])(view_func)
-
-def vendedor_required(view_func):
-    """Decorador para acceso de vendedores, supervisores y administradores"""
-    return role_required(['admin', 'supervisor', 'vendedor'])(view_func)
-
-def cajero_required(view_func):
-    """Decorador para acceso de cajeros, vendedores, supervisores y administradores"""
-    return role_required(['admin', 'supervisor', 'vendedor', 'cajero'])(view_func)
-
-
-
-
-@staff_member_required
-def pos_home(request):
-    """
-    Lista de viajes filtrables por fecha/origen/destino + CTA 'Mapa' (modal).
-    ✅ NUEVO: por defecto NO lista viajes hasta que el usuario busque (GET con filtros).
-    ✅ NUEVO: oculta viajes "hechos" (departure < ahora).
-    """
-    now = timezone.localtime()
-
-    # --- filtros (tal como lo tenías) ---
-    q_date = (request.GET.get("date") or "").strip()
-    origin_id = (request.GET.get("origin_id") or "").strip()
-    dest_id = (request.GET.get("dest_id") or "").strip()
-
-    # ✅ NUEVO: detectar si el usuario realmente hizo una búsqueda
-    # (si vienes con ?date=... o ?origin_id=... o ?dest_id=... entonces busca)
-    did_search = bool(q_date or origin_id or dest_id)
-
-    # ✅ Mantener fecha para el input (si no hay, mostrar hoy)
-    if q_date:
-        try:
-            the_date = datetime.strptime(q_date, "%Y-%m-%d").date()
-        except Exception:
-            try:
-                the_date = datetime.strptime(q_date, "%d/%m/%Y").date()
-            except Exception:
-                the_date = now.date()
-    else:
-        the_date = now.date()
-
-    # ==========================================
-    # ✅ NUEVO: por defecto NO mostrar viajes
-    # ==========================================
-    if not did_search:
-        trips = Trip.objects.none()
-        bus_ids = []
-        sold_map = {}
-        hold_map = {}
-        total_by_bus = {}
-    else:
-        # --- consulta base (igual que antes, pero con 2 mejoras) ---
-        trips = Trip.objects.select_related(
-            "route", "bus", "route__origin", "route__destination"
-        ).filter(
-            departure__date=the_date,
-            departure__gte=now,  # ✅ NUEVO: no mostrar viajes ya salidos ("hechos")
-        )
-
-        if origin_id:
-            trips = trips.filter(route__origin_id=origin_id)
-        if dest_id:
-            trips = trips.filter(route__destination_id=dest_id)
-
-        # --- stats por viaje (vendidos / en hold / total asientos) ---
-        sold_map = dict(
-            Ticket.objects.filter(trip__in=trips)
-            .values("trip")
-            .annotate(c=Count("id"))
-            .values_list("trip", "c")
-        )
-        hold_map = dict(
-            SeatHold.objects.filter(trip__in=trips, active=True)
-            .values("trip")
-            .annotate(c=Count("id"))
-            .values_list("trip", "c")
-        )
-
-        bus_ids = list(trips.values_list("bus_id", flat=True))
-        total_by_bus = dict(
-            Seat.objects.filter(bus_id__in=bus_ids)
-            .values("bus_id")
-            .annotate(c=Count("id"))
-            .values_list("bus_id", "c")
-        )
-
-        # anotar dinámicos para mostrar (igual que antes)
-        for t in trips:
-            t.sold = int(sold_map.get(t.id, 0) or 0)
-            t.hold = int(hold_map.get(t.id, 0) or 0)
-            t.total = int(total_by_bus.get(t.bus_id, 0) or 0)
-            t.free = max(t.total - t.sold - t.hold, 0)
-
-    ctx = {
-        "title": "POS — Salidas",
-        "date": the_date.strftime("%Y-%m-%d"),  # mantiene el input
-        "cities": City.objects.all().order_by("name"),
-        "origin_id": origin_id,
-        "dest_id": dest_id,
-        "trips": trips,
-
-        # ✅ NUEVO (opcional): útil por si quieres mostrar un mensaje tipo “Use filtros para buscar”
-        "did_search": did_search,
-    }
-    return render(request, "booking/pos_home.html", ctx)
-
-# ---------------- POS: Mapa (modal) ----------------
-@xframe_options_exempt
-def pos_trip_modal(request, trip_id: int):
-    """
-    Contenido del modal (iframe) con el mapa de asientos del viaje.
-    Reutiliza 'booking/seatmap.html'.
-    """
-    trip = get_object_or_404(
-        Trip.objects.select_related("route", "bus", "route__origin", "route__destination"),
-        pk=trip_id,
-    )
-    grid_lower, grid_upper, cols = _build_trip_grid(trip)
-
-    ctx = {
-        "title": f"Mapa de asientos — {trip.route.origin.name} → {trip.route.destination.name}",
-        "trip": trip,
-        "bus": trip.bus,               # <- importante para que no salga "Bus: —"
-        "cols": cols,
-        "grid_lower": grid_lower,
-        "grid_upper": grid_upper,
-    }
-    return render(request, "booking/seatmap.html", ctx)
-
-
-# ---------------- POS: Selección de asientos ----------------
-@staff_member_required
-def pos_trip(request, trip_id: int):
-    """
-    Vista completa para selección de asientos en el POS
-    """
-    trip = get_object_or_404(
-        Trip.objects.select_related("route", "bus", "route__origin", "route__destination"),
-        pk=trip_id,
-    )
-    grid_lower, grid_upper, cols = _build_trip_grid(trip)
-
-    ctx = {
-        "title": f"POS — Selección de asientos — {trip.route}",
-        "trip": trip,
-        "cols": cols,
-        "grid_lower": grid_lower,
-        "grid_upper": grid_upper,
-    }
-    # Usar el template de selección interactiva
-    return render(request, "booking/pos_trip.html", ctx)
-
-
-# =========================
-# POS (APIs)
-# =========================
-
-@login_required
-@require_POST
-@transaction.atomic
-def api_hold(request, trip_id: int):
-    """
-    Crea/renueva un hold de asiento para este usuario.
-    Parámetros:
-      - seat_id (POST)           -> recomendado
-      - o deck + number (POST)   -> alternativo
-    Respuesta JSON:
-      {"ok": True, "seat_id": <id>, "status": "my_hold"}  // 200
-      {"ok": False, "error": "..."}                       // 4xx
-    """
-    trip = get_object_or_404(Trip.objects.select_for_update(), pk=trip_id)
-
-    seat_id = request.POST.get("seat_id")
-    deck = request.POST.get("deck")
-    number = request.POST.get("number")
-
-    if seat_id:
-        seat = get_object_or_404(Seat.objects.select_for_update(), pk=seat_id, bus=trip.bus)
-    elif deck and number:
-        try:
-            seat = Seat.objects.select_for_update().get(bus=trip.bus, deck=int(deck), number=str(number).strip())
-        except Seat.DoesNotExist:
-            return JsonResponse({"ok": False, "error": "Asiento no encontrado."}, status=404)
-    else:
-        return JsonResponse({"ok": False, "error": "seat_id o (deck, number) requerido."}, status=400)
-
-    # Si ya tiene ticket, bloquear
-    if Ticket.objects.filter(trip=trip, seat=seat).exists() or getattr(seat, "is_occupied", False):
-        return JsonResponse({"ok": False, "error": "Asiento ocupado."}, status=409)
-
-    try:
-        SeatHold.hold(trip=trip, seat=seat, user=request.user, minutes=10)
-        return JsonResponse({"ok": True, "seat_id": seat.id, "status": "my_hold"})
-    except ValueError as e:
-        return JsonResponse({"ok": False, "error": str(e)}, status=409)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "No se pudo bloquear el asiento."}, status=500)
-
-
-@login_required
-@require_POST
-@transaction.atomic
-def api_release(request, trip_id: int):
-    """
-    Libera el hold del usuario sobre un asiento.
-    Parámetros:
-      - seat_id (POST)           -> recomendado
-      - o deck + number (POST)   -> alternativo
-    Respuesta JSON:
-      {"ok": True, "seat_id": <id>, "status": "free"}     // 200
-      {"ok": False, "error": "..."}                       // 4xx
-    """
-    trip = get_object_or_404(Trip.objects.select_for_update(), pk=trip_id)
-
-    seat_id = request.POST.get("seat_id")
-    deck = request.POST.get("deck")
-    number = request.POST.get("number")
-
-    if seat_id:
-        seat = get_object_or_404(Seat.objects.select_for_update(), pk=seat_id, bus=trip.bus)
-    elif deck and number:
-        try:
-            seat = Seat.objects.select_for_update().get(bus=trip.bus, deck=int(deck), number=str(number).strip())
-        except Seat.DoesNotExist:
-            return JsonResponse({"ok": False, "error": "Asiento no encontrado."}, status=404)
-    else:
-        return JsonResponse({"ok": False, "error": "seat_id o (deck, number) requerido."}, status=400)
-
-    # Libera solo el hold del usuario actual
-    SeatHold.release(trip=trip, seat=seat, user=request.user)
-    return JsonResponse({"ok": True, "seat_id": seat.id, "status": "free"})
-
-
-
-
-@require_POST
-@staff_member_required
-def api_purchase(request: HttpRequest, trip_id: int):
-    """
-    Body JSON:
-    {
-      "seat_ids": [1,2,3],
-      "buyer_name": "Juan Perez",
-      "national_id": "DNI..."
-    }
-    Emite tickets para los asientos seleccionados.
-    """
-    trip = get_object_or_404(Trip, pk=trip_id)
-    payload = _parse_json(request)
-    seat_ids = payload.get("seat_ids") or []
-    buyer_name = (payload.get("buyer_name") or "").strip()
-    national_id = (payload.get("national_id") or "").strip()
-    try:
-        tickets = Ticket.purchase(trip, seat_ids, buyer_name, national_id, request.user)
-        return JsonResponse({"ok": True, "tickets": [t.number for t in tickets]})
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": str(e)})
-
-
-# =========================
-# API genérica usada por el front cliente (opcional)
-# =========================
-@require_GET
-def trip_seats(request: HttpRequest, trip_id: int):
-    """
-    API para front cliente (listado de asientos del bus del viaje).
-    Estructura:
-    {
-      "viaje": {...},
-      "asientos": [{id, numero, piso, fila, columna, ventana, ocupado}]
-    }
-    """
-    try:
-        trip = Trip.objects.select_related("bus", "route__origin", "route__destination").get(pk=trip_id)
-    except Trip.DoesNotExist:
-        raise Http404("Viaje no existe")
-
-    bus = trip.bus
-    letters = _letters_for_cols(getattr(bus, "cols", 0))
-    pos2col = {ch: i for i, ch in enumerate(letters)}
-
-    tickets = set(Ticket.objects.filter(trip=trip).values_list("seat_id", flat=True))
-    seats_qs = Seat.objects.filter(bus=bus).order_by("deck", "row", "position", "number")
-    seats = []
-    for s in seats_qs:
-        seats.append({
-            "id": s.id,
-            "numero": s.number,
-            "piso": int(s.deck or 1),
-            "fila": int(s.row or 0),
-            "columna": int(pos2col.get(s.position, 0)) + 1,
-            "ventana": bool(s.is_window),
-            "ocupado": (s.id in tickets) or bool(s.is_occupied),
-        })
-
-    data = {
-        "viaje": {
-            "id": trip.id,
-            "origen": trip.route.origin.name,
-            "destino": trip.route.destination.name,
-            "salida": trip.departure.isoformat(),
-            "llegada": trip.arrival.isoformat(),
-            "precio_asiento": str(getattr(trip.route, "base_price", "")),
-            "bus": {
-                "id": bus.id,
-                "plate": bus.plate,
-                "floors": getattr(bus, "floors", 1),
-            },
-        },
-        "asientos": seats,
-    }
-    return JsonResponse(data, json_dumps_params={"ensure_ascii": False})
-
-
-
-@require_GET
-def api_cities(request):
-    # Devuelve ciudades para datalist del buscador
-    data = list(City.objects.order_by("name").values("name"))
-    return JsonResponse(data, safe=False, json_dumps_params={"ensure_ascii": False})
-
-
-@require_GET
-def api_search_trips(request):
-    origen  = (request.GET.get("origen") or "").strip()
-    destino = (request.GET.get("destino") or "").strip()
-    fecha   = (request.GET.get("fecha") or "").strip()  # YYYY-MM-DD
-
-    if not (origen and destino and fecha):
-        return JsonResponse({"error": "Faltan parámetros: origen, destino, fecha"}, status=400)
-
-    # Rango de día (00:00 - 23:59:59) en tz local
-    try:
-        d = datetime.strptime(fecha, "%Y-%m-%d").date()
-    except ValueError:
-        return JsonResponse({"error": "Fecha inválida. Usa YYYY-MM-DD"}, status=400)
-
-    start = timezone.make_aware(datetime.combine(d, time.min))
-    end   = timezone.make_aware(datetime.combine(d, time.max))
-
-    qs = (
-        Trip.objects
-        .select_related("route__origin", "route__destination", "bus")
-        .filter(
-            route__origin__name__iexact=origen,
-            route__destination__name__iexact=destino,
-            departure__range=(start, end),
-        )
-        .order_by("departure")
-    )
-
-    # Contar vendidos por viaje (tickets)
-    # (esto es simple y estable; después optimizamos con anotaciones más pro si quieres)
-    results = []
-    for trip in qs:
-        sold = Ticket.objects.filter(trip=trip).count()
-        total = int(trip.seats_total or 0)
-        libres = max(total - sold, 0)
-
-        results.append({
-            "id": trip.id,
-            "origen": trip.route.origin.name,
-            "destino": trip.route.destination.name,
-            "salida": trip.departure.isoformat(),
-            "llegada": trip.arrival.isoformat(),
-            "base_price": str(getattr(trip.route, "base_price", "")),
-            "bus": {"id": trip.bus.id, "plate": trip.bus.plate},
-            "seats_total": total,
-            "seats_sold": sold,
-            "seats_free": libres,
-        })
-
-    return JsonResponse(results, safe=False, json_dumps_params={"ensure_ascii": False})
-
-
-def bus_seatmap(request, pk:int):
-    bus = get_object_or_404(Bus, pk=pk)
-    return render(request, "booking/seatmap.html", {"bus": bus})
-
-
-@transaction.atomic
-def pos_checkout(request: HttpRequest, trip_id: int = None):
-    """
-    Crea tickets para asientos seleccionados (POST).
-    Soporta tus dos variantes de modelo Ticket:
-      - buyer_name / passenger_name / created_by si existen.
-    El template envía 'seats' como JSON: [{"deck":1,"number":"12"}, ...]
-    """
-    if request.method != "POST":
-        messages.error(request, "Operación inválida.")
-        return redirect("pos_home")
-
-    if not request.user.is_authenticated:
-        messages.error(request, "Debes iniciar sesión para emitir boletos.")
-        return redirect("pos_home")
-
-    # ✅ NUEVO: método de pago (obligatorio)
-    payment_method = (request.POST.get("payment_method") or "").strip()
-    if payment_method not in ("cash", "card"):
-        messages.error(request, "Debes seleccionar un método de pago (efectivo o tarjeta).")
-        return redirect("pos_trip", trip_id=trip_id or request.POST.get("trip_id"))
-
-    # ✅ NUEVO (Pack Caja #4): etiqueta amigable para el recibo
-    payment_method_label = "💳 Tarjeta" if payment_method == "card" else "💵 Efectivo"
-
-    # Limpieza rápida de holds vencidos
-    try:
-        SeatHold.cleanup()
-    except Exception:
-        pass
-
-    # trip_id puede venir en URL o en hidden
-    tid = trip_id or request.POST.get("trip_id")
-    trip = get_object_or_404(Trip.objects.select_for_update(), pk=tid)
-
-    # Parseo de asientos seleccionados (JSON)
-    raw = request.POST.get("seats", "").strip()
-    try:
-        chosen = json.loads(raw) if raw else []
-    except Exception:
-        chosen = []
-    if not isinstance(chosen, list) or not chosen:
-        messages.error(request, "No hay asientos seleccionados.")
-        return redirect("pos_trip", trip_id=trip.id)
-
-    # Datos del comprador/pasajero
-    buyer = (request.POST.get("buyer") or request.POST.get("buyer_name") or "").strip()
-    passenger = (request.POST.get("passenger") or request.POST.get("passenger_name") or "").strip()
-    doc = (request.POST.get("document") or "").strip()
-    buyer_display = buyer or passenger or ""
-
-    # Precio base desde la ruta (si no hay, 0)
-    from decimal import Decimal
-    unit_price = getattr(trip.route, "base_price", 0) or 0
-    try:
-        unit_price = Decimal(str(unit_price))
-    except Exception:
-        unit_price = Decimal("0")
-
-    created_tickets = []
-    skipped = []
-
-    # Emisión — buscamos Seat por (bus, deck, number)
-    for item in chosen:
-        try:
-            deck = int(item.get("deck"))
-            number = str(item.get("number")).strip()
-        except Exception:
-            continue
-        if not number:
-            continue
-
-        try:
-            seat = Seat.objects.select_for_update().get(bus=trip.bus, deck=deck, number=number)
-        except Seat.DoesNotExist:
-            skipped.append(number)
-            continue
-
-        # Si ya está ocupado, saltar
-        if Ticket.objects.filter(trip=trip, seat=seat).exists() or getattr(seat, "is_occupied", False):
-            skipped.append(number)
-            continue
-
-        try:
-            buyer_name_val = buyer or passenger or "Pasajero"
-            t = Ticket.create_for_sale(
-                trip=trip,
-                seat=seat,
-                buyer_name=buyer_name_val,
-                national_id=doc,
-                price=unit_price,
-                created_by=request.user,
-                # ✅ NUEVO: guardar método de pago
-                payment_method=payment_method,
-            )
-            created_tickets.append(t)
-        except Exception:
-            skipped.append(number)
-            continue
-
-    # Datos para el recibo
-    seats_for_receipt = [{"number": t.seat.number, "deck": getattr(t.seat, "deck", 1)} for t in created_tickets]
-    total = unit_price * len(seats_for_receipt)
-
-    # ✅ NUEVO (Pack Caja #1): totales por método de pago
-    total_cash = Decimal("0")
-    total_card = Decimal("0")
-    for t in created_tickets:
-        # Si por algún motivo viene vacío, lo contamos como cash (seguro y compatible)
-        pm = (getattr(t, "payment_method", "") or "cash").strip()
-        if pm == "card":
-            total_card += t.price
-        else:
-            total_cash += t.price
-
-    # ✅ Compatibilidad con templates antiguos:
-    first_ticket = created_tickets[0] if created_tickets else None
-    items = [{"ticket": t, "seat": {"number": t.seat.number, "deck": getattr(t.seat, "deck", 1)}} for t in created_tickets]
-    ticket_numbers = [t.number for t in created_tickets]
-
-    ctx = {
-        "trip": trip,
-        "tickets": created_tickets,
-        "ticket": first_ticket,
-        "ticket_numbers": ticket_numbers,
-        "items": items,
-        "seats": seats_for_receipt,
-        "price": unit_price,
-        "total": total,
-        "buyer": buyer_display,
-        "skipped": skipped,
-
-        # ✅ NUEVO: mostrar método en receipt.html
-        "payment_method": payment_method,
-        "payment_method_label": payment_method_label,
-
-        # ✅ NUEVO: mostrar totales por método
-        "total_cash": total_cash,
-        "total_card": total_card,
-    }
-    return render(request, "pos/receipt.html", ctx)
-
-
-# =========================
-# Sistema de Caja
-# =========================
-@staff_member_required
-def pos_caja(request):
-    """Dashboard principal de caja"""
-    # Filtro de fecha (hoy por defecto)
-    fecha_str = request.GET.get('fecha', '')
-    if fecha_str:
-        try:
-            fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
-        except ValueError:
-            fecha = timezone.now().date()
-    else:
-        fecha = timezone.now().date()
-    
-    # ✅ NUEVO: Lógica multi-usuario
-    # Para administradores y supervisores: ver todas las cajas
-    # Para vendedores y cajeros: ver solo su caja
-    es_admin_o_supervisor = (
-        request.user.is_superuser or 
-        (hasattr(request.user, 'profile') and 
-         request.user.profile.role in ['admin', 'supervisor'])
-    )
-    
-    if es_admin_o_supervisor:
-        caja_abierta = CashRegister.objects.filter(
-            opening_date__date=fecha,
-            status='open'
-        ).exists()
-        
-        caja_actual = CashRegister.objects.filter(
-            opening_date__date=fecha,
-            status='open'
-        ).first() if caja_abierta else None
-        
-        # Estadísticas para todos los usuarios
-        ventas_hoy = Ticket.objects.filter(created_at__date=fecha)
-        
-        # ✅ NUEVO: Obtener cajas abiertas de todos los usuarios
-        cajas_abiertas = CashRegister.objects.filter(
-            opening_date__date=fecha,
-            status='open'
-        ).select_related('user')
-    else:
-        # Usuario normal solo ve su propia caja (comportamiento original)
-        caja_abierta = CashRegister.objects.filter(
-            user=request.user,
-            opening_date__date=fecha,
-            status='open'
-        ).exists()
-        
-        caja_actual = CashRegister.objects.filter(
-            user=request.user,
-            opening_date__date=fecha,
-            status='open'
-        ).first() if caja_abierta else None
-        
-        ventas_hoy = Ticket.objects.filter(
-            created_at__date=fecha,
-            created_by=request.user
-        )
-        
-        # ✅ NUEVO: Para usuarios normales, cajas_abiertas vacío
-        cajas_abiertas = CashRegister.objects.none()
-    
-    # ✅ MANTENIDO: Tu código original de estadísticas
-    total_ventas = ventas_hoy.aggregate(total=Sum('price'))['total'] or 0
-    total_boletos = ventas_hoy.count()
-    
-    # Rutas vendidas hoy
-    rutas_vendidas = ventas_hoy.values('trip__route').distinct().count()
-    
-    # Ticket promedio
-    promedio_venta = total_ventas / total_boletos if total_boletos > 0 else 0
-    
-    # Ventas recientes (últimas 10)
-    ventas_recientes = ventas_hoy.select_related(
-        'trip__route__origin', 
-        'trip__route__destination',
-        'seat'
-    ).order_by('-created_at')[:10]
-    
-    # ✅ MANTENIDO: Estadísticas comparativas (ayer)
-    ayer = fecha - timedelta(days=1)
-    
-    # Ajustar consulta de ayer según permisos
-    if es_admin_o_supervisor:
-        ventas_ayer = Ticket.objects.filter(created_at__date=ayer)
-    else:
-        ventas_ayer = Ticket.objects.filter(
-            created_at__date=ayer,
-            created_by=request.user
-        )
-    
-    total_ventas_ayer = ventas_ayer.aggregate(total=Sum('price'))['total'] or 0
-    total_boletos_ayer = ventas_ayer.count()
-    
-    # ✅ MANTENIDO: Calcular tendencias
-    tendencia_ventas = calcular_tendencia(total_ventas, total_ventas_ayer)
-    tendencia_boletos = calcular_tendencia(total_boletos, total_boletos_ayer)
-    
-    # ✅ NUEVO: Información del perfil de usuario
-    user_profile = None
-    user_role = "Vendedor"
-    if hasattr(request.user, 'profile'):
-        user_profile = request.user.profile
-        user_role = user_profile.get_role_display()
-    
-    context = {
-        'title': 'POS — Panel de Caja',
-        'hoy': fecha.strftime('%Y-%m-%d'),
-        'total_ventas': total_ventas,
-        'total_boletos': total_boletos,
-        'rutas_vendidas': rutas_vendidas,
-        'promedio_venta': promedio_venta,
-        'ventas_recientes': ventas_recientes,
-        'caja_abierta': caja_abierta,
-        'caja_actual': caja_actual,
-        'tendencia_ventas': tendencia_ventas,
-        'tendencia_boletos': tendencia_boletos,
-        
-        # ✅ NUEVO: Datos para multi-usuario
-        'es_admin_o_supervisor': es_admin_o_supervisor,
-        'cajas_abiertas': cajas_abiertas,
-        'user_profile': user_profile,
-        'user_role': user_role,
-        'usuarios_con_caja_abierta': cajas_abiertas.count() if es_admin_o_supervisor else 0,
-    }
-    
-    return render(request, 'booking/pos_caja.html', context)
-
-
-@staff_member_required
-@require_POST
-def abrir_caja(request):
-    """Abrir caja para el día actual con monto inicial"""
-    try:
-        fecha_hoy = timezone.now().date()
-        
-        # Verificar si ya hay caja abierta
-        if CashRegister.objects.filter(user=request.user, opening_date__date=fecha_hoy, status='open').exists():
-            return JsonResponse({'success': False, 'error': 'Ya tienes una caja abierta hoy'})
-        
-        # Obtener el monto inicial del request
-        try:
-            data = json.loads(request.body)
-            opening_balance = Decimal(str(data.get('opening_balance', 0)))
-        except (json.JSONDecodeError, KeyError, ValueError):
-            # Si no viene monto o hay error, usar 0 por defecto
-            opening_balance = Decimal('0')
-        
-        # Validar que el monto sea positivo
-        if opening_balance < 0:
-            return JsonResponse({'success': False, 'error': 'El monto inicial no puede ser negativo'})
-        
-        # Crear nueva caja con monto inicial
-        caja = CashRegister.objects.create(
-            user=request.user,
-            opening_balance=opening_balance
-        )
-        
-        message = 'Caja abierta exitosamente'
-        if opening_balance > 0:
-            message = f'Caja abierta exitosamente con saldo inicial: ${opening_balance}'
-        
-        return JsonResponse({'success': True, 'message': message})
-    
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
-
-
-@staff_member_required
-@require_POST
-def cerrar_caja(request):
-    """Cerrar caja actual"""
-    try:
-        fecha_hoy = timezone.now().date()
-        
-        # Obtener caja abierta
-        caja = CashRegister.objects.get(
-            user=request.user, 
-            opening_date__date=fecha_hoy, 
-            status='open'
-        )
-        
-        # Calcular ventas del día
-        ventas_hoy = Ticket.objects.filter(
-            created_at__date=fecha_hoy,
-            created_by=request.user
-        )
-        total_ventas = ventas_hoy.aggregate(total=Sum('price'))['total'] or 0
-        total_boletos = ventas_hoy.count()
-        
-        # Actualizar caja
-        caja.closing_date = timezone.now()
-        caja.total_sales = total_ventas
-        caja.total_tickets = total_boletos
-        caja.closing_balance = total_ventas  # Por ahora, saldo final = ventas
-        caja.status = 'closed'
-        caja.save()
-        
-        # Actualizar o crear reporte diario
-        reporte, created = DailyReport.objects.get_or_create(date=fecha_hoy)
-        reporte.total_tickets += total_boletos
-        reporte.total_revenue += total_ventas
-        reporte.total_cash_registers = CashRegister.objects.filter(
-            opening_date__date=fecha_hoy, 
-            status='closed'
-        ).count()
-        reporte.save()
-        
-        return JsonResponse({
-            'success': True, 
-            'message': f'Caja cerrada. Ventas: ${total_ventas}, Boletos: {total_boletos}'
-        })
-    
-    except CashRegister.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'No tienes caja abierta'})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
-
-
-# =========================
-# Reportes
-# =========================
-@staff_member_required
-def pos_reportes(request):
-    """Vista de reportes detallados"""
-    # Filtros por fecha
-    fecha_inicio_str = request.GET.get('fecha_inicio', '')
-    fecha_fin_str = request.GET.get('fecha_fin', '')
-    usuario_id = request.GET.get('usuario', '')  # ✅ NUEVO: Filtro por usuario
-    
-    # Fechas por defecto (últimos 7 días)
-    if not fecha_inicio_str or not fecha_fin_str:
-        fecha_fin = timezone.now().date()
-        fecha_inicio = fecha_fin - timedelta(days=7)
-    else:
-        try:
-            fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d').date()
-            fecha_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date()
-        except ValueError:
-            fecha_fin = timezone.now().date()
-            fecha_inicio = fecha_fin - timedelta(days=7)
-    
-    # ✅ NUEVO: Lógica multi-usuario
-    # Para administradores y supervisores: ver todas las ventas
-    # Para vendedores y cajeros: ver solo sus ventas
-    es_admin_o_supervisor = (
-        request.user.is_superuser or 
-        (hasattr(request.user, 'profile') and 
-         request.user.profile.role in ['admin', 'supervisor'])
-    )
-    
-    # ✅ MANTENIDO: Base query con soporte multi-usuario
-    if es_admin_o_supervisor:
-        ventas = Ticket.objects.filter(
-            created_at__date__range=[fecha_inicio, fecha_fin]
-        ).select_related('trip__route__origin', 'trip__route__destination', 'created_by')
-        
-        # ✅ NUEVO: Filtro por usuario específico si se selecciona
-        if usuario_id and usuario_id != 'todos':
-            ventas = ventas.filter(created_by_id=usuario_id)
-    else:
-        # ✅ MANTENIDO: Comportamiento original para usuarios normales
-        ventas = Ticket.objects.filter(
-            created_at__date__range=[fecha_inicio, fecha_fin],
-            created_by=request.user
-        ).select_related('trip__route__origin', 'trip__route__destination')
-    
-    # ✅ MANTENIDO: Estadísticas generales en una sola consulta
-    stats = ventas.aggregate(
-        total_ventas=Sum('price'),
-        total_boletos=Count('id'),
-        ticket_promedio=Avg('price')
-    )
-    total_ventas = stats['total_ventas'] or 0
-    total_boletos = stats['total_boletos'] or 0
-    ticket_promedio_general = stats['ticket_promedio'] or 0
-    
-    dias_rango = (fecha_fin - fecha_inicio).days + 1
-    
-    # CALCULAR PROMEDIO DIARIO
-    promedio_diario = total_ventas / dias_rango if dias_rango > 0 else 0
-    
-    # Ventas por día (para gráfico)
-    ventas_por_dia = ventas.extra(
-        {'fecha': "DATE(created_at)"}
-    ).values('fecha').annotate(
-        total=Sum('price'),
-        cantidad=Count('id')
-    ).order_by('fecha')
-    
-    # CALCULAR PROMEDIOS PARA VENTAS POR DÍA
-    ventas_por_dia_procesadas = []
-    for venta in ventas_por_dia:
-        promedio_dia = venta['total'] / venta['cantidad'] if venta['cantidad'] > 0 else 0
-        ventas_por_dia_procesadas.append({
-            'fecha': venta['fecha'],
-            'total': venta['total'],
-            'cantidad': venta['cantidad'],
-            'promedio': promedio_dia
-        })
-    
-    # Rutas más vendidas
-    rutas_populares = ventas.values(
-        'trip__route__origin__name', 
-        'trip__route__destination__name'
-    ).annotate(
-        total=Sum('price'),
-        cantidad=Count('id'),
-        # ✅ MANTENIDO: Calcular promedio directamente en la consulta
-        promedio=Avg('price')
-    ).order_by('-total')[:10]
-    
-    # CALCULAR PROMEDIOS PARA RUTAS POPULARES (mantenemos por compatibilidad con el template)
-    rutas_populares_procesadas = []
-    for ruta in rutas_populares:
-        # Usamos el promedio calculado en la consulta o calculamos como fallback
-        promedio_ruta = ruta['promedio'] if ruta['promedio'] is not None else (ruta['total'] / ruta['cantidad'] if ruta['cantidad'] > 0 else 0)
-        rutas_populares_procesadas.append({
-            'trip__route__origin__name': ruta['trip__route__origin__name'],
-            'trip__route__destination__name': ruta['trip__route__destination__name'],
-            'total': ruta['total'],
-            'cantidad': ruta['cantidad'],
-            'promedio': promedio_ruta
-        })
-    
-    # Horarios más populares
-    ventas_por_hora = ventas.extra(
-        {'hora': "EXTRACT(HOUR FROM created_at)"}
-    ).values('hora').annotate(
-        total=Sum('price'),
-        cantidad=Count('id'),
-        # ✅ MANTENIDO: Calcular promedio por hora
-        promedio=Avg('price')
-    ).order_by('hora')
-    
-    # ✅ NUEVO: Ventas por vendedor (solo para admin/supervisor)
-    ventas_por_vendedor = []
-    if es_admin_o_supervisor:
-        ventas_por_vendedor = Ticket.objects.filter(
-            created_at__date__range=[fecha_inicio, fecha_fin]
-        ).values(
-            'created_by__id',
-            'created_by__username',
-            'created_by__first_name',
-            'created_by__last_name'
-        ).annotate(
-            total=Sum('price'),
-            cantidad=Count('id'),
-            promedio=Avg('price')
-        ).order_by('-total')
-    
-    # ✅ NUEVO: Información del usuario actual
-    user_profile = None
-    user_role = "Vendedor"
-    if hasattr(request.user, 'profile'):
-        user_profile = request.user.profile
-        user_role = user_profile.get_role_display()
-    
-    # ✅ CORREGIDO: Obtener lista de usuarios para el filtro (solo para admin/supervisor)
-    usuarios_lista = []
-    if es_admin_o_supervisor:
-        usuarios_lista = User.objects.filter(
-            is_staff=True,
-            tickets_sold__created_at__date__range=[fecha_inicio, fecha_fin]  # ✅ CAMBIO: ticket → tickets_sold
-        ).distinct().annotate(
-            ventas_count=Count('tickets_sold')  # ✅ CAMBIO: ticket → tickets_sold
-        ).order_by('username')
-    
-    context = {
-        'title': 'POS — Reportes Detallados',
-        'fecha_inicio': fecha_inicio.strftime('%Y-%m-%d'),
-        'fecha_fin': fecha_fin.strftime('%Y-%m-%d'),
-        'total_ventas': total_ventas,
-        'total_boletos': total_boletos,
-        'ticket_promedio_general': ticket_promedio_general,
-        'promedio_diario': promedio_diario,
-        'ventas_por_dia': ventas_por_dia_procesadas,
-        'rutas_populares': rutas_populares_procesadas,
-        'ventas_por_hora': list(ventas_por_hora),
-        'dias_rango': dias_rango,
-        
-        # ✅ NUEVO: Datos para multi-usuario
-        'es_admin_o_supervisor': es_admin_o_supervisor,
-        'ventas_por_vendedor': ventas_por_vendedor,
-        'usuarios_lista': usuarios_lista,
-        'usuario_seleccionado': usuario_id,
-        'user_profile': user_profile,
-        'user_role': user_role,
-        
-        # ✅ NUEVO: Información del filtro aplicado
-        'filtro_usuario_aplicado': usuario_id if usuario_id else None,
-        'usuario_filtrado': User.objects.get(id=usuario_id).get_full_name() if usuario_id and usuario_id != 'todos' else None,
-    }
-    
-    return render(request, 'booking/pos_reportes.html', context)
-
-# =========================
-# Gestión de Usuarios
-# =========================
-
-def gestion_usuarios(request):
-    qs = User.objects.select_related('profile').order_by('username')
-
-    context = {
-        "title": "Gestión de Usuarios",
-        "usuarios": qs,
-
-        # métricas para las tarjetas
-        "total_count": qs.count(),
-        "admins_count": qs.filter(profile__role="admin").count(),
-        "supervisores_count": qs.filter(profile__role="supervisor").count(),
-        "vendedores_count": qs.filter(profile__role="vendedor").count(),
-        "activos_count": qs.filter(profile__is_active=True).count(),
-        "inactivos_count": qs.filter(profile__is_active=False).count(),
-
-        # ✅ ahora desde el helper
-        "roles": _get_role_choices(),
-        "terminales": Terminal.objects.all(),
-    }
-    return render(request, "booking/gestion_usuarios.html", context)
-@staff_member_required
-@role_required(['admin', 'supervisor'])
-def editar_usuario(request, user_id):
-    """Editar perfil de usuario."""
-    usuario = get_object_or_404(User, id=user_id)
-
-    if request.method == 'POST':
-        try:
-            with transaction.atomic():
-                # Actualizar información básica del usuario
-                usuario.first_name = request.POST.get('first_name', '')
-                usuario.last_name = request.POST.get('last_name', '')
-                usuario.email = request.POST.get('email', '')
-                usuario.save()
-
-                # ✅ Obtener o crear el perfil (manejar caso donde no existe)
-                profile, created = UserProfile.objects.get_or_create(
-                    user=usuario,
-                    defaults={
-                        'role': 'vendedor',
-                        'is_active': True
-                    }
-                )
-                
-                # Actualizar el perfil
-                profile.role = request.POST.get('role', 'vendedor')
-                profile.terminal_id = request.POST.get('terminal') or None
-                
-                try:
-                    profile.commission_rate = Decimal(request.POST.get('commission_rate', 0) or 0)
-                except (ValueError, TypeError):
-                    profile.commission_rate = Decimal('0')
-                
-                try:
-                    profile.max_discount = Decimal(request.POST.get('max_discount', 0) or 0)
-                except (ValueError, TypeError):
-                    profile.max_discount = Decimal('0')
-                    
-                profile.is_active = 'is_active' in request.POST
-                profile.save()
-
-            messages.success(request, f"Usuario {usuario.username} actualizado correctamente.")
-            return redirect('gestion_usuarios')
-
-        except Exception as e:
-            messages.error(request, f"Error al actualizar usuario: {str(e)}")
-
-    context = {
-        'title': f'Editar Usuario - {usuario.username}',
-        'usuario': usuario,
-        'terminales': Terminal.objects.all(),
-        'roles': _get_role_choices(),
-    }
-    return render(request, 'booking/editar_usuario.html', context)
-# =========================
-# Crear Usuario
-# =========================
-
-def crear_usuario(request):
-    roles = _get_role_choices()
-    terminales = Terminal.objects.all()
-
-    if request.method == "POST":
-        g = request.POST.get
-        username = (g("username") or "").strip().lower()
-        password = g("password") or ""
-        confirm = g("confirm_password") or ""
-
-        if not username:
-            messages.error(request, "El nombre de usuario es obligatorio.")
-        elif User.objects.filter(username__iexact=username).exists():
-            messages.error(request, "Ese nombre de usuario ya existe.")
-        elif password != confirm:
-            messages.error(request, "Las contraseñas no coinciden.")
-        else:
-            try:
-                with transaction.atomic():
-                    # 1. Crear el usuario
-                    user = User.objects.create_user(
-                        username=username,
-                        email=(g("email") or "").strip(),
-                        password=password,
-                        first_name=(g("first_name") or "").strip(),
-                        last_name=(g("last_name") or "").strip(),
-                    )
-                    
-                    # 2. Verificar si el perfil YA EXISTE (por si las señales no están completamente desactivadas)
-                    if hasattr(user, 'profile'):
-                        # Si ya existe, actualizar
-                        profile = user.profile
-                        profile.role = g("role") or "vendedor"
-                        profile.terminal_id = g("terminal") or None
-                        profile.commission_rate = Decimal(g("commission_rate") or 0)
-                        profile.max_discount = Decimal(g("max_discount") or 0)
-                        profile.is_active = True
-                        profile.save()
-                    else:
-                        # Si no existe, crear
-                        UserProfile.objects.create(
-                            user=user,
-                            role=g("role") or "vendedor",
-                            terminal_id=g("terminal") or None,
-                            commission_rate=Decimal(g("commission_rate") or 0),
-                            max_discount=Decimal(g("max_discount") or 0),
-                            is_active=True
-                        )
-
-                messages.success(request, "Usuario creado correctamente.")
-                return redirect("gestion_usuarios")
-
-            except IntegrityError as e:
-                # Si hay error de integridad, mostrar información de depuración
-                messages.error(request, f"Error de integridad: {e}")
-                # Depuración adicional
-                import traceback
-                print("Traceback completo:")
-                print(traceback.format_exc())
-                
-            except Exception as e:
-                messages.error(request, f"Error inesperado: {e}")
-                import traceback
-                print("Traceback completo:")
-                print(traceback.format_exc())
-
-    context = {
-        "title": "Crear Usuario",
-        "roles": roles,
-        "terminales": terminales,
-    }
-    return render(request, "booking/crear_usuario.html", context)
-# =========================
-# Helpers
-# =========================
-
 def _get_role_choices():
-    """
-    Lee los choices del campo 'role' en UserProfile (si existen).
-    Devuelve tuplas (value, label). Fallback incluido.
-    """
+    """Obtiene las opciones de roles desde el modelo UserProfile con fallback."""
     try:
         choices = UserProfile._meta.get_field('role').choices
         if choices:
@@ -1409,198 +72,967 @@ def _get_role_choices():
         ('cajero', 'Cajero'),
     )
 
-def debug_signals(request):
-    """Página temporal para depurar señales"""
-    from django.db.models.signals import post_save
-    from django.contrib.auth import get_user_model
-    
-    User = get_user_model()
-    
-    # Verificar qué señales están registradas para User
-    signals_info = []
-    for receiver in post_save.receivers:
-        if hasattr(receiver, '__self__'):
-            receiver_str = str(receiver)
-            if 'User' in receiver_str:
-                signals_info.append(receiver_str)
-    
-    context = {
-        'signals': signals_info,
-        'total_signals': len(signals_info)
-    }
-    return render(request, 'booking/debug_signals.html', context)
+
+# ============================================================================
+# 2. DECORADORES PERSONALIZADOS DE CONTROL DE ACCESO
+# ============================================================================
+
+def role_required(allowed_roles, login_url=None, message=None):
+    """ Decorador avanzado para control de acceso basado en roles del sistema. """
+    def decorator(view_func):
+        def wrapper(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return redirect(login_url or 'admin:login')
+
+            if request.user.is_superuser:
+                return view_func(request, *args, **kwargs)
+
+            if not request.user.is_staff:
+                messages.error(request, message or "Acceso denegado. Se requieren permisos de staff.")
+                return redirect('pos_caja')
+
+            if not hasattr(request.user, 'profile'):
+                try:
+                    UserProfile.objects.get_or_create(
+                        user=request.user,
+                        defaults={'role': 'vendedor'}
+                    )
+                    request.user.refresh_from_db()
+                except Exception:
+                    messages.error(request, "Error en la configuración de su perfil administrativo.")
+                    return redirect('pos_caja')
+
+            user_role = getattr(request.user.profile, 'role', 'vendedor')
+            if user_role in allowed_roles:
+                return view_func(request, *args, **kwargs)
+
+            role_display = {'admin': 'Admin', 'supervisor': 'Supervisor', 'vendedor': 'Vendedor', 'cajero': 'Cajero'}.get(user_role, user_role)
+            allowed_display = [{'admin': 'Admin', 'supervisor': 'Supervisor', 'vendedor': 'Vendedor', 'cajero': 'Cajero'}.get(r, r) for r in allowed_roles]
+
+            messages.error(
+                request,
+                message or f"Acceso denegado. Su rol ({role_display}) no tiene permisos. Requiere: {', '.join(allowed_display)}"
+            )
+            return redirect('pos_caja')
+        return wrapper
+    return decorator
+
+def admin_required(view_func): return role_required(['admin'])(view_func)
+def supervisor_required(view_func): return role_required(['admin', 'supervisor'])(view_func)
+def vendedor_required(view_func): return role_required(['admin', 'supervisor', 'vendedor'])(view_func)
+def cajero_required(view_func): return role_required(['admin', 'supervisor', 'vendedor', 'cajero'])(view_func)
 
 
+# ============================================================================
+# 3. VISTAS PRINCIPALES DEL PUNTO DE VENTA (POS)
+# ============================================================================
 
+@login_required
+@vendedor_required
+def pos_home(request):
+    """ Lista de viajes filtrables para la terminal. Solo muestra salidas vigentes. """
+    now = timezone.localtime()
+    q_date = (request.GET.get("date") or "").strip()
+    origin_id = (request.GET.get("origin_id") or "").strip()
+    dest_id = (request.GET.get("dest_id") or "").strip()
 
-def search_customer(request):
-    """API para buscar cliente por RUT o nombre"""
-    query = request.GET.get('q', '').strip()
-    if not query or len(query) < 2:
-        return JsonResponse({'customers': []})
+    did_search = bool(q_date or origin_id or dest_id)
 
-    # Buscar por RUT o nombre
-    customers = Customer.objects.filter(
-        Q(national_id__icontains=query) | 
-        Q(full_name__icontains=query)
-    )[:10]
+    if q_date:
+        try:
+            the_date = datetime.strptime(q_date, "%Y-%m-%d").date()
+        except ValueError:
+            the_date = now.date()
+    else:
+        the_date = now.date()
 
-    results = []
-    for customer in customers:
-        results.append({
-            'id': customer.id,
-            'national_id': customer.national_id,
-            'full_name': customer.full_name,
-            'phone': customer.phone,
-            'email': customer.email
-        })
+    if not did_search:
+        trips = Trip.objects.none()
+    else:
+        trips = Trip.objects.select_related(
+            "route__origin", "route__destination", "bus"
+        ).filter(
+            departure__date=the_date,
+            departure__gte=now,
+        )
+        if origin_id:
+            trips = trips.filter(route__origin_id=origin_id)
+        if dest_id:
+            trips = trips.filter(route__destination_id=dest_id)
 
-    return JsonResponse({'customers': results})
-
-def create_customer(request):
-    """API para crear nuevo cliente"""
-    if request.method == 'POST':
-        national_id = request.POST.get('national_id', '').strip()
-        full_name = request.POST.get('full_name', '').strip()
+        # Optimizaciones de Conteos Colectivos (Evita Query N+1)
+        sold_map = dict(Ticket.objects.filter(trip__in=trips).values("trip").annotate(c=Count("id")).values_list("trip", "c"))
+        hold_map = dict(SeatHold.objects.filter(trip__in=trips).values("trip").annotate(c=Count("id")).values_list("trip", "c"))
         
-        if not national_id or not full_name:
-            return JsonResponse({'success': False, 'error': 'RUT y nombre son obligatorios'})
+        bus_ids = list(trips.values_list("bus_id", flat=True))
+        total_by_bus = dict(Seat.objects.filter(bus_id__in=bus_ids).values("bus_id").annotate(c=Count("id")).values_list("bus_id", "c"))
+
+        for t in trips:
+            t.sold = sold_map.get(t.id, 0)
+            t.hold = hold_map.get(t.id, 0)
+            t.total = total_by_bus.get(t.bus_id, 0)
+            t.free = max(t.total - t.sold - t.hold, 0)
+
+    ctx = {
+        "title": "POS — Panel de Ventas",
+        "date": the_date.strftime("%Y-%m-%d"),
+        "cities": City.objects.all().order_by("name"),
+        "origin_id": origin_id,
+        "dest_id": dest_id,
+        "trips": trips,
+        "did_search": did_search,
+    }
+    return render(request, "booking/pos_home.html", ctx)
+
+
+@login_required
+@vendedor_required
+def pos_trip(request, trip_id):
+    """ Vista operacional de venta del viaje. Carga el croquis dinámico unificado. """
+    trip = get_object_or_404(Trip.objects.select_related("route__origin", "route__destination", "bus"), id=trip_id)
+    if not trip.bus:
+        return HttpResponse("Este viaje no tiene asignada una unidad de transporte (Bus).", status=400)
+
+    # 1. Recuperamos las matrices usando el motor unificado de cálculo
+    grid_lower, grid_upper, cols = _build_trip_grid(trip, request.user)
+
+    context = {
+        'trip': trip,
+        'cols': cols,
+        'grid_lower': json.dumps(grid_lower),
+        'grid_upper': json.dumps(grid_upper),
+    }
+    return render(request, "booking/pos_trip.html", context)
+
+
+@xframe_options_exempt
+@login_required
+def pos_trip_modal(request, trip_id: int):
+    """ Modal interactivo / Iframe con el mapa de visualización de asientos. """
+    trip = get_object_or_404(Trip.objects.select_related("route__origin", "route__destination", "bus"), pk=trip_id)
+    grid_lower, grid_upper, cols = _build_trip_grid(trip, request.user)
+    ctx = {
+        "title": f"Croquis — {trip.route.origin.name} a {trip.route.destination.name}",
+        "trip": trip,
+        "bus": trip.bus,
+        "cols": cols,
+        "grid_lower": grid_lower,
+        "grid_upper": grid_upper,
+    }
+    return render(request, "booking/seatmap.html", ctx)
+
+
+# ============================================================================
+# 4. MOTOR UNIFICADO E INTEGRAL DE MAPAS DE ASIENTOS (CONCURRENCIA CONTROLADA)
+# ============================================================================
+
+def _build_trip_grid(trip: Trip, current_user=None):
+    """
+    Motor Único de Renderizado con una sola consulta SQL.
+    Usa annotate para marcar estado (free, sold, my-hold, occupied).
+    """
+    from django.db.models import Case, When, Value, CharField, Q, OuterRef, Exists
+    from django.db.models import F
+
+    bus = trip.bus
+    cols = int(bus.cols or 4)
+    if cols <= 0:
+        return [], [], 0
+
+    letters = _letters_for_cols(cols)
+    pos2col = {ch: i for i, ch in enumerate(letters)}
+
+    # --- Subconsultas para determinar estado ---
+    # 1. ¿Está vendido?
+    sold_subq = Ticket.objects.filter(trip=trip, seat=OuterRef('pk')).values('pk')
+    # 2. ¿Está retenido activo?
+    hold_active_subq = SeatHold.objects.filter(
+        trip=trip, seat=OuterRef('pk'),
+        expires_at__gt=timezone.now(), active=True
+    ).values('pk')
+    # 3. ¿La retención es del usuario actual?
+    hold_by_user_subq = SeatHold.objects.filter(
+        trip=trip, seat=OuterRef('pk'), user=current_user,
+        expires_at__gt=timezone.now(), active=True
+    ).values('pk')
+
+    # Anotamos el estado en cada asiento
+    seats_annotated = Seat.objects.filter(bus=bus).annotate(
+        status=Case(
+            When(Exists(sold_subq), then=Value('sold')),
+            When(Exists(hold_by_user_subq), then=Value('my-hold')),
+            When(Exists(hold_active_subq), then=Value('occupied')),
+            default=Value('free'),
+            output_field=CharField()
+        )
+    ).values('id', 'deck', 'row', 'position', 'number', 'seat_service', 'status')
+
+    # Indexar por deck y posición lineal
+    index_by_deck = {1: {}, 2: {}}
+    for s in seats_annotated:
+        deck_num = int(s.get('deck') or 1)
+        r_num = int(s.get('row') or 1)
+        pos_val = s.get('position')
+        c_num = pos2col[pos_val] if pos_val in pos2col else 0
+        idx = (r_num - 1) * cols + c_num
+        index_by_deck[deck_num][idx] = s
+
+    def grid_for(deck: int, rows: int, flat_layout: list[str]):
+        out, i = [], 0
+        for _r in range(rows):
+            row = []
+            for _c in range(cols):
+                typ = (flat_layout[i] if i < len(flat_layout) else "L") or "L"
+                label, status, hold_user = "", "free", ""
+                seat_id = None
+                srv = "semi_cama"
+
+                if typ == "L":
+                    s = index_by_deck.get(deck, {}).get(i)
+                    if s:
+                        seat_id = s.get('id')
+                        label = s.get('number') or ''
+                        srv = (s.get('seat_service') or 'semi_cama').lower()
+                        status = s.get('status', 'free')
+                        # Si es 'occupied' y es del usuario, forzamos 'my-hold' (ya viene así desde annotate)
+                        # pero añadimos info de usuario para tooltip
+                        if status == 'occupied' and current_user:
+                            hold = SeatHold.objects.filter(trip=trip, seat_id=seat_id, user=current_user).first()
+                            if hold:
+                                status = 'my-hold'
+                        if status != 'free' and status != 'my-hold':
+                            hold_user = "Otro vendedor"
+                row.append({
+                    "id": seat_id, "type": typ, "label": label, "number": label,
+                    "status": status, "service": srv, "seat_service": srv, "hold_user": hold_user
+                })
+                i += 1
+            out.append(row)
+        return out
+
+    lower = grid_for(1, int(bus.rows_lower or 0), bus.layout_lower or [])
+    upper = grid_for(2, int(bus.rows_upper or 0), bus.layout_upper or []) if int(bus.floors or 1) == 2 else []
+
+    return lower, upper, cols
+
+
+# ============================================================================
+# 5. ENDPOINTS TRANSACCIONALES (API DE CONTROL DE SEATHOLDS)
+# ============================================================================
+
+@require_POST
+@login_required
+def api_hold(request, trip_id):
+    """Bloquea temporalmente un asiento. Devuelve siempre expires_at si ok=True."""
+    trip = get_object_or_404(Trip, id=trip_id)
+    seat_id_front = request.POST.get('seat_id')
+    
+    if not seat_id_front:
+        return JsonResponse({'ok': False, 'error': 'Identificador de asiento ausente.'}, status=400)
+
+    with transaction.atomic():
+        # Limpieza de expirados
+        SeatHold.objects.filter(trip=trip, expires_at__lt=timezone.now()).delete()
+
+        seat_obj = trip.bus.seats.filter(Q(id=seat_id_front) | Q(number=seat_id_front)).first()
+        if not seat_obj:
+            return JsonResponse({'ok': False, 'error': 'El asiento no existe.'}, status=404)
+
+        if Ticket.objects.filter(trip=trip, seat=seat_obj).exists():
+            return JsonResponse({'ok': False, 'error': 'El asiento ya se vendió.'})
+
+        existing_hold = SeatHold.objects.filter(trip=trip, seat=seat_obj).first()
+        if existing_hold:
+            if existing_hold.user == request.user:
+                # Devuelve la expiración del hold existente
+                return JsonResponse({
+                    'ok': True,
+                    'message': 'Ya posees la reserva activa.',
+                    'expires_at': existing_hold.expires_at.isoformat()
+                })
+            return JsonResponse({'ok': False, 'error': 'Asiento retenido por otro vendedor.'})
+
+        expires_at = timezone.now() + timedelta(minutes=7)
+        SeatHold.objects.create(
+            trip=trip, seat=seat_obj, user=request.user,
+            expires_at=expires_at
+        )
+        return JsonResponse({'ok': True, 'expires_at': expires_at.isoformat()})
+
+@require_POST
+@login_required
+def api_release(request, trip_id):
+    """ Libera de inmediato el asiento retenido si la transacción se cancela. """
+    trip = get_object_or_404(Trip, id=trip_id)
+    seat_id_front = request.POST.get('seat_id')
+    
+    seat_obj = trip.bus.seats.filter(Q(id=seat_id_front) | Q(number=seat_id_front)).first()
+    if not seat_obj:
+        return JsonResponse({'ok': False, 'error': 'Asiento no encontrado.'}, status=404)
+
+    SeatHold.objects.filter(trip=trip, seat=seat_obj, user=request.user).delete()
+    return JsonResponse({'ok': True})
+
+
+# ============================================================================
+# 6. CIERRE DE CAJA, CHECKOUT Y EMISIÓN DE PASAJES DEFINITIVOS
+# ============================================================================
+
+@login_required
+@vendedor_required
+@transaction.atomic
+def pos_checkout(request: HttpRequest, trip_id: int = None):
+    """ Procesa el pago y emite los tickets físicos correspondientes blindado contra concurrencia. """
+    if request.method != "POST":
+        messages.error(request, "Acción u método de envío inválido.")
+        return redirect("pos_home")
+
+    payment_method = (request.POST.get("payment_method") or "").strip()
+    if payment_method not in ("cash", "card"):
+        messages.error(request, "Debe seleccionar un método válido: Efectivo o Tarjeta.")
+        return redirect("pos_trip", trip_id=trip_id or request.POST.get("trip_id"))
+
+    payment_method_label = "💳 Tarjeta" if payment_method == "card" else "💵 Efectivo"
+
+    # Capturar Viaje con bloqueo transaccional estricto (Pessimistic Locking)
+    tid = trip_id or request.POST.get("trip_id")
+    trip = get_object_or_404(Trip.objects.select_for_update(), pk=tid)
+
+    raw_seats = request.POST.get("seats", "").strip()
+    try:
+        chosen = json.loads(raw_seats) if raw_seats else []
+    except Exception:
+        chosen = []
+
+    if not isinstance(chosen, list) or not chosen:
+        messages.error(request, "No seleccionó ningún asiento para procesar la transacción.")
+        return redirect("pos_trip", trip_id=trip.id)
+
+    buyer = (request.POST.get("buyer") or request.POST.get("buyer_name") or "").strip()
+    passenger = (request.POST.get("passenger") or request.POST.get("passenger_name") or "").strip()
+    doc = (request.POST.get("document") or "").strip()
+    buyer_display = buyer or passenger or "Cliente General"
+
+    customer_id = request.POST.get("customer_id")
+    customer = Customer.objects.filter(id=customer_id).first() if customer_id else None
+
+    unit_price = Decimal(str(getattr(trip.route, "base_price", 0) or 0))
+    created_tickets = []
+    skipped = []
+
+    # Bloqueo estricto de asientos seleccionados para evitar sobreventa (Race Conditions)
+    numbers = [str(item.get("number")).strip() for item in chosen if item.get("number")]
+    decks = [int(item.get("deck") or 1) for item in chosen if item.get("deck")]
+    
+    seats_db = {
+        f"{s.deck}-{s.number}": s 
+        for s in Seat.objects.select_for_update().filter(bus=trip.bus, number__in=numbers, deck__in=decks)
+    }
+
+    for item in chosen:
+        try:
+            deck = int(item.get("deck"))
+            number = str(item.get("number")).strip()
+        except (ValueError, TypeError):
+            continue
+
+        key = f"{deck}-{number}"
+        seat = seats_db.get(key)
+
+        if not seat:
+            skipped.append(number)
+            continue
+
+        # Validación cruzada de seguridad: si ya tiene pasaje activo en el viaje
+        if Ticket.objects.filter(trip=trip, seat=seat).exists():
+            skipped.append(number)
+            continue
 
         try:
-            customer, created = Customer.objects.get_or_create(
-                national_id=national_id,
-                defaults={
-                    'full_name': full_name,
-                    'phone': request.POST.get('phone', ''),
-                    'email': request.POST.get('email', '')
-                }
+            # Creación a través de la lógica de negocio del modelo
+            t = Ticket.create_for_sale(
+                trip=trip, seat=seat, buyer_name=buyer or passenger or "Pasajero",
+                national_id=doc, price=unit_price, created_by=request.user,
+                payment_method=payment_method, customer=customer,
             )
-            
-            return JsonResponse({
-                'success': True,
-                'created': created,
-                'customer': {
-                    'id': customer.id,
-                    'national_id': customer.national_id,
-                    'full_name': customer.full_name,
-                    'phone': customer.phone,
-                    'email': customer.email
-                }
-            })
-            
+            created_tickets.append(t)
+        except Exception:
+            skipped.append(number)
+
+    if not created_tickets:
+        messages.error(request, f"Error: Los asientos solicitados ({', '.join(skipped)}) ya fueron vendidos.")
+        return redirect("pos_trip", trip_id=trip.id)
+
+    # Limpieza inmediata de retenciones asociadas
+    SeatHold.objects.filter(trip=trip, seat__in=[t.seat for t in created_tickets]).delete()
+
+    # Cálculos monetarios finales
+    total = unit_price * len(created_tickets)
+    total_cash = sum([t.price for t in created_tickets if t.payment_method == "cash"])
+    total_card = sum([t.price for t in created_tickets if t.payment_method == "card"])
+
+    items = [{"ticket": t, "seat": {"number": t.seat.number, "deck": getattr(t.seat, "deck", 1)}} for t in created_tickets]
+
+    ctx = {
+        "trip": trip, "tickets": created_tickets, "ticket": created_tickets[0],
+        "ticket_numbers": [t.number for t in created_tickets], "items": items,
+        "seats": [{"number": t.seat.number, "deck": getattr(t.seat, "deck", 1)} for t in created_tickets],
+        "price": unit_price, "total": total, "buyer": buyer_display, "skipped": skipped,
+        "payment_method": payment_method, "payment_method_label": payment_method_label,
+        "total_cash": total_cash, "total_card": total_card,
+    }
+    return render(request, "pos/receipt.html", ctx)
+
+
+# ============================================================================
+# 7. APIS EXPUESTAS Y CONSUMOS EXTERNOS (CLIENTE INTEGRADO)
+# ============================================================================
+
+@require_GET
+def trip_seats(request: HttpRequest, trip_id: int):
+    """ API optimizada de consulta de distribución física para aplicaciones móviles/web. """
+    try:
+        trip = Trip.objects.select_related("bus", "route__origin", "route__destination").get(pk=trip_id)
+    except Trip.DoesNotExist:
+        return JsonResponse({"error": "El viaje especificado no existe."}, status=404)
+
+    bus = trip.bus
+    letters = _letters_for_cols(getattr(bus, "cols", 4))
+    pos2col = {ch: i for i, ch in enumerate(letters)}
+
+    # Extraer estructuras indexadas eficientemente
+    tickets = set(Ticket.objects.filter(trip=trip).values_list("seat_id", flat=True))
+    holds = set(SeatHold.objects.filter(trip=trip, expires_at__gte=timezone.now()).values_list("seat_id", flat=True))
+    
+    seats_qs = Seat.objects.filter(bus=bus).order_by("deck", "row", "position", "number")
+    seats = []
+    
+    for s in seats_qs:
+        col_idx = pos2col.get(s.position) + 1 if isinstance(s.position, str) and s.position in pos2col else (int(s.position) if str(s.position).isdigit() else 1)
+        seats.append({
+            "id": s.id, "numero": s.number, "piso": int(s.deck or 1), "fila": int(s.row or 0),
+            "columna": col_idx, "ventana": bool(s.is_window),
+            "ocupado": (s.id in tickets) or (s.id in holds),
+        })
+
+    return JsonResponse({
+        "viaje": {
+            "id": trip.id, "origen": trip.route.origin.name, "destino": trip.route.destination.name,
+            "salida": trip.departure.isoformat(), "llegada": trip.arrival.isoformat() if trip.arrival else None,
+            "precio_asiento": str(getattr(trip.route, "base_price", "0")),
+            "bus": {"id": bus.id, "plate": bus.plate, "floors": getattr(bus, "floors", 1)},
+        },
+        "asientos": seats,
+    }, json_dumps_params={"ensure_ascii": False})
+
+
+@require_GET
+def api_cities(request):
+    """ Catálogo rápido autocompletable de ciudades. """
+    return JsonResponse(list(City.objects.order_by("name").values("id", "name")), safe=False, json_dumps_params={"ensure_ascii": False})
+
+
+@require_GET
+def api_search_trips(request):
+    """ Motor externo de búsquedas comerciales de itinerarios y pasajes disponibles. """
+    origen = (request.GET.get("origen") or "").strip()
+    destino = (request.GET.get("destino") or "").strip()
+    fecha = (request.GET.get("fecha") or "").strip()
+
+    if not (origen and destino and fecha):
+        return JsonResponse({"error": "Faltan parámetros obligatorios: origen, destino, fecha"}, status=400)
+
+    try:
+        d = datetime.strptime(fecha, "%Y-%m-%d").date()
+    except ValueError:
+        return JsonResponse({"error": "Formato de fecha inválido. Utilice el formato YYYY-MM-DD"}, status=400)
+
+    start = timezone.make_aware(datetime.combine(d, time.min))
+    end = timezone.make_aware(datetime.combine(d, time.max))
+
+    qs = Trip.objects.select_related("route__origin", "route__destination", "bus").filter(
+        route__origin__name__iexact=origen, route__destination__name__iexact=destino,
+        departure__range=(start, end),
+    ).order_by("departure")
+
+    results = []
+    for trip in qs:
+        sold = Ticket.objects.filter(trip=trip).count()
+        total = int(trip.seats_total or 0)
+        results.append({
+            "id": trip.id, "origen": trip.route.origin.name, "destino": trip.route.destination.name,
+            "salida": trip.departure.isoformat(), "llegada": trip.arrival.isoformat() if trip.arrival else None,
+            "base_price": str(getattr(trip.route, "base_price", "0")),
+            "bus": {"id": trip.bus.id, "plate": trip.bus.plate},
+            "seats_total": total, "seats_sold": sold, "seats_free": max(total - sold, 0),
+        })
+    return JsonResponse(results, safe=False, json_dumps_params={"ensure_ascii": False})
+
+
+def bus_seatmap(request, pk: int):
+    """ Renderizador plano estático de croquis de fábrica del Bus. """
+    bus = get_object_or_404(Bus, pk=pk)
+    return render(request, "booking/seatmap.html", {"bus": bus})
+
+
+# ============================================================================
+# 7. SISTEMA DE CAJA (TAQUILLAS Y TURNOS)
+# ============================================================================
+
+from django.db.models.functions import TruncDate, ExtractHour
+from django.db.models import F
+
+@login_required
+@staff_member_required
+@cajero_required
+def pos_caja(request):
+    """Dashboard principal de control de cajas y cuadratura de turnos diarios."""
+    fecha_str = request.GET.get('fecha', '')
+    if fecha_str:
+        try:
+            fecha = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+        except ValueError:
+            fecha = timezone.now().date()
+    else:
+        fecha = timezone.now().date()
+
+    es_admin_o_supervisor = (
+        request.user.is_superuser or
+        (hasattr(request.user, 'profile') and
+         request.user.profile.role in ['admin', 'supervisor'])
+    )
+
+    # Filtrar según jerarquía y permisos del operador de caja
+    if es_admin_o_supervisor:
+        cajas_abiertas = CashRegister.objects.filter(opening_date__date=fecha, status='open').select_related('user')
+        caja_actual = cajas_abiertas.filter(user=request.user).first() or cajas_abiertas.first()
+        caja_abierta = cajas_abiertas.exists()
+        ventas_hoy = Ticket.objects.filter(created_at__date=fecha)
+    else:
+        cajas_abiertas = CashRegister.objects.none()
+        caja_actual = CashRegister.objects.filter(user=request.user, opening_date__date=fecha, status='open').first()
+        caja_abierta = caja_actual is not None
+        ventas_hoy = Ticket.objects.filter(created_at__date=fecha, created_by=request.user)
+
+    # Cálculo exacto de métricas comerciales
+    metrics = ventas_hoy.aggregate(total=Sum('price'), total_count=Count('id'))
+    total_ventas = metrics['total'] or Decimal('0.00')
+    total_boletos = metrics['total_count'] or 0
+    rutas_vendidas = ventas_hoy.values('trip__route').distinct().count()
+    promedio_venta = total_ventas / total_boletos if total_boletos > 0 else Decimal('0.00')
+    
+    ventas_recientes = ventas_hoy.select_related(
+        'trip__route__origin', 'trip__route__destination', 'seat'
+    ).order_by('-created_at')[:10]
+
+    # Cálculos comparativos de tendencias (Ayer vs Hoy)
+    ayer = fecha - timedelta(days=1)
+    if es_admin_o_supervisor:
+        ventas_ayer = Ticket.objects.filter(created_at__date=ayer)
+    else:
+        ventas_ayer = Ticket.objects.filter(created_at__date=ayer, created_by=request.user)
+        
+    metrics_ayer = ventas_ayer.aggregate(total=Sum('price'), total_count=Count('id'))
+    total_ventas_ayer = metrics_ayer['total'] or Decimal('0.00')
+    total_boletos_ayer = metrics_ayer['total_count'] or 0
+
+    tendencia_ventas = calcular_tendencia(total_ventas, total_ventas_ayer)
+    tendencia_boletos = calcular_tendencia(total_boletos, total_boletos_ayer)
+
+    user_profile = getattr(request.user, 'profile', None)
+    user_role = user_profile.get_role_display() if user_profile else "Vendedor"
+
+    context = {
+        'title': 'POS — Panel de Caja',
+        'hoy': fecha.strftime('%Y-%m-%d'),
+        'total_ventas': total_ventas,
+        'total_boletos': total_boletos,
+        'rutas_vendidas': rutas_vendidas,
+        'promedio_venta': promedio_venta,
+        'ventas_recientes': ventas_recientes,
+        'caja_abierta': caja_abierta,
+        'caja_actual': caja_actual,
+        'tendencia_ventas': tendencia_ventas,
+        'tendencia_boletos': tendencia_boletos,
+        'es_admin_o_supervisor': es_admin_o_supervisor,
+        'cajas_abiertas': cajas_abiertas,
+        'user_profile': user_profile,
+        'user_role': user_role,
+        'usuarios_con_caja_abierta': cajas_abiertas.count() if es_admin_o_supervisor else 0,
+    }
+    return render(request, 'booking/pos_caja.html', context)
+
+
+@login_required
+@staff_member_required
+@require_POST
+def abrir_caja(request):
+    """ Inicializa un turno de caja para el usuario actual. """
+    try:
+        fecha_hoy = timezone.now().date()
+        if CashRegister.objects.filter(user=request.user, opening_date__date=fecha_hoy, status='open').exists():
+            return JsonResponse({'success': False, 'error': 'Ya posees un turno de caja abierto para el día de hoy.'})
+
+        try:
+            data = json.loads(request.body.decode('utf-8') or "{}")
+            opening_balance = Decimal(str(data.get('opening_balance', 0)))
+        except (json.JSONDecodeError, KeyError, ValueError):
+            opening_balance = Decimal('0.00')
+
+        if opening_balance < 0:
+            return JsonResponse({'success': False, 'error': 'El saldo de apertura no puede ser un valor negativo.'})
+
+        CashRegister.objects.create(user=request.user, opening_balance=opening_balance, status='open')
+        return JsonResponse({
+            'success': True, 
+            'message': f'Caja habilitada correctamente. Saldo Inicial: ${opening_balance:.2f}'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Error interno: {str(e)}'})
+
+
+@login_required
+@staff_member_required
+@require_POST
+@transaction.atomic
+def cerrar_caja(request):
+    """ Realiza la cuadratura final del turno de caja y actualiza los reportes generales del día. """
+    try:
+        fecha_hoy = timezone.now().date()
+        caja = CashRegister.objects.select_for_update().get(user=request.user, opening_date__date=fecha_hoy, status='open')
+        
+        # Consolidar transacciones del usuario
+        ventas_hoy = Ticket.objects.filter(created_at__date=fecha_hoy, created_by=request.user)
+        total_ventas = ventas_hoy.aggregate(total=Sum('price'))['total'] or Decimal('0.00')
+        total_boletos = ventas_hoy.count()
+
+        # Actualizar estado de la caja individual
+        caja.closing_date = timezone.now()
+        caja.total_sales = total_ventas
+        caja.total_tickets = total_boletos
+        caja.closing_balance = total_ventas
+        caja.status = 'closed'
+        caja.save()
+
+        # Consolidación atómica en el reporte diario global (Evita race conditions)
+        reporte, _ = DailyReport.objects.get_or_create(date=fecha_hoy)
+        DailyReport.objects.filter(id=reporte.id).update(
+            total_tickets=F('total_tickets') + total_boletos,
+            total_revenue=F('total_revenue') + total_ventas,
+            total_cash_registers=CashRegister.objects.filter(opening_date__date=fecha_hoy, status='closed').count()
+        )
+
+        return JsonResponse({
+            'success': True, 
+            'message': f'Caja clausurada con éxito. Recaudación Total: ${total_ventas:.2f}, Tickets Emitidos: {total_boletos}'
+        })
+    except CashRegister.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'No se encontró ningún registro de caja abierto para tu usuario.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Error en el proceso de cierre: {str(e)}'})
+
+
+# ============================================================================
+# 8. SISTEMA DE REPORTES COMERCIALES (PORTABLE SQL)
+# ============================================================================
+
+@login_required
+@staff_member_required
+@supervisor_required
+def pos_reportes(request):
+    """ Panel analítico y generador de estadísticas de rendimiento financiero. """
+    fecha_inicio_str = request.GET.get('fecha_inicio', '')
+    fecha_fin_str = request.GET.get('fecha_fin', '')
+    usuario_id = request.GET.get('usuario', '')
+
+    if not fecha_inicio_str or not fecha_fin_str:
+        fecha_fin = timezone.now().date()
+        fecha_inicio = fecha_fin - timedelta(days=7)
+    else:
+        try:
+            fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d').date()
+            fecha_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date()
+        except ValueError:
+            fecha_fin = timezone.now().date()
+            fecha_inicio = fecha_fin - timedelta(days=7)
+
+    es_admin_o_supervisor = (
+        request.user.is_superuser or
+        (hasattr(request.user, 'profile') and request.user.profile.role in ['admin', 'supervisor'])
+    )
+
+    if es_admin_o_supervisor:
+        ventas = Ticket.objects.filter(created_at__date__range=[fecha_inicio, fecha_fin]).select_related(
+            'trip__route__origin', 'trip__route__destination', 'created_by')
+        if usuario_id and usuario_id != 'todos':
+            ventas = ventas.filter(created_by_id=usuario_id)
+    else:
+        ventas = Ticket.objects.filter(
+            created_at__date__range=[fecha_inicio, fecha_fin], created_by=request.user
+        ).select_related('trip__route__origin', 'trip__route__destination')
+
+    stats = ventas.aggregate(total_ventas=Sum('price'), total_boletos=Count('id'), ticket_promedio=Avg('price'))
+    total_ventas = stats['total_ventas'] or Decimal('0.00')
+    total_boletos = stats['total_boletos'] or 0
+    ticket_promedio_general = stats['ticket_promedio'] or Decimal('0.00')
+    
+    dias_rango = (fecha_fin - fecha_inicio).days + 1
+    promedio_diario = total_ventas / dias_rango if dias_rango > 0 else Decimal('0.00')
+
+    # Agrupaciones usando ORM nativo y portable (Evita el anti-patrón de Raw SQL con .extra())
+    ventas_por_dia = ventas.annotate(fecha=TruncDate('created_at')).values('fecha').annotate(
+        total=Sum('price'), cantidad=Count('id')).order_by('fecha')
+        
+    ventas_por_dia_procesadas = [{
+        'fecha': v['fecha'],
+        'total': v['total'],
+        'cantidad': v['cantidad'],
+        'promedio': (v['total'] / v['cantidad']) if v['cantidad'] > 0 else Decimal('0.00')
+    } for v in ventas_por_dia]
+
+    rutas_populares = ventas.values(
+        'trip__route__origin__name', 'trip__route__destination__name'
+    ).annotate(total=Sum('price'), cantidad=Count('id'), promedio=Avg('price')).order_by('-total')[:10]
+
+    ventas_por_hora = ventas.annotate(hora=ExtractHour('created_at')).values('hora').annotate(
+        total=Sum('price'), cantidad=Count('id'), promedio=Avg('price')).order_by('hora')
+
+    ventas_por_vendedor = []
+    if es_admin_o_supervisor:
+        ventas_por_vendedor = Ticket.objects.filter(created_at__date__range=[fecha_inicio, fecha_fin]).values(
+            'created_by__id', 'created_by__username', 'created_by__first_name', 'created_by__last_name'
+        ).annotate(total=Sum('price'), cantidad=Count('id'), promedio=Avg('price')).order_by('-total')
+
+    user_profile = getattr(request.user, 'profile', None)
+    user_role = user_profile.get_role_display() if user_profile else "Vendedor"
+
+    usuarios_lista = []
+    if es_admin_o_supervisor:
+        usuarios_lista = User.objects.filter(
+            is_staff=True, tickets_sold__created_at__date__range=[fecha_inicio, fecha_fin]
+        ).distinct().order_by('username')
+
+    usuario_filtrado_obj = User.objects.filter(id=usuario_id).first() if usuario_id and usuario_id != 'todos' else None
+
+    context = {
+        'title': 'POS — Reportes Detallados',
+        'fecha_inicio': fecha_inicio.strftime('%Y-%m-%d'),
+        'fecha_fin': fecha_fin.strftime('%Y-%m-%d'),
+        'total_ventas': total_ventas,
+        'total_boletos': total_boletos,
+        'ticket_promedio_general': ticket_promedio_general,
+        'promedio_diario': promedio_diario,
+        'ventas_por_dia': ventas_por_dia_procesadas,
+        'rutas_populares': rutas_populares,
+        'ventas_por_hora': list(ventas_por_hora),
+        'dias_rango': dias_rango,
+        'es_admin_o_supervisor': es_admin_o_supervisor,
+        'ventas_por_vendedor': ventas_por_vendedor,
+        'usuarios_lista': usuarios_lista,
+        'usuario_seleccionado': usuario_id,
+        'user_profile': user_profile,
+        'user_role': user_role,
+        'filtro_usuario_aplicado': usuario_id if usuario_id else None,
+        'usuario_filtrado': usuario_filtrado_obj.get_full_name() if usuario_filtrado_obj else None,
+    }
+    return render(request, 'booking/pos_reportes.html', context)
+
+
+# ============================================================================
+# 9. GESTIÓN ADMINISTRATIVA DE USUARIOS
+# ============================================================================
+
+@login_required
+@staff_member_required
+@role_required(['admin', 'supervisor'])
+def gestion_usuarios(request):
+    """ Panel de control de credenciales, roles y comisiones de la empresa. """
+    qs = User.objects.select_related('profile').order_by('username')
+    context = {
+        "title": "Gestión de Usuarios",
+        "usuarios": qs,
+        "total_count": qs.count(),
+        "admins_count": qs.filter(profile__role="admin").count(),
+        "supervisores_count": qs.filter(profile__role="supervisor").count(),
+        "vendedores_count": qs.filter(profile__role="vendedor").count(),
+        "activos_count": qs.filter(profile__is_active=True).count(),
+        "inactivos_count": qs.filter(profile__is_active=False).count(),
+        "roles": _get_role_choices(),
+        "terminales": Terminal.objects.all(),
+    }
+    return render(request, "booking/gestion_usuarios.html", context)
+
+
+@login_required
+@staff_member_required
+@role_required(['admin', 'supervisor'])
+def editar_usuario(request, user_id):
+    """ Modifica parámetros de perfil, topes de descuento y asignaciones de terminal. """
+    usuario = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                usuario.first_name = request.POST.get('first_name', '').strip()
+                usuario.last_name = request.POST.get('last_name', '').strip()
+                usuario.email = request.POST.get('email', '').strip()
+                usuario.save()
+
+                profile, _ = UserProfile.objects.get_or_create(user=usuario)
+                profile.role = request.POST.get('role', 'vendedor')
+                profile.terminal_id = request.POST.get('terminal') or None
+                
+                try:
+                    profile.commission_rate = Decimal(request.POST.get('commission_rate', '0') or '0')
+                    profile.max_discount = Decimal(request.POST.get('max_discount', '0') or '0')
+                except (ValueError, TypeError):
+                    profile.commission_rate = Decimal('0.00')
+                    profile.max_discount = Decimal('0.00')
+                    
+                profile.is_active = 'is_active' in request.POST
+                profile.save()
+                
+            messages.success(request, f"El usuario {usuario.username} ha sido actualizado con éxito.")
+            return redirect('gestion_usuarios')
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
+            messages.error(request, f"Error al procesar la actualización: {str(e)}")
 
-    return JsonResponse({'success': False, 'error': 'Método no permitido'})
+    context = {
+        'title': f'Editar Usuario - {usuario.username}',
+        'usuario': usuario,
+        'terminales': Terminal.objects.all(),
+        'roles': _get_role_choices(),
+    }
+    return render(request, 'booking/editar_usuario.html', context)
 
 
+@login_required
+@staff_member_required
+@role_required(['admin', 'supervisor'])
+@transaction.atomic
+def crear_usuario(request):
+    """ Registra un nuevo operador en el sistema configurando sus límites transaccionales. """
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip().lower()
+        password = request.POST.get("password", "")
+        confirm = request.POST.get("confirm_password", "")
+
+        if not username:
+            messages.error(request, "El nombre de usuario es mandatorio.")
+        elif User.objects.filter(username__iexact=username).exists():
+            messages.error(request, "El nombre de usuario ingresado ya se encuentra en uso.")
+        elif password != confirm:
+            messages.error(request, "Las contraseñas de verificación no coinciden.")
+        else:
+            try:
+                user = User.objects.create_user(
+                    username=username,
+                    email=request.POST.get("email", "").strip(),
+                    password=password,
+                    first_name=request.POST.get("first_name", "").strip(),
+                    last_name=request.POST.get("last_name", "").strip(),
+                )
+                
+                profile, _ = UserProfile.objects.get_or_create(user=user)
+                profile.role = request.POST.get("role", "vendedor")
+                profile.terminal_id = request.POST.get("terminal") or None
+                
+                try:
+                    profile.commission_rate = Decimal(request.POST.get("commission_rate", '0') or '0')
+                    profile.max_discount = Decimal(request.POST.get("max_discount", '0') or '0')
+                except (ValueError, TypeError):
+                    profile.commission_rate = Decimal('0.00')
+                    profile.max_discount = Decimal('0.00')
+                    
+                profile.is_active = True
+                profile.save()
+                
+                messages.success(request, f"Usuario operativo {username} creado de forma exitosa.")
+                return redirect("gestion_usuarios")
+            except Exception as e:
+                messages.error(request, f"Fallo al registrar usuario: {str(e)}")
+
+    context = {
+        "title": "Crear Usuario",
+        "roles": _get_role_choices(),
+        "terminales": Terminal.objects.all(),
+    }
+    return render(request, "booking/crear_usuario.html", context)
 
 
-# ✅ Vista de prueba
-def test_view(request):
-    return JsonResponse({"message": "✅ Las URLs de customer están funcionando!", "status": "ok"})
+# ============================================================================
+# 10. CLIENTES (CUSTOMERS Y RUT CHILENO/IDENTIFICADORES)
+# ============================================================================
 
-# ✅ Buscar cliente
+@login_required
 def search_customer(request):
-    """API para buscar cliente por RUT o nombre (normaliza RUT para evitar mismatches)."""
+    """ API de autocompletado para localizar clientes mediante RUT o Nombre Completo. """
     try:
         query = (request.GET.get("q") or "").strip()
-
-        # Mantener comportamiento actual (mínimo 2 chars)
         if not query or len(query) < 2:
             return JsonResponse({"customers": []})
 
-        # 1) Normalización tipo RUT (quita puntos/guion/espacios, upper-case)
-        #    Esto hace que "12.345.678-9" encuentre "123456789" guardado.
-        query_clean = Customer._clean_rut(query)
-
-        # 2) Armar filtro:
-        #    - Para RUT: buscamos por query_clean (y también por query por compatibilidad)
-        #    - Para nombre: usamos el query original
+        # Utilizar la función del modelo si existe para limpiar formateos extraños
+        query_clean = Customer._clean_rut(query) if hasattr(Customer, '_clean_rut') else query
+        
         rut_q = Q(national_id__icontains=query_clean)
         if query_clean != query:
             rut_q = rut_q | Q(national_id__icontains=query)
 
-        customers = (
-            Customer.objects
-            .filter(rut_q | Q(full_name__icontains=query))
-            .order_by("full_name")[:10]
-        )
-
-        results = [
-            {
-                "id": c.id,
-                "national_id": c.national_id,  # se mantiene igual para no romper tu front
-                "full_name": c.full_name,
-                "phone": c.phone or "",
-                "email": c.email or "",
-            }
-            for c in customers
-        ]
-
+        customers = Customer.objects.filter(rut_q | Q(full_name__icontains=query)).order_by("full_name")[:10]
+        results = [{
+            "id": c.id,
+            "national_id": c.national_id,
+            "full_name": c.full_name,
+            "phone": c.phone or "",
+            "email": c.email or "",
+        } for c in customers]
         return JsonResponse({"customers": results})
-
     except Exception as e:
-        return JsonResponse({"customers": [], "error": str(e)})
-    
-    
+        return JsonResponse({"customers": [], "error": str(e)}, status=500)
 
-# ✅ Crear cliente - VERSIÓN SIMPLIFICADA
+
 @csrf_exempt
+@login_required
+@require_POST
 def create_customer(request):
-    """API para crear nuevo cliente - CAMPOS NO OBLIGATORIOS"""
-    print("📝 Recibiendo solicitud para crear cliente...")  # Debug
-    
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Método no permitido'})
-
+    """ Registra de forma exprés a un cliente desde la pantalla de pasajes. """
     try:
-        # Obtener datos del POST
         national_id = request.POST.get('national_id', '').strip()
+        if not validate_chilean_rut(national_id):
+            return JsonResponse({'success': False, 'error': 'RUT inválido. Formato: 12345678-9'}, status=400)
+        
         full_name = request.POST.get('full_name', '').strip()
         phone = request.POST.get('phone', '').strip()
         email = request.POST.get('email', '').strip()
-        
-        print(f"📋 Datos recibidos - RUT: {national_id}, Nombre: {full_name}")  # Debug
-        
+
         if not national_id:
-            return JsonResponse({'success': False, 'error': 'RUT es obligatorio'})
-
-        # Si no viene nombre, usar valor por defecto
+            return JsonResponse({'success': False, 'error': 'El documento identificador (RUT) es un campo obligatorio.'})
+        
         if not full_name:
-            full_name = "Cliente"
+            full_name = "Pasajero General"
 
-        # Verificar si ya existe
-        existing_customer = Customer.objects.filter(national_id=national_id).first()
-        if existing_customer:
-            print(f"ℹ️ Cliente ya existe: {existing_customer}")  # Debug
+        existing = Customer.objects.filter(national_id=national_id).first()
+        if existing:
             return JsonResponse({
                 'success': True,
                 'created': False,
-                'message': 'Cliente ya existe',
+                'message': 'El cliente ya se encuentra registrado.',
                 'customer': {
-                    'id': existing_customer.id,
-                    'national_id': existing_customer.national_id,
-                    'full_name': existing_customer.full_name,
-                    'phone': existing_customer.phone or '',
-                    'email': existing_customer.email or ''
+                    'id': existing.id,
+                    'national_id': existing.national_id,
+                    'full_name': existing.full_name,
+                    'phone': existing.phone or '',
+                    'email': existing.email or ''
                 }
             })
 
-        # Crear nuevo cliente - TODOS LOS CAMPOS OPCIONALES excepto RUT
         customer = Customer.objects.create(
-            national_id=national_id,
-            full_name=full_name,
-            phone=phone,  # Puede estar vacío
-            email=email   # Puede estar vacío
+            national_id=national_id, full_name=full_name, phone=phone, email=email
         )
-        
-        print(f"✅ Cliente creado: {customer}")  # Debug
-        
         return JsonResponse({
             'success': True,
             'created': True,
-            'message': 'Cliente creado exitosamente',
+            'message': 'Cliente registrado con éxito.',
             'customer': {
                 'id': customer.id,
                 'national_id': customer.national_id,
@@ -1609,42 +1041,108 @@ def create_customer(request):
                 'email': customer.email or ''
             }
         })
-        
     except Exception as e:
-        print(f"❌ Error creando cliente: {e}")  # Debug
-        return JsonResponse({'success': False, 'error': str(e)})
-    
+        return JsonResponse({'success': False, 'error': f'Error al instanciar cliente: {str(e)}'}, status=500)
 
+
+# ============================================================================
+# 11. DISEÑO FÍSICO Y COMPRA DIRECTA (API PURCHASE CORREGIDA)
+# ============================================================================
 
 @csrf_exempt
 def save_layout_template(request):
+    """ Guarda la plantilla de distribución de asientos de un Bus. """
     if request.method != "POST":
-        return JsonResponse({"error": "Método no permitido"}, status=400)
-
+        return JsonResponse({"error": "Método de solicitud no permitido"}, status=405)
     try:
-        data = json.loads(request.body)
-
+        data = json.loads(request.body.decode('utf-8') or "{}")
         layout = BusLayout.objects.create(
             name=data.get("name"),
             floors=data.get("floors"),
             rows_lower=data.get("rows_lower"),
             rows_upper=data.get("rows_upper"),
             cols=data.get("cols"),
-
             layout_lower=data.get("layout_lower", []),
             layout_upper=data.get("layout_upper", []),
-
             numbers_lower=data.get("numbers_lower", []),
             numbers_upper=data.get("numbers_upper", []),
-
             prefix_lower=data.get("prefix_lower", ""),
             prefix_upper=data.get("prefix_upper", "")
         )
-
         return JsonResponse({"success": True, "id": layout.id})
-
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_POST
+@login_required
+@transaction.atomic
+def api_purchase(request, trip_id):
+    """
+    🛠️ CORREGIDO COMPLETAMENTE: Procesa la compra formal vinculando los asientos 
+    reales del Bus del viaje, blindando la transacción contra sobreventas simultáneas.
+    """
+    trip = get_object_or_404(Trip.objects.select_for_update(), id=trip_id)
     
-    
-    
+    try:
+        seats_data = request.POST.get('seats')
+        payment_method = request.POST.get('payment_method', 'cash')
+        customer_id = request.POST.get('customer_id')
+        buyer_name = request.POST.get('buyer_name', 'Cliente General')
+
+        if not seats_data:
+            return JsonResponse({'ok': False, 'error': 'No se han seleccionado asientos válidos.'}, status=400)
+
+        seats_list = json.loads(seats_data)
+        customer = Customer.objects.filter(id=customer_id).first() if customer_id else None
+        base_price = Decimal(str(getattr(trip.route, "base_price", 0) or 0))
+
+        tickets_creados = []
+        
+        # Mapear asientos físicos del bus asignado para evitar inyecciones fraudulentas
+        numbers = [str(s.get('number')).strip() for s in seats_list if s.get('number')]
+        decks = [int(s.get('deck', 1)) for s in seats_list if s.get('deck')]
+        
+        seats_db = {
+            f"{seat.deck}-{seat.number}": seat 
+            for seat in Seat.objects.select_for_update().filter(bus=trip.bus, number__in=numbers, deck__in=decks)
+        }
+
+        for s in seats_list:
+            seat_num = str(s.get('number')).strip()
+            deck_num = int(s.get('deck', 1))
+            key = f"{deck_num}-{seat_num}"
+            
+            seat_obj = seats_db.get(key)
+            if not seat_obj:
+                return JsonResponse({'ok': False, 'error': f'El asiento {seat_num} en el piso {deck_num} no existe en este Bus.'}, status=400)
+
+            # Validar disponibilidad real en base a Tickets activos
+            already_sold = Ticket.objects.filter(trip=trip, seat=seat_obj).exists()
+            if already_sold:
+                return JsonResponse({'ok': False, 'error': f'El asiento {seat_num} acaba de ser vendido por otra boletería.'}, status=400)
+
+            # Creación consistente con el modelo transaccional
+            ticket = Ticket.create_for_sale(
+                trip=trip,
+                seat=seat_obj,
+                buyer_name=customer.full_name if customer else buyer_name,
+                national_id=customer.national_id if customer else "",
+                price=base_price,
+                created_by=request.user,
+                payment_method=payment_method,
+                customer=customer,
+            )
+            tickets_creados.append(ticket)
+
+        # Disolver las retenciones temporales asociadas para liberar espacio
+        SeatHold.objects.filter(trip=trip, seat__in=[t.seat for t in tickets_creados]).delete()
+
+        return JsonResponse({
+            'ok': True, 
+            'message': f'¡Venta procesada! Se emitieron {len(tickets_creados)} pasajes exitosamente.',
+            'redirect_url': reverse('pos_home')
+        })
+
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': f'Error en el procesador de pagos: {str(e)}'}, status=500)

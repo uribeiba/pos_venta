@@ -5,34 +5,91 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/viajes.css' %}">
+<style>
+    /* Mejoras adicionales */
+    .filter-bar {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+    }
+    .filter-bar .form-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 4px;
+    }
+    .badge-status {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        width: fit-content;
+    }
+    .badge-futuro { background: #dbeafe; color: #1e40af; }
+    .badge-pasado { background: #f1f5f9; color: #475569; }
+    .badge-hoy { background: #dcfce7; color: #166534; }
+    th.sortable {
+        cursor: pointer;
+        user-select: none;
+    }
+    th.sortable:hover {
+        background-color: #e2e8f0;
+    }
+    th.sortable i {
+        margin-left: 5px;
+        font-size: 0.7rem;
+        opacity: 0.5;
+    }
+    th.sortable.asc i { opacity: 1; transform: rotate(0deg); }
+    th.sortable.desc i { opacity: 1; transform: rotate(180deg); }
+    .loading-spinner {
+        display: none;
+        width: 1rem;
+        height: 1rem;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-left: 8px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4">
+    <!-- Breadcrumb mejorado -->
     <nav aria-label="breadcrumb" class="mt-3">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Inicio</a></li>
             <li class="breadcrumb-item"><a href="#">Flota</a></li>
-            <li class="breadcrumb-item active">Viajes</li>
+            <li class="breadcrumb-item active" aria-current="page">Viajes</li>
         </ol>
     </nav>
 
+    <!-- Formulario de creación/edición -->
     <div class="card shadow-sm border-0 rounded-4 mb-4">
         <div class="card-header bg-white py-3 border-0">
             <h5 class="mb-0 text-uppercase fw-semibold">
                 <i class="fas fa-calendar-alt me-2 text-primary"></i>
-                {% if edit_mode %}EDITAR VIAJE{% else %}CREAR VIAJE{% endif %}
+                {% if edit_mode %}EDITAR VIAJE{% else %}CREAR NUEVO VIAJE{% endif %}
             </h5>
         </div>
         <div class="card-body">
-            <form method="post" id="tripForm">
+            <form method="post" id="tripForm" novalidate>
                 {% csrf_token %}
 
-                <!-- Errores del formulario -->
                 {% if form.errors %}
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <strong>Error al guardar:</strong> Por favor corrige los siguientes errores:
-                    <ul>
+                    <strong><i class="fas fa-exclamation-triangle"></i> Error al guardar:</strong> Por favor corrige los siguientes errores:
+                    <ul class="mb-0 mt-2">
                     {% for field, errors in form.errors.items %}
                         <li><strong>{{ field }}:</strong> {{ errors|join:", " }}</li>
                     {% endfor %}
@@ -45,10 +102,13 @@
                     <div class="col-md-6">
                         <label class="form-label text-uppercase fw-semibold small">{{ form.route.label }}</label>
                         {{ form.route }}
+                        {% if form.route.help_text %}<small class="text-muted">{{ form.route.help_text }}</small>{% endif %}
                     </div>
                     <div class="col-md-6">
                         <label class="form-label text-uppercase fw-semibold small">{{ form.bus.label }}</label>
                         {{ form.bus }}
+                        <div id="busLoadSpinner" class="loading-spinner"></div>
+                        {% if form.bus.help_text %}<small class="text-muted">{{ form.bus.help_text }}</small>{% endif %}
                     </div>
                     <div class="col-md-6">
                         <label class="form-label text-uppercase fw-semibold small">{{ form.driver1.label }}</label>
@@ -65,11 +125,13 @@
                     <div class="col-md-6">
                         <label class="form-label text-uppercase fw-semibold small">{{ form.departure.label }}</label>
                         {{ form.departure }}
+                        <small class="text-muted d-block">Formato: AAAA-MM-DD HH:MM</small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label text-uppercase fw-semibold small">{{ form.arrival.label }}</label>
                         {{ form.arrival }}
-                        <small class="text-muted">{{ form.arrival.help_text }}</small>
+                        <small class="text-muted" id="arrivalHelp">{{ form.arrival.help_text }}</small>
+                        <div id="dateWarning" class="text-danger small mt-1" style="display:none;">⚠️ La fecha de llegada debe ser posterior a la salida.</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label text-uppercase fw-semibold small">{{ form.seats_total.label }}</label>
@@ -77,22 +139,39 @@
                         <small class="text-muted">{{ form.seats_total.help_text }}</small>
                     </div>
                 </div>
-                <div class="mt-4">
-                    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>{% if edit_mode %}Actualizar{% else %}Guardar Viaje{% endif %}</button>
-                    {% if edit_mode %}<a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-secondary px-4 ms-2">Cancelar</a>{% endif %}
+
+                <div class="mt-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="fas fa-save me-2"></i>{% if edit_mode %}Actualizar{% else %}Guardar Viaje{% endif %}
+                    </button>
+                    {% if edit_mode %}
+                        <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-secondary px-4">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </a>
+                    {% endif %}
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Tabla de listado -->
+    <!-- Filtros y listado -->
     <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap">
-            <h5 class="mb-0 text-uppercase fw-semibold"><i class="fas fa-list me-2 text-primary"></i> LISTA DE VIAJES</h5>
-            <div class="mt-2 mt-sm-0">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <h5 class="mb-0 text-uppercase fw-semibold">
+                <i class="fas fa-list me-2 text-primary"></i> LISTA DE VIAJES
+            </h5>
+            <div class="d-flex flex-wrap gap-2">
+                <!-- Filtro por mes/año (cliente) -->
+                <div class="d-flex align-items-center gap-2">
+                    <input type="month" id="monthFilter" class="form-control form-control-sm" style="width: 160px;">
+                    <button id="clearMonthFilter" class="btn btn-sm btn-outline-secondary" type="button">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <!-- Buscador por texto (envía a servidor) -->
                 <form method="get" class="d-flex">
-                    <div class="input-group">
-                        <input type="text" name="q" class="form-control" placeholder="Buscar por origen, destino, patente o chofer..." value="{{ query }}">
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="q" class="form-control" placeholder="Buscar origen, destino, patente, chofer..." value="{{ query }}">
                         <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
                     </div>
                 </form>
@@ -100,102 +179,277 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0" id="tripsTable">
                     <thead class="table-light">
                         <tr>
-                            <th>RUTA</th>
-                            <th>BUS</th>
-                            <th>CHOFER PRINCIPAL</th>
-                            <th>SALIDA</th>
-                            <th>LLEGADA</th>
+                            <th class="sortable" data-sort="route">RUTA <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="bus">BUS <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="driver">CHOFER PRINCIPAL <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="departure">SALIDA <i class="fas fa-sort"></i></th>
+                            <th class="sortable" data-sort="arrival">LLEGADA <i class="fas fa-sort"></i></th>
                             <th>ASIENTOS</th>
+                            <th>ESTADO</th>
                             <th>ACCIONES</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for trip in trips %}
-                        <tr>
-                            <td>{{ trip.route }}</td>
-                            <td>{{ trip.bus.plate }} ({{ trip.bus.model|default:"-" }})</td>
-                            <td>{{ trip.driver1.full_name|default:"-" }}</td>
-                            <td>{{ trip.departure|date:"d/m/Y H:i" }}</td>
-                            <td>{{ trip.arrival|date:"d/m/Y H:i"|default:"-" }}</td>
+                        <tr data-departure="{{ trip.departure|date:'Y-m-d' }}">
+                            <td class="route-cell">{{ trip.route }}</td>
+                            <td class="bus-cell">{{ trip.bus.plate }} ({{ trip.bus.model|default:"-" }})</td>
+                            <td class="driver-cell">{{ trip.driver1.full_name|default:"-" }}</td>
+                            <td class="departure-cell" data-date="{{ trip.departure|date:'Y-m-d H:i' }}">{{ trip.departure|date:"d/m/Y H:i" }}</td>
+                            <td class="arrival-cell" data-date="{{ trip.arrival|date:'Y-m-d H:i' }}">{{ trip.arrival|date:"d/m/Y H:i"|default:"-" }}</td>
                             <td>{{ trip.seats_total }}</td>
                             <td>
-                                <a href="?edit={{ trip.id }}" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="fas fa-edit"></i></a>
-                                <button type="button" class="btn btn-sm btn-outline-danger delete-trip" data-id="{{ trip.id }}" data-name="{{ trip.route }}"><i class="fas fa-trash-alt"></i></button>
+                                {% now "U" as now_timestamp %}
+                                {% with departure_ts=trip.departure|date:"U" arrival_ts=trip.arrival|date:"U" %}
+                                    {% if departure_ts > now_timestamp %}
+                                        <span class="badge-status badge-futuro"><i class="fas fa-clock"></i> Próximo</span>
+                                    {% elif departure_ts <= now_timestamp and arrival_ts >= now_timestamp %}
+                                        <span class="badge-status badge-hoy"><i class="fas fa-play"></i> En curso</span>
+                                    {% else %}
+                                        <span class="badge-status badge-pasado"><i class="fas fa-check-circle"></i> Finalizado</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td>
+                                <a href="?edit={{ trip.id }}" class="btn btn-sm btn-outline-primary me-1" title="Editar viaje">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-danger delete-trip" 
+                                        data-id="{{ trip.id }}" data-name="{{ trip.route }}" 
+                                        data-has-tickets="{% if trip.tickets.count > 0 %}true{% else %}false{% endif %}">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="7" class="text-center">No hay viajes registrados.{% endfor %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-muted">
+                                <i class="fas fa-calendar-times fa-2x mb-2 d-block"></i>
+                                No hay viajes registrados. Crea uno arriba.
+                            </td>
+                        </tr>
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
-            {% if trips.has_other_pages %}<div class="d-flex justify-content-center mt-4">{% include "pagination.html" with page_obj=trips %}</div>{% endif %}
+            {% if trips.has_other_pages %}
+            <div class="d-flex justify-content-center mt-4 pb-3">
+                {% include "pagination.html" with page_obj=trips %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
 
-<!-- Modal de eliminación -->
-<div class="modal fade" id="deleteModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Confirmar eliminación</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">¿Estás seguro de eliminar el viaje <strong id="deleteTripName"></strong>?<br><small class="text-danger">Se eliminarán también los tickets y holds asociados.</small></div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <form method="post" action="{% url 'coordinator:trip_delete' 0 %}" id="deleteForm">{% csrf_token %}<button type="submit" class="btn btn-danger">Eliminar</button></form>
+<!-- Modal de eliminación mejorado -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de eliminar el viaje <strong id="deleteTripName"></strong>?</p>
+                <div id="ticketsWarning" class="alert alert-warning d-none">
+                    <i class="fas fa-exclamation-triangle"></i> Este viaje tiene tickets vendidos asociados. No se puede eliminar.
+                </div>
+                <small class="text-muted">Se eliminarán también los bloques temporales (holds) asociados.</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form method="post" action="{% url 'coordinator:trip_delete' 0 %}" id="deleteForm">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger" id="confirmDeleteBtn">Eliminar viaje</button>
+                </form>
+            </div>
         </div>
-    </div></div>
+    </div>
 </div>
 
 <script>
-    // Actualizar total de asientos al seleccionar un bus
-    const busSelect = document.getElementById('id_bus');
-    const seatsTotalInput = document.getElementById('id_seats_total');
+    document.addEventListener('DOMContentLoaded', function() {
+        // ========== 1. Actualización dinámica de asientos totales al seleccionar bus ==========
+        const busSelect = document.getElementById('id_bus');
+        const seatsTotalInput = document.getElementById('id_seats_total');
+        const spinner = document.getElementById('busLoadSpinner');
+        let currentController = null;
 
-    async function updateSeatsTotal() {
-        const busId = busSelect.value;
-        if (!busId) {
-            seatsTotalInput.value = '';
-            return;
-        }
-        try {
-            const response = await fetch(`/coordinador/buses/api/${busId}/`);
-            const data = await response.json();
-            // Calcular total asientos desde layout (podría venir de data, o calcular de filas*columnas)
-            // Asumimos que el modelo Bus tiene método para contar asientos reales, pero usamos una llamada extra si es necesario.
-            // Alternativa: hacer una petición a un endpoint que devuelva seats_total.
-            // Por simplicidad, usamos los datos del bus (floors, rows_lower, rows_upper, cols)
-            let total = 0;
-            if (data.floors === 1) {
-                total = data.rows_lower * data.cols;
-            } else {
-                total = (data.rows_lower + data.rows_upper) * data.cols;
+        async function updateSeatsTotal() {
+            const busId = busSelect.value;
+            if (!busId) {
+                seatsTotalInput.value = '';
+                return;
             }
-            seatsTotalInput.value = total;
-        } catch(e) {
-            console.error('Error al obtener datos del bus:', e);
+            if (currentController) currentController.abort();
+            currentController = new AbortController();
+            spinner.style.display = 'inline-block';
+            seatsTotalInput.value = 'Cargando...';
+            try {
+                const response = await fetch(`/coordinador/buses/api/${busId}/`, {
+                    signal: currentController.signal
+                });
+                if (!response.ok) throw new Error('Error al obtener datos');
+                const data = await response.json();
+                // Contar asientos reales (solo celdas tipo 'L')
+                let totalSeats = 0;
+                const countL = (layout) => layout.filter(cell => cell === 'L').length;
+                if (data.layout_lower) totalSeats += countL(data.layout_lower);
+                if (data.layout_upper) totalSeats += countL(data.layout_upper);
+                seatsTotalInput.value = totalSeats;
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error(err);
+                    seatsTotalInput.value = 'Error';
+                }
+            } finally {
+                spinner.style.display = 'none';
+                currentController = null;
+            }
         }
-    }
-    if (busSelect) {
-        busSelect.addEventListener('change', updateSeatsTotal);
-        // Llamar al cargar la página si hay un bus preseleccionado
-        updateSeatsTotal();
-    }
+        if (busSelect) {
+            busSelect.addEventListener('change', updateSeatsTotal);
+            updateSeatsTotal();
+        }
 
-    // Confirmación de eliminación
-    const deleteButtons = document.querySelectorAll('.delete-trip');
-    const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
-    const deleteTripNameSpan = document.getElementById('deleteTripName');
-    const deleteForm = document.getElementById('deleteForm');
+        // ========== 2. Validación de fechas (salida < llegada) ==========
+        const departureInput = document.getElementById('id_departure');
+        const arrivalInput = document.getElementById('id_arrival');
+        const dateWarning = document.getElementById('dateWarning');
+        const arrivalHelp = document.getElementById('arrivalHelp');
 
-    deleteButtons.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const tripId = this.getAttribute('data-id');
-            const tripName = this.getAttribute('data-name');
-            deleteTripNameSpan.textContent = tripName;
-            deleteForm.action = deleteForm.action.replace('/0', `/${tripId}`);
-            deleteModal.show();
+        function validateDates() {
+            if (!departureInput || !arrivalInput) return;
+            const dep = new Date(departureInput.value);
+            const arr = new Date(arrivalInput.value);
+            if (arrivalInput.value && dep && arr && arr <= dep) {
+                dateWarning.style.display = 'block';
+                arrivalInput.classList.add('is-invalid');
+                return false;
+            } else {
+                dateWarning.style.display = 'none';
+                arrivalInput.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        if (departureInput && arrivalInput) {
+            departureInput.addEventListener('change', validateDates);
+            arrivalInput.addEventListener('change', validateDates);
+            validateDates();
+        }
+
+        // ========== 3. Filtro por mes/año (cliente) ==========
+        const monthFilter = document.getElementById('monthFilter');
+const clearMonthBtn = document.getElementById('clearMonthFilter');
+const tableRows = document.querySelectorAll('#tripsTable tbody tr');
+
+function filterByMonth() {
+    const selectedMonth = monthFilter.value; // formato YYYY-MM
+    tableRows.forEach(row => {
+        if (!row.cells) return;
+        const depCell = row.querySelector('.departure-cell');
+        if (!depCell) return;
+        const depDate = depCell.getAttribute('data-date');
+        if (!depDate) return;
+        const rowMonth = depDate.substring(0, 7); // YYYY-MM
+        if (!selectedMonth || rowMonth === selectedMonth) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+if (monthFilter) {
+    monthFilter.addEventListener('change', filterByMonth);
+    
+    // Siempre aplicar el filtro del mes actual al cargar la página
+    const today = new Date();
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+    monthFilter.value = currentMonth;
+    filterByMonth();
+}
+
+if (clearMonthBtn) {
+    clearMonthBtn.addEventListener('click', () => {
+        monthFilter.value = '';
+        filterByMonth();
+    });
+}
+
+        // ========== 4. Ordenamiento de tabla ==========
+        const getCellValue = (row, index) => {
+            const cell = row.cells[index];
+            if (!cell) return '';
+            if (index === 3 || index === 4) { // columnas de fecha
+                const dateStr = cell.getAttribute('data-date');
+                return dateStr ? new Date(dateStr) : new Date(0);
+            }
+            return cell.innerText.trim().toLowerCase();
+        };
+        const sortTable = (colIndex, order = 'asc') => {
+            const tbody = document.querySelector('#tripsTable tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                let aVal = getCellValue(a, colIndex);
+                let bVal = getCellValue(b, colIndex);
+                if (aVal instanceof Date && bVal instanceof Date) {
+                    return order === 'asc' ? aVal - bVal : bVal - aVal;
+                }
+                aVal = String(aVal);
+                bVal = String(bVal);
+                return order === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            });
+            rows.forEach(row => tbody.appendChild(row));
+            // Actualizar iconos
+            const headers = document.querySelectorAll('#tripsTable th.sortable');
+            headers.forEach((th, idx) => {
+                const icon = th.querySelector('i');
+                if (idx === colIndex) {
+                    th.classList.add(order);
+                    th.classList.remove(order === 'asc' ? 'desc' : 'asc');
+                    if (icon) {
+                        icon.className = `fas fa-sort-${order === 'asc' ? 'up' : 'down'}`;
+                    }
+                } else {
+                    th.classList.remove('asc', 'desc');
+                    if (icon) icon.className = 'fas fa-sort';
+                }
+            });
+        };
+        document.querySelectorAll('#tripsTable th.sortable').forEach((th, idx) => {
+            th.addEventListener('click', () => {
+                const currentOrder = th.classList.contains('asc') ? 'desc' : 'asc';
+                sortTable(idx, currentOrder);
+            });
+        });
+
+        // ========== 5. Eliminación con validación de tickets ==========
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        const deleteTripNameSpan = document.getElementById('deleteTripName');
+        const deleteForm = document.getElementById('deleteForm');
+        const ticketsWarningDiv = document.getElementById('ticketsWarning');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+
+        document.querySelectorAll('.delete-trip').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const tripId = this.getAttribute('data-id');
+                const tripName = this.getAttribute('data-name');
+                const hasTickets = this.getAttribute('data-has-tickets') === 'true';
+                deleteTripNameSpan.textContent = tripName;
+                deleteForm.action = deleteForm.action.replace('/0', `/${tripId}`);
+                if (hasTickets) {
+                    ticketsWarningDiv.classList.remove('d-none');
+                    confirmDeleteBtn.disabled = true;
+                } else {
+                    ticketsWarningDiv.classList.add('d-none');
+                    confirmDeleteBtn.disabled = false;
+                }
+                deleteModal.show();
+            });
         });
     });
 </script>

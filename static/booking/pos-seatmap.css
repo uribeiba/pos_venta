@@ -1,0 +1,89 @@
+/* pos-seatmap.css - Estilos para el selector de asientos estilo "editor de buses" */
+
+.seatmap-container {
+    overflow-x: auto;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 12px;
+}
+
+.seatmap-grid {
+    display: inline-block;
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.seat-row {
+    display: flex;
+    margin-bottom: 8px;
+    gap: 4px;
+}
+
+.seat-cell {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background-color: #e9ecef;
+    border: 1px solid #ced4da;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Tipos de celda (no asiento) */
+.seat-cell.type-P { background-color: #fff3cd; border-color: #ffecb3; cursor: default; color: #856404; }
+.seat-cell.type-X { background-color: #f8d7da; border-color: #f5c6cb; cursor: default; color: #721c24; }
+.seat-cell.type-E { background-color: #d1ecf1; border-color: #bee5eb; cursor: default; color: #0c5460; }
+.seat-cell.type-D { background-color: #d4edda; border-color: #c3e6cb; cursor: default; color: #155724; }
+.seat-cell.type-B { background-color: #e2d1ff; border-color: #d4b8ff; cursor: default; color: #4a1d8c; }
+
+/* Asientos (type-L) */
+.seat-cell.type-L {
+    background-color: #a3cfbb;
+    border-color: #2c7a4d;
+    color: #1e3a2f;
+    font-weight: bold;
+}
+
+/* Estados del asiento */
+.seat-cell.type-L.status-free { background-color: #a3cfbb; border-color: #2c7a4d; }
+.seat-cell.type-L.status-occupied { background-color: #dc3545; border-color: #a71d2a; cursor: not-allowed; color: white; }
+.seat-cell.type-L.status-hold { background-color: #fd7e14; border-color: #dc6a0a; cursor: not-allowed; color: white; }
+.seat-cell.type-L.status-my-hold { background-color: #0dcaf0; border-color: #0a9ebe; color: #0a2a3a; }
+
+/* Hover solo para libres y my-hold */
+.seat-cell.type-L.status-free:hover,
+.seat-cell.type-L.status-my-hold:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    filter: brightness(0.95);
+}
+
+/* Leyenda */
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 12px;
+    background: white;
+    border-radius: 12px;
+    font-size: 12px;
+}
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.legend-color {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+}

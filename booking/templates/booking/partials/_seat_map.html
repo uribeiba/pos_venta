@@ -1,0 +1,91 @@
+{% load static %}
+<div class="text-center mb-3">
+    <div class="deck-pills btn-group">
+        <button type="button" class="btn btn-outline-primary active" data-deck="1">Piso 1</button>
+        <button type="button" class="btn btn-outline-primary" data-deck="2">Piso 2</button>
+    </div>
+</div>
+<div id="deck-1-container" class="deck-container"></div>
+<div id="deck-2-container" class="deck-container" style="display:none"></div>
+
+<script>
+    // Función global para renderizar un piso
+    window.renderDeck = function(deck, grid, cols) {
+        const containerId = deck === 1 ? 'deck-1-container' : 'deck-2-container';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (!grid || grid.length === 0) {
+            container.innerHTML = '<div class="alert alert-info">Sin asientos en este piso</div>';
+            return;
+        }
+
+        const frame = document.createElement('div');
+        frame.className = `bus-container-frame floor-${deck}`;
+        const gridDiv = document.createElement('div');
+        gridDiv.className = 'seat-grid';
+        gridDiv.style.gridTemplateColumns = `repeat(${cols}, 70px)`;
+        gridDiv.style.gap = '8px';
+
+        for (let r = 0; r < grid.length; r++) {
+            const row = grid[r];
+            for (let c = 0; c < cols; c++) {
+                const cell = row && row[c] ? row[c] : null;
+                const seatDiv = document.createElement('div');
+                seatDiv.className = 'seat-cell';
+                if (!cell || cell.type !== 'L') {
+                    seatDiv.style.background = '#e9ecef';
+                    seatDiv.style.borderRadius = '8px';
+                    seatDiv.style.display = 'flex';
+                    seatDiv.style.alignItems = 'center';
+                    seatDiv.style.justifyContent = 'center';
+                    if (cell && cell.type === 'B') seatDiv.innerHTML = '<i class="fa-solid fa-restroom fa-2x text-secondary"></i>';
+                    else if (cell && cell.type === 'E') seatDiv.innerHTML = '<i class="fa-solid fa-stairs fa-2x text-secondary"></i>';
+                    else if (cell && cell.type === 'D') seatDiv.innerHTML = '<i class="fa-solid fa-door-open fa-2x text-secondary"></i>';
+                    else if (cell && cell.type === 'X') seatDiv.innerHTML = '<i class="fa-solid fa-ban fa-2x text-danger"></i>';
+                    else seatDiv.innerHTML = '&nbsp;';
+                    gridDiv.appendChild(seatDiv);
+                    continue;
+                }
+
+                // Asiento normal
+                const service = cell.service || 'semi';
+                let imgSrc = "{% static 'img/semi.png' %}";
+                if (service === 'cama') imgSrc = "{% static 'img/cama.png' %}";
+                else if (service === 'ejecutivo') imgSrc = "{% static 'img/ejecutivo.png' %}";
+                const img = document.createElement('img');
+                img.src = imgSrc;
+                seatDiv.appendChild(img);
+
+                const numberSpan = document.createElement('span');
+                numberSpan.className = 'seat-number';
+                numberSpan.innerText = cell.number || '?';
+                seatDiv.appendChild(numberSpan);
+
+                // Atributos para eventos
+                seatDiv.dataset.deck = deck;
+                seatDiv.dataset.number = cell.number || '';
+                seatDiv.dataset.seatId = cell.id || '';
+                seatDiv.dataset.service = service;
+                seatDiv.dataset.price = cell.price || unitPrice;
+                seatDiv.dataset.status = cell.status || 'free';
+
+                // Aplicar clase de estado visual
+                if (cell.status === 'occupied') seatDiv.classList.add('status-occupied');
+                else if (cell.status === 'my-hold') seatDiv.classList.add('status-my-hold');
+
+                if (cell.status === 'occupied' && cell.hold_user) {
+                    seatDiv.title = `Retenido por: ${cell.hold_user}`;
+                } else if (cell.status === 'my-hold') {
+                    seatDiv.title = 'Seleccionado por ti';
+                } else {
+                    seatDiv.title = 'Disponible';
+                }
+
+                gridDiv.appendChild(seatDiv);
+            }
+        }
+        frame.appendChild(gridDiv);
+        container.innerHTML = '';
+        container.appendChild(frame);
+    };
+</script>

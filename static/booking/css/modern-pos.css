@@ -1,0 +1,58 @@
+/* Solo mejoras visuales, sin cambiar clases ni IDs */
+.card-pos-header {
+    background: linear-gradient(135deg, #2c3e50, #1a2a3a) !important;
+    border-radius: 16px 16px 0 0;
+}
+
+.bus-container-frame {
+    border-radius: 24px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.seat-cell {
+    transition: transform 0.1s, filter 0.1s;
+}
+.seat-cell:hover {
+    transform: scale(1.05);
+}
+
+.btn-checkout-primary {
+    background: linear-gradient(135deg, #2c3e50, #1a2a3a) !important;
+    border-radius: 40px !important;
+    font-weight: 700;
+    transition: all 0.2s;
+}
+.btn-checkout-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+/* Tarjetas más redondeadas */
+.card {
+    border-radius: 20px !important;
+    overflow: hidden;
+}
+
+/* Inputs y selects más elegantes */
+.form-control, .form-select {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 0.6rem 1rem;
+}
+
+/* Acordeón más limpio */
+.accordion-button {
+    background: white;
+    font-weight: 600;
+}
+.accordion-button:not(.collapsed) {
+    background: #f8fafc;
+    color: #2c3e50;
+}
+
+/* Leyenda */
+.legend-box {
+    justify-content: center;
+    gap: 20px;
+}

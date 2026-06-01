@@ -5,14 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel Coordinador - Cejer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome 6 (iconos) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
         body { background: #f1f5f9; }
-        .sidebar { background: #0f172a; min-height: 100vh; }
-        .sidebar a { color: #cbd5e1; text-decoration: none; padding: 12px 20px; display: block; transition: 0.2s; }
-        .sidebar a:hover { background: #1e293b; color: white; }
-        .sidebar a.active { background: #3b82f6; color: white; }
+        
+        /* Modificado para empujar el botón de salir al fondo de forma limpia */
+        .sidebar { 
+            background: #0f172a; 
+            min-height: 100vh; 
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .sidebar a, .sidebar button.btn-logout-side { 
+            color: #cbd5e1; 
+            text-decoration: none; 
+            padding: 12px 20px; 
+            display: block; 
+            transition: 0.2s; 
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+        }
+        
+        .sidebar a:hover, .sidebar button.btn-logout-side:hover { 
+            background: #1e293b; 
+            color: white; 
+        }
+        
+        .sidebar a.active { 
+            background: #3b82f6; 
+            color: white; 
+        }
+        
         .sidebar ul { list-style: none; padding: 0; margin: 0; }
         .sidebar li { margin: 0; }
         .content { padding: 20px; }
@@ -24,46 +51,48 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-md-2 sidebar p-0">
-            <div class="text-center py-4">
-                <h4 class="text-white">Cejer</h4>
-                <small class="text-muted">Coordinador</small>
+            <div class="w-100">
+                <div class="text-center py-4">
+                    <h4 class="text-white">Cejer</h4>
+                    <small class="text-muted">Coordinador</small>
+                </div>
+                <nav>
+                    <ul>
+                        <li class="nav-header">Flota</li>
+                        <li><a href="{% url 'coordinator:buses_dashboard' %}"><i class="fas fa-bus"></i> Buses</a></li>
+                        <li><a href="{% url 'coordinator:bus_list' %}"><i class="fas fa-pencil-ruler"></i> Editor de asientos</a></li>
+                        <li><a href="{% url 'coordinator:trips_dashboard' %}"><i class="fas fa-calendar-alt"></i> Viajes</a></li>
+                        <li><a href="{% url 'coordinator:generate_trips' %}"><i class="fas fa-calendar-week"></i> Viajes recurrentes</a></li>
+
+                        <li class="nav-header">Configuración</li>
+                        <li><a href="{% url 'coordinator:cities_dashboard' %}"><i class="fas fa-city"></i> Ciudades</a></li>
+                        <li><a href="{% url 'coordinator:terminals_dashboard' %}"><i class="fas fa-map-marker-alt"></i> Terminales</a></li>
+                        <li><a href="{% url 'coordinator:routes_dashboard' %}"><i class="fas fa-road"></i> Rutas</a></li>
+                        <li><a href="{% url 'coordinator:agencies_dashboard' %}"><i class="fas fa-store"></i> Agencias</a></li>
+
+                        <li class="nav-header">Personal</li>
+                        <li><a href="{% url 'coordinator:drivers_dashboard' %}"><i class="fas fa-id-card"></i> Choferes</a></li>
+                        <li><a href="{% url 'coordinator:assistants_dashboard' %}"><i class="fas fa-user-friends"></i> Auxiliares</a></li>
+                        <li><a href="{% url 'coordinator:expiring_documents' %}"><i class="fas fa-calendar-warning"></i> Documentos por vencer</a></li>
+
+                        <li class="nav-header">Sistema</li>
+                        <li><a href="{% url 'pos_caja' %}" target="_blank"><i class="fas fa-cash-register"></i> POS (Ventas)</a></li>
+                        <li><a href="{% url 'admin:index' %}" target="_blank"><i class="fas fa-lock"></i> Admin</a></li>
+                    </ul>
+                </nav>
             </div>
-            <nav>
-                <ul>
-                    <!-- FLOTA -->
-                    <li class="nav-header">Flota</li>
-                    <li><a href="{% url 'coordinator:buses_dashboard' %}"><i class="fas fa-bus"></i> Buses</a></li>
-                    <li><a href="{% url 'coordinator:bus_list' %}"><i class="fas fa-pencil-ruler"></i> Editor de asientos</a></li>
-                    <li><a href="{% url 'coordinator:trips_dashboard' %}"><i class="fas fa-calendar-alt"></i> Viajes</a></li>
 
-                    <!-- CONFIGURACIÓN -->
-                    <li class="nav-header">Configuración</li>
-                    <li><a href="{% url 'coordinator:cities_dashboard' %}"><i class="fas fa-city"></i> Ciudades</a></li>
-                    <li><a href="{% url 'coordinator:terminals_dashboard' %}"><i class="fas fa-map-marker-alt"></i> Terminales</a></li>
-                    <li><a href="{% url 'coordinator:routes_dashboard' %}"><i class="fas fa-road"></i> Rutas</a></li>
-                    <li><a href="{% url 'coordinator:agencies_dashboard' %}"><i class="fas fa-store"></i> Agencias</a></li>
-
-                    <!-- PERSONAL -->
-                    <li class="nav-header">Personal</li>
-                    <li><a href="{% url 'coordinator:drivers_dashboard' %}"><i class="fas fa-id-card"></i> Choferes</a></li>
-                    <li><a href="{% url 'coordinator:assistants_dashboard' %}"><i class="fas fa-user-friends"></i> Auxiliares</a></li>
-                    <li><a href="{% url 'coordinator:expiring_documents' %}"><i class="fas fa-calendar-warning"></i> Documentos por vencer</a></li>
-
-                    <!-- SISTEMA -->
-                    <li class="nav-header">Sistema</li>
-                    <li><a href="{% url 'pos_caja' %}" target="_blank"><i class="fas fa-cash-register"></i> POS (Ventas)</a></li>
-                    <li><a href="{% url 'admin:index' %}" target="_blank"><i class="fas fa-lock"></i> Admin</a></li>
-                </ul>
-            </nav>
-        </div>
-        <div class="col-md-10 content">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1>{% block title %}Dashboard{% endblock %}</h1>
-                <form method="post" action="{% url 'admin:logout' %}">
+            <div class="w-100 border-top border-secondary mt-4 bg-dark">
+                <form method="post" action="{% url 'admin:logout' %}" class="m-0">
                     {% csrf_token %}
-                    <button class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i> Salir</button>
+                    <button type="submit" class="btn-logout-side text-danger fw-bold">
+                        <i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión
+                    </button>
                 </form>
             </div>
+        </div>
+
+        <div class="col-md-10 content">
             {% if messages %}
                 {% for message in messages %}
                     <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
@@ -72,6 +101,7 @@
                     </div>
                 {% endfor %}
             {% endif %}
+            
             {% block content %}{% endblock %}
         </div>
     </div>

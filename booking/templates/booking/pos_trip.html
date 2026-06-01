@@ -1,1030 +1,691 @@
-{% extends "booking/pos_base.html" %}
+{% extends 'coordinator/base.html' %}
+{% load static %}
 
-{% block title %}POS — Selección de Asientos{% endblock %}
+{% block title %}POS — Venta de Asientos | {{ trip.route.origin.name }} → {{ trip.route.destination.name }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'booking/css/modern.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+    /* (todos tus estilos existentes, mantenlos igual) */
+    .pos-main-wrapper { display: flex; gap: 20px; align-items: flex-start; margin-top: 10px; }
+    .trip-banner-top { margin-top: -10px; background-color: #1e2b38; color: #cbd5e1; border-radius: 8px; }
+    .seatmap-main-panel { flex: 1.1; min-width: 310px; max-width: 360px; }
+    .sidebar-sale-panel { flex: 1.9; min-width: 450px; }
+    .card-pos-header { background-color: #2c3e50 !important; color: #ffffff; font-weight: 600; font-size: 0.9rem; border-top-left-radius: 1rem; border-top-right-radius: 1rem; }
+    .btn-checkout-primary { background-color: #2c3e50 !important; border-color: #2c3e50 !important; color: white !important; font-weight: 600; border-radius: 30px; transition: all 0.2s ease; }
+    .nav-pos-tabs { border-bottom: 2px solid #2c3e50; margin-bottom: 15px; }
+    .nav-pos-tabs .nav-link { color: #64748b; font-weight: 600; border: none; padding: 10px 20px; font-size: 0.85rem; }
+    .nav-pos-tabs .nav-link.active { color: white !important; background-color: #2c3e50 !important; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+    .nav-deck-pills { background: #f1f5f9; padding: 4px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: center; border: 1px solid #cbd5e1; }
+    .nav-deck-pills .nav-link { color: #4a5568; font-weight: 700; font-size: 0.8rem; padding: 6px 24px; border-radius: 6px; border: none; background: transparent; }
+    .nav-deck-pills .nav-link.active { background-color: #2c3e50 !important; color: white !important; }
+    .grid-wrapper { text-align: center; display: flex; justify-content: center; align-items: flex-start; min-height: 520px; }
+    .bus-container-frame { position: relative; width: 235px; background-size: 100% 100%; background-repeat: no-repeat; background-position: center; border-radius: 30px; box-sizing: border-box; }
+    .bus-container-frame.floor-1 { background-image: url('{% static "img/inferior.png" %}'); padding: 240px 24px 30px 24px; }
+    .bus-container-frame.floor-2 { background-image: url('{% static "img/superior.png" %}'); padding: 90px 24px 30px 24px; }
+    .seat-grid { display: grid !important; width: 100%; justify-content: center; align-content: start; }
+    .seat-cell { aspect-ratio: 1 / 1; width: 100%; max-width: 38px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .seat-cell img { width: 100%; height: 100%; object-fit: contain; }
+    .seat-number { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); font-size: 10px; font-weight: 800; color: white; text-shadow: 1px 1px 1px rgba(0,0,0,0.9); }
+    .hold-timer-seat { position: absolute; bottom: 2px; right: 2px; font-size: 7px; background: rgba(0,0,0,0.7); color: #ffc107; border-radius: 4px; padding: 0 2px; font-weight: bold; font-family: monospace; pointer-events: none; z-index: 3; }
+    .status-free img { filter: none; }
+    .status-my-hold img, .status-my-hold-active img { filter: hue-rotate(190deg) saturate(2.5) brightness(0.95); }
+    .status-occupied img, .status-sold img, .status-reserved img { filter: hue-rotate(65deg) brightness(0.9) saturate(1.6); cursor: not-allowed !important; }
+    .legend-box { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.75rem; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+    .legend-color { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .route-timeline { list-style: none; position: relative; padding-left: 20px; }
+    .route-timeline::before { content: ''; position: absolute; left: 5px; top: 5px; bottom: 5px; width: 2px; background: #cbd5e1; }
+    .route-timeline-item { position: relative; padding-bottom: 1.2rem; }
+    .route-timeline-item:last-child { padding-bottom: 0; }
+    .route-timeline-item::before { content: ''; position: absolute; left: -19px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; border: 2px solid #fff; }
+    .route-timeline-item.origin::before { background: #3b82f6; }
+    .route-timeline-item.destination::before { background: #10b981; }
+    .passenger-compact-table th { font-size: 0.78rem; background-color: #f8fafc; color: #475569; font-weight: 600; border-bottom: 2px solid #cbd5e1; }
+    .passenger-compact-table td { padding: 5px 4px !important; vertical-align: middle; }
+    .passenger-compact-table .seat-badge { background-color: #1e2b38; color: white; font-weight: 700; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; display: inline-block; position: relative; }
+    .hold-timer-table { font-size: 0.65rem; color: #ff9800; display: block; font-weight: normal; margin-top: 2px; }
+    @media print { body * { visibility: hidden; } #print-manifest-section, #print-manifest-section * { visibility: visible; } #print-manifest-section { position: absolute; left: 0; top: 0; width: 100%; } .no-print { display: none !important; } }
+</style>
+{% endblock %}
 
 {% block content %}
-<style>
-    .pos-trip-container {
-        display: grid;
-        grid-template-columns: 1fr 380px;
-        gap: 20px;
-        height: calc(100vh - 120px);
-    }
-    
-    .seatmap-section {
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 20px;
-        overflow: auto;
-    }
-    
-    .checkout-section {
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .trip-header {
-        margin-bottom: 20px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid #e5e7eb;
-    }
-    
-    .trip-title {
-        font-size: 20px;
-        font-weight: 700;
-        color: #111827;
-        margin-bottom: 8px;
-    }
-    
-    .trip-meta {
-        display: flex;
-        gap: 16px;
-        flex-wrap: wrap;
-        color: #374151;
-        font-size: 14px;
-    }
-    
-    .trip-meta b {
-        color: #111827;
-    }
-    
-    .legend {
-        display: flex;
-        gap: 16px;
-        flex-wrap: wrap;
-        align-items: center;
-        font-size: 12px;
-        color: #4b5563;
-        margin: 16px 0;
-        padding: 12px;
-        background: #f8fafc;
-        border-radius: 8px;
-    }
-    
-    .legend i {
-        display: inline-block;
-        width: 12px;
-        height: 12px;
-        border-radius: 2px;
-        vertical-align: -2px;
-        margin-right: 6px;
-        border: 1px solid;
-    }
-    
-    .i-free { background: #e8f5e9; border-color: #cfe6d3; }
-    .i-sel { background: #111827; border-color: #111827; }
-    .i-occ { background: #f3f4f6; border-color: #e5e7eb; }
-    .i-hold { background: #fff7ed; border-color: #fed7aa; }
-    .i-door { background: #e8f2ff; border-color: #bbdefb; }
-    .i-wc { background: #fde7ef; border-color: #f8bbd0; }
-    .i-st { background: #fff3e0; border-color: #ffd2a8; }
-    .i-pas { background: transparent; border: 0; }
-    
-    .deck {
-        margin: 20px 0;
-    }
-    
-    .deck-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #334155;
-        margin: 0 0 12px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #e5e7eb;
-    }
-    
-    .grid {
-        display: grid;
-        gap: 6px;
-        width: max-content;
-        background: transparent;
-        margin-bottom: 16px;
-    }
-    
-    .cell {
-        width: 42px;
-        height: 42px;
-        display: grid;
-        place-items: center;
-        border-radius: 8px;
-        user-select: none;
-        border: 1px solid #e5e7eb;
-        background: #fff;
-        font-weight: 700;
-        font-size: 11px;
-        transition: all 0.1s ease;
-        cursor: pointer;
-    }
-    
-    .cell:hover {
-        transform: scale(1.05);
-    }
-    
-    /* Estados de los asientos */
-    .cell-free { background: #e8f5e9; border-color: #cfe6d3; }
-    .cell-sel { background: #111827; color: #fff; border-color: #111827; }
-    .cell-occ { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; cursor: not-allowed; }
-    .cell-hold { background: #fff7ed; border-color: #fed7aa; cursor: not-allowed; }
-    
-    /* Otros tipos de celdas */
-    .cell--P { background: transparent !important; border: 0 !important; box-shadow: none !important; cursor: default; }
-    .cell--X { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
-    .cell--D { background: #e8f2ff; border-color: #bbdefb; cursor: not-allowed; }
-    .cell--B { background: #fde7ef; border-color: #f8bbd0; cursor: not-allowed; }
-    .cell--E { background: #fff3e0; border-color: #ffd2a8; cursor: not-allowed; }
-    
-    .checkout-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: #111827;
-        margin-bottom: 16px;
-    }
-    
-    .selected-list {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 16px;
-        max-height: 200px;
-        overflow: auto;
-        background: #fff;
-        flex: 1;
-        margin-bottom: 16px;
-    }
-    
-    .selected-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px dashed #e5e7eb;
-        padding: 8px 0;
-    }
-    
-    .selected-item:last-child {
-        border-bottom: 0;
-    }
-    
-    .empty-state {
-        color: #9ca3af;
-        font-style: italic;
-        text-align: center;
-        padding: 20px;
-    }
-    
-    .summary-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: 16px 0;
-        padding-top: 16px;
-        border-top: 1px solid #e5e7eb;
-    }
-    
-    .total-amount {
-        font-size: 20px;
-        font-weight: 800;
-        color: #111827;
-    }
-    
-    .form-group {
-        margin-bottom: 16px;
-    }
-    
-    .form-label {
-        display: block;
-        font-size: 12px;
-        color: #6b7280;
-        margin-bottom: 4px;
-        font-weight: 600;
-    }
-    
-    .form-input {
-        width: 100%;
-        height: 40px;
-        padding: 0 12px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
-    }
-    
-    .form-input:focus {
-        outline: none;
-        border-color: #111827;
-    }
-    
-    .actions {
-        display: flex;
-        gap: 12px;
-        margin-top: auto;
-    }
-    
-    .btn-checkout {
-        flex: 2;
-        background: #10b981;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 12px 16px;
-        font-weight: 700;
-        cursor: pointer;
-        font-size: 14px;
-    }
-    
-    .btn-checkout:disabled {
-        background: #9ca3af;
-        cursor: not-allowed;
-    }
-    
-    .btn-back {
-        flex: 1;
-        background: #f3f4f6;
-        color: #111827;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 12px 16px;
-        font-weight: 700;
-        cursor: pointer;
-        text-decoration: none;
-        text-align: center;
-        font-size: 14px;
-    }
-    
-    /* ✅ NUEVOS ESTILOS PARA SISTEMA DE CLIENTES */
-    .customer-section {
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 16px;
-    }
-    
-    .customer-search {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 12px;
-    }
-    
-    .customer-search input {
-        flex: 1;
-        height: 40px;
-        padding: 0 12px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
-    }
-    
-    .customer-results {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        max-height: 150px;
-        overflow-y: auto;
-        background: white;
-        display: none;
-        position: relative;
-        z-index: 1000;
-    }
-    
-    .customer-result {
-        padding: 10px 12px;
-        border-bottom: 1px solid #e5e7eb;
-        cursor: pointer;
-        font-size: 13px;
-    }
-    
-    .customer-result:hover {
-        background: #f3f4f6;
-    }
-    
-    .customer-result:last-child {
-        border-bottom: none;
-    }
-    
-    .customer-selected {
-        background: #e8f5e9;
-        padding: 12px;
-        border-radius: 6px;
-        margin-top: 10px;
-        display: none;
-    }
-    
-    .new-customer-form {
-        background: #fff3e0;
-        padding: 12px;
-        border-radius: 6px;
-        margin-top: 10px;
-        display: none;
-    }
-    
-    .new-customer-form input {
-        margin-bottom: 8px;
-        height: 36px;
-        font-size: 13px;
-    }
-    
-    .customer-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-    }
-    
-    .customer-actions .btn {
-        flex: 1;
-        height: 36px;
-        font-size: 13px;
-        padding: 0 12px;
-    }
-
-    /* ✅ NUEVO: Estilos para modo manual */
-    .manual-mode {
-        background: #eff6ff;
-        padding: 12px;
-        border-radius: 6px;
-        margin-top: 10px;
-        display: none;
-    }
-    
-    @media (max-width: 1200px) {
-        .pos-trip-container {
-            grid-template-columns: 1fr;
-            height: auto;
-        }
-        
-        .checkout-section {
-            order: -1;
-        }
-    }
-</style>
-
-<div class="pos-trip-container">
-    <!-- Sección del Mapa de Asientos -->
-    <div class="seatmap-section">
-        <div class="trip-header">
-            <h1 class="trip-title">Selección de Asientos</h1>
-            <div class="trip-meta">
-                <span><b>Ruta:</b> {{ trip.route.origin.name }} → {{ trip.route.destination.name }}</span>
-                <span><b>Salida:</b> {{ trip.departure|date:"Y-m-d H:i" }}</span>
-                <span><b>Bus:</b> {{ trip.bus.plate }}</span>
-                {% if trip.route.base_price %}
-                    <span><b>Tarifa:</b> ${{ trip.route.base_price }}</span>
-                {% endif %}
-            </div>
+<div class="container-fluid p-0">
+    <div class="alert alert-dark border-0 p-2 mb-3 shadow-sm d-flex justify-content-between align-items-center trip-banner-top no-print">
+        <div>
+            <span class="badge bg-warning text-dark me-2">VIAJE #{{ trip.id }}</span>
+            <strong>Ruta:</strong> {{ trip.route.origin.name }} <i class="fas fa-arrow-right mx-1"></i> {{ trip.route.destination.name }}
+            <span class="mx-3">|</span>
+            <strong>Bus/Patente:</strong> {{ trip.bus.plate_number|default:trip.bus.plate|default:"S/P" }}
         </div>
-        
-        <div class="legend">
-            <span><i class="i-free"></i>Libre</span>
-            <span><i class="i-sel"></i>Seleccionado</span>
-            <span><i class="i-occ"></i>Ocupado</span>
-            <span><i class="i-hold"></i>Reservado</span>
-            <span><i class="i-pas"></i>Pasillo</span>
-            <span><i class="i-st"></i>Escalera</span>
-            <span><i class="i-door"></i>Puerta</span>
-            <span><i class="i-wc"></i>WC</span>
-        </div>
-
-        {% if grid_upper %}
-        <div class="deck">
-            <h3 class="deck-title">Piso Superior</h3>
-            <div id="gridU" class="grid"></div>
-        </div>
-        {% endif %}
-
-        <div class="deck">
-            <h3 class="deck-title">Piso Inferior</h3>
-            <div id="gridL" class="grid"></div>
+        <div class="text-end text-white fw-bold small">
+            <i class="far fa-calendar-alt me-1"></i> {{ trip.departure|date:"d/m/Y H:i" }}
         </div>
     </div>
 
-    <!-- Sección de Checkout MEJORADA -->
-    <div class="checkout-section">
-        <h2 class="checkout-title">Resumen de Venta</h2>
-        
-        <!-- ✅ NUEVA SECCIÓN: Sistema de Clientes -->
-        <div class="customer-section">
-            <h3 style="margin: 0 0 12px; font-size: 14px; color: #374151;">👤 Datos del Pasajero</h3>
-            
-            <!-- Búsqueda de cliente existente -->
-            <div class="customer-search">
-                <input type="text" id="customerSearch" placeholder="Buscar por RUT o nombre..." 
-                       class="form-input" style="margin-bottom: 0;">
-                <button type="button" onclick="searchCustomer()" class="btn btn-light" 
-                        style="white-space: nowrap; height: 40px; padding: 0 12px;">🔍 Buscar</button>
-            </div>
-            
-            <!-- Resultados de búsqueda -->
-            <div id="customerResults" class="customer-results"></div>
-            
-            <!-- Cliente seleccionado -->
-            <div id="customerSelected" class="customer-selected">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong id="selectedName"></strong>
-                        <div style="font-size: 12px; color: #6b7280;" id="selectedRut"></div>
+    <div class="pos-main-wrapper">
+        <div class="seatmap-main-panel no-print">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header card-pos-header py-2">
+                    <i class="fas fa-couch me-1"></i> Distribución de Asientos
+                </div>
+                <div class="card-body p-3">
+                    <ul class="nav nav-pills nav-deck-pills" id="deckSelectorTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="piso1-tab" data-bs-toggle="pill" data-bs-target="#piso1-pane" type="button" role="tab">
+                                <i class="fas fa-bus"></i> Piso 1
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="piso2-tab" data-bs-toggle="pill" data-bs-target="#piso2-pane" type="button" role="tab">
+                                <i class="fas fa-level-up-alt"></i> Piso 2
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="deckSelectorTabsContent">
+                        <div class="tab-pane fade show active" id="piso1-pane" role="tabpanel">
+                            <div id="deck-1-container" class="editor-container"></div>
+                        </div>
+                        <div class="tab-pane fade" id="piso2-pane" role="tabpanel">
+                            <div id="deck-2-container" class="editor-container"></div>
+                        </div>
                     </div>
-                    <button type="button" onclick="clearCustomer()" class="btn btn-light" 
-                            style="padding: 4px 8px; font-size: 12px;">Cambiar</button>
+                    <div class="legend-box mt-3">
+                        <div><span class="legend-color" style="background:#4299e1; border:1px solid #cbd5e1;"></span> Disponible</div>
+                        <div><span class="legend-color" style="background:#ff9800;"></span> Seleccionado (Naranjo)</div>
+                        <div><span class="legend-color" style="background:#48bb78;"></span> Ocupado / Vendido (Verde)</div>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Formulario para nuevo cliente -->
-            <div id="newCustomerForm" class="new-customer-form">
-                <div style="font-size: 12px; color: #92400e; margin-bottom: 8px;">
-                    💡 Cliente nuevo - Complete los datos (solo RUT obligatorio):
-                </div>
-                <input type="text" id="newRut" placeholder="RUT *" class="form-input">
-                <input type="text" id="newName" placeholder="Nombre completo" class="form-input">
-                <input type="text" id="newPhone" placeholder="Teléfono (opcional)" class="form-input">
-                <input type="email" id="newEmail" placeholder="Email (opcional)" class="form-input">
-                <div class="customer-actions">
-                    <button type="button" onclick="saveNewCustomer()" class="btn btn-success">💾 Guardar Cliente</button>
-                    <button type="button" onclick="cancelNewCustomer()" class="btn btn-light">❌ Cancelar</button>
-                </div>
-            </div>
-
-            <!-- ✅ NUEVO: Modo manual para entrada directa -->
-            <div id="manualMode" class="manual-mode">
-                <div style="font-size: 12px; color: #1e40af; margin-bottom: 8px;">
-                    💡 Ingreso manual - Complete los datos:
-                </div>
-                <input type="text" id="manualName" placeholder="Nombre del pasajero *" class="form-input" style="margin-bottom: 8px;">
-                <input type="text" id="manualRut" placeholder="RUT/Documento" class="form-input" style="margin-bottom: 8px;">
-                <div class="customer-actions">
-                    <button type="button" onclick="saveManualData()" class="btn btn-primary">✅ Usar Datos</button>
-                    <button type="button" onclick="cancelManualMode()" class="btn btn-light">❌ Cancelar</button>
-                </div>
-            </div>
-            
-            <!-- Botones de acción -->
-            <div style="display: flex; gap: 8px; margin-top: 8px;">
-                <button type="button" id="btnNewCustomer" onclick="showNewCustomerForm()" 
-                        class="btn btn-light" style="flex: 1; height: 36px; font-size: 13px;">
-                    👤➕ Nuevo Cliente
-                </button>
-                <button type="button" id="btnManual" onclick="showManualMode()" 
-                        class="btn btn-light" style="flex: 1; height: 36px; font-size: 13px;">
-                    📝 Ingreso Manual
-                </button>
             </div>
         </div>
-        
-        <!-- Lista de asientos seleccionados -->
-        <div class="selected-list" id="selList">
-            <div class="empty-state">No hay asientos seleccionados</div>
-        </div>
-        
-        <div class="summary-row">
-            <div style="color: #6b7280;">Cantidad: <b id="qty">0</b></div>
-            <div class="total-amount">$<span id="total">0</span></div>
-        </div>
 
-        <!-- Formulario de checkout (compatible con versión anterior) -->
-        <form method="post" action="{% url 'pos_checkout' trip.id %}" id="checkoutForm">
-            {% csrf_token %}
-            <input type="hidden" name="seats" id="seatsField" value="">
-            <input type="hidden" name="customer_id" id="customerId" value="">
-            
-            <!-- Campos ocultos para compatibilidad con código existente -->
-            <input type="hidden" name="buyer" id="buyerName">
-            <input type="hidden" name="document" id="documentNumber">
-            
-            <!-- ✅ CAMPOS VISIBLES PARA COMPATIBILIDAD (se llenan automáticamente) -->
-            <div class="form-group" id="compatibilityFields">
-                <label class="form-label">Nombre del Pasajero *</label>
-                <input type="text" id="buyerNameDisplay" class="form-input" placeholder="Se completará automáticamente" readonly style="background: #f9fafb;">
-            </div>
-            
-            <div class="form-group" id="compatibilityDocFields">
-                <label class="form-label">Documento</label>
-                <input type="text" id="documentNumberDisplay" class="form-input" placeholder="Se completará automáticamente" readonly style="background: #f9fafb;">
-            </div>
+        <div class="sidebar-sale-panel">
+            <ul class="nav nav-tabs nav-pos-tabs no-print" id="posModulesTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pasajes-tab" data-bs-toggle="tab" data-bs-target="#pasajes-pane" type="button" role="tab">
+                        <i class="fas fa-ticket-alt me-1"></i> Venta Pasajes
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="descripcion-tab" data-bs-toggle="tab" data-bs-target="#descripcion-pane" type="button" role="tab">
+                        <i class="fas fa-route me-1"></i> Descripción
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="detalle-bus-tab" data-bs-toggle="tab" data-bs-target="#detalle-bus-pane" type="button" role="tab">
+                        <i class="fas fa-bus-alt me-1"></i> Detalle del Bus
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="plantilla-recorrido-tab" data-bs-toggle="tab" data-bs-target="#plantilla-recorrido-pane" type="button" role="tab">
+                        <i class="fas fa-print me-1"></i> Plantilla Recorrido
+                    </button>
+                </li>
+            </ul>
 
-            <!-- ✅ NUEVO: Método de pago -->
-            <div class="form-group" id="paymentMethodGroup">
-                <label class="form-label">Método de pago *</label>
-                <select name="payment_method" id="paymentMethod" class="form-input">
-                    <option value="">— Seleccione —</option>
-                    <option value="cash">💵 Efectivo</option>
-                    <option value="card">💳 Tarjeta</option>
-                </select>
-                <small style="color:#6b7280;">
-                    Si eliges “Tarjeta”, por ahora solo queda registrado (Transbank después).
-                </small>
-            </div>
-            
-            <div class="actions">
-                <button type="submit" class="btn-checkout" id="btnEmit" disabled>
-                    🎫 Emitir Boletos
-                </button>
-                <a href="{% url 'pos_home' %}" class="btn-back">← Volver</a>
-            </div>
-        </form>
+            <div class="tab-content" id="posModulesTabContent">
+                <div class="tab-pane fade show active no-print" id="pasajes-pane" role="tabpanel">
+                    <div id="empty-seats-alert" class="card border-0 shadow-sm p-4 text-center text-muted small">
+                        <i class="fas fa-hand-pointer fa-2x mb-2 text-secondary d-block"></i>
+                        Haga clic en los asientos disponibles en el croquis para agregarlos a la planilla de venta.
+                    </div>
+                    <div id="passenger-table-wrapper" class="card border-0 shadow-sm p-2 mb-3" style="display: none;">
+                        <div class="table-responsive">
+                            <table class="table table-sm text-center align-middle passenger-compact-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 12%;">Asiento</th>
+                                        <th style="width: 25%;">RUT / Pasaporte</th>
+                                        <th style="width: 30%;">Nombre Completo</th>
+                                        <th style="width: 18%;">Teléfono</th>
+                                        <th style="width: 15%;">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="passenger-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card border-0 shadow-sm mt-3" id="checkout-summary-box" style="display: none;">
+                        <div class="card-body p-3 bg-light rounded">
+                            <div class="row align-items-center g-2">
+                                <div class="col-md-4">
+                                    <label class="form-label mb-1 small fw-bold">Método de Pago</label>
+                                    <select id="payment-method" class="form-select form-select-sm">
+                                        <option value="cash">Efectivo</option>
+                                        <option value="card">Tarjeta Transbank</option>
+                                        <option value="transfer">Transferencia</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <span class="text-muted small d-block">Monto Total:</span>
+                                    <span class="fs-3 fw-bold text-primary" id="total-amount">$0</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="button" id="confirm-sale" class="btn btn-checkout-primary w-100 py-2">
+                                        <i class="fas fa-print me-1"></i> EMITIR BOLETOS
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-        <div style="margin-top: 16px; text-align: center;">
-            <small style="color: #6b7280;">💡 Haga clic en los asientos libres para seleccionarlos</small>
+                <div class="tab-pane fade no-print" id="descripcion-pane" role="tabpanel">
+                    <div class="card border-0 shadow-sm p-3">
+                        <div class="d-flex align-items-center mb-3 p-2 bg-light rounded">
+                            <div class="bg-primary text-white d-flex align-items-center justify-content-center rounded-circle me-3" style="width: 40px; height: 40px;">
+                                <i class="fas fa-map-marked-alt"></i>
+                            </div>
+                            <div>
+                                <h6 class="mb-0 fw-bold text-dark">{{ trip.route.origin.name }} <i class="fas fa-arrow-right fa-xs mx-1"></i> {{ trip.route.destination.name }}</h6>
+                                <small class="text-muted">Servicio ID: #{{ trip.id }} | Tipo: {{ trip.route.service_type|default:"Estándar" }}</small>
+                            </div>
+                        </div>
+                        <ul class="route-timeline ms-2">
+                            <li class="route-timeline-item origin">
+                                <div class="fw-bold text-dark">{{ trip.route.origin.name }}</div>
+                                <small class="text-muted d-block">Salida: <strong>{{ trip.departure|date:"d M, H:i" }} hrs</strong></small>
+                            </li>
+                            {% for stop in trip.route.stops.all %}
+                            <li class="route-timeline-item">
+                                <div class="text-dark fw-semibold" style="font-size: 0.85rem;">{{ stop.city.name }}</div>
+                                <small class="text-muted d-block">Parada intermedia Nº {{ stop.order }}</small>
+                            </li>
+                            {% empty %}
+                            <li class="route-timeline-item">
+                                <span class="text-muted small fst-italic">Servicio directo sin paradas en ruta.</span>
+                            </li>
+                            {% endfor %}
+                            <li class="route-timeline-item destination">
+                                <div class="fw-bold text-dark">{{ trip.route.destination.name }}</div>
+                                <small class="text-muted d-block">Llegada aprox: <strong>{{ trip.arrival|date:"d M, H:i"|default:"Según tramo" }}</strong></small>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade no-print" id="detalle-bus-pane" role="tabpanel">
+                    <div class="card border-0 shadow-sm p-3">
+                        <div class="p-3 mb-3 text-white rounded d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #1e2b38 0%, #2c3e50 100%);">
+                            <div>
+                                <span class="badge bg-warning text-dark mb-1 fw-bold">PPU: {{ trip.bus.plate_number|default:trip.bus.plate|upper }}</span>
+                                <h5 class="mb-0 fw-bold">{{ trip.bus.model|default:"Bus de Línea" }}</h5>
+                            </div>
+                            <div style="font-size: 2.2rem; opacity: 0.25;"><i class="fas fa-bus"></i></div>
+                        </div>
+                        <table class="table table-sm table-borderless my-2" style="font-size: 0.85rem;">
+                            <tbody>
+                                <tr class="border-bottom"><td class="text-muted">Pisos del Bus:</td><td class="fw-bold text-end">{{ trip.bus.floors|default:"1" }}</td></tr>
+                                <tr class="border-bottom"><td class="text-muted">Capacidad Total:</td><td class="fw-bold text-end">{{ trip.seats_total }} Asientos</td></tr>
+                                <tr class="border-bottom"><td class="text-muted">Piloto:</td><td class="fw-bold text-end">{{ trip.driver1.get_full_name|default:"Asignación Pendiente" }}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="plantilla-recorrido-pane" role="tabpanel">
+                    <div class="card border-0 shadow-sm p-3" id="print-manifest-section">
+                        <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                            <div>
+                                <h5 class="fw-bold text-dark mb-0">PLANILLA DE RECORRIDO — HOJA DE RUTA</h5>
+                                <small class="text-muted">Servicio #{{ trip.id }} | Patente: {{ trip.bus.plate_number|upper }} | Conductor: {{ trip.driver1.get_full_name|default:"S/A" }}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="d-block fw-bold text-primary">{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</span>
+                                <small class="text-secondary">Salida: {{ trip.departure|date:"d/m/Y H:i" }} hrs</small>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3 no-print">
+                            <div class="col-md-8">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-white text-muted"><i class="fas fa-search"></i></span>
+                                    <input type="text" id="manifest-search-input" class="form-control" placeholder="Buscar pasajero por nombre, RUT o asiento...">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" onclick="window.print();" class="btn btn-sm btn-dark w-100 fw-bold">
+                                    <i class="fas fa-print me-1"></i> IMPRIMIR HOJA DE RUTA
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle text-center small" style="font-size:0.82rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 8%;">Asiento</th>
+                                        <th style="width: 8%;">Piso</th>
+                                        <th style="width: 18%;">RUT / Pasaporte</th>
+                                        <th style="width: 35%;">Nombre Pasajero</th>
+                                        <th style="width: 15%;">Destino / Tramo</th>
+                                        <th style="width: 16%;">Estado Pago</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="manifest-table-body">
+                                    {% if tickets %}
+                                        {% for t in tickets %}
+                                        <tr class="manifest-row-item">
+                                            <td class="fw-bold text-primary bg-light">{{ t.seat_number }}</td>
+                                            <td>Piso {{ t.seat_deck }}</td>
+                                            <td class="text-secondary font-monospace">{{ t.passenger_id|default:"—" }}</td>
+                                            <td class="text-start fw-semibold ps-2">{{ t.passenger_name|upper }}</td>
+                                            <td><span class="badge bg-light text-dark border">{{ t.trip.route.destination.name }}</span></td>
+                                            <td><span class="badge bg-success-subtle text-success p-1 rounded">Emitido / Pagado</span></td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="6" class="text-muted p-4 text-center fst-italic">
+                                                <i class="fas fa-info-circle me-1"></i> No se registran pasajes emitidos o reservados para este tramo todavía.
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="row mt-5 pt-4 text-center d-none d-print-flex">
+                            <div class="col-6">
+                                <div class="mx-auto border-top border-dark w-70 pt-2" style="font-size:0.75rem;">Firma Cajero / Despachador</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="mx-auto border-top border-dark w-70 pt-2" style="font-size:0.75rem;">Firma Conductor Titular</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
-
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
-const DEBUG = false;
-
-    // =============================================
-    // CÓDIGO EXISTENTE DEL MAPA DE ASIENTOS (MANTENIDO)
-    // =============================================
-    const cols = Number({{ cols|default:4 }});
-    const price = Number({{ trip.route.base_price|default:0 }});
-    const lower = {{ grid_lower|safe }};
-    const upper = {{ grid_upper|safe }};
-
-    const selectedSeats = new Map(); // key = "deck:number"
-
-    // ✅ NUEVO: DrawGrid estable (antes faltaba y por eso no se veían asientos)
-    function drawGrid(deckEl, matrix, deckNo) {
-        if (!deckEl || !matrix || !matrix.length) return;
-
-        deckEl.style.gridTemplateColumns = `repeat(${cols}, 42px)`;
-        deckEl.innerHTML = "";
-
-        matrix.forEach((row, r) => {
-            row.forEach((cell, c) => {
-                const div = document.createElement('div');
-
-                const type = cell.type || 'L';          // L=asiento, P=pasillo, etc.
-                const status = cell.status || 'free';   // free|occ|hold (según backend)
-                const label = cell.label || '';
-
-                div.className = 'cell';
-
-                // Tipo no asiento
-                if (type !== 'L') {
-                    div.classList.add(`cell--${type}`);
-                } else {
-                    // Estado asiento
-                    if (status === 'free') div.classList.add('cell-free');
-                    else if (status === 'occupied' || status === 'occ') div.classList.add('cell-occ');
-                    else if (status === 'hold' || status === 'reserved' || status === 'booked') div.classList.add('cell-hold');
-                    else div.classList.add('cell-hold');
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
                 }
-
-                if (label) div.textContent = label;
-
-                div.dataset.deck = String(deckNo);
-                div.dataset.row = r + 1;
-                div.dataset.col = c + 1;
-                div.dataset.number = label;
-                div.dataset.status = status;
-                div.dataset.type = type;
-
-                // Solo asientos libres son seleccionables
-                if (type === 'L' && status === 'free' && label) {
-                    div.addEventListener('click', () => toggleSeat(div));
-                }
-
-                deckEl.appendChild(div);
-            });
-        });
-    }
-
-    function seatKey(deck, seatNumber) {
-      return `${deck}:${seatNumber}`;
-    }
-
-    function toggleSeat(seatElement) {
-      const seatNumber = seatElement.dataset.number;
-      const deck = seatElement.dataset.deck;
-
-      if (!seatNumber || !deck) return;
-
-      const key = seatKey(deck, seatNumber);
-
-      if (selectedSeats.has(key)) {
-        selectedSeats.delete(key);
-        seatElement.classList.remove('cell-sel');
-        seatElement.classList.add('cell-free');
-      } else {
-        selectedSeats.set(key, {
-          deck: deck,
-          number: seatNumber,
-          row: seatElement.dataset.row,
-          col: seatElement.dataset.col
-        });
-        seatElement.classList.remove('cell-free');
-        seatElement.classList.add('cell-sel');
-      }
-
-      updateSummary();
-    }
-
-    function removeSeat(deck, seatNumber) {
-      const key = seatKey(deck, seatNumber);
-      selectedSeats.delete(key);
-
-      document.querySelectorAll('.cell').forEach(cell => {
-        if (cell.dataset.number === String(seatNumber) && cell.dataset.deck === String(deck)) {
-          cell.classList.remove('cell-sel');
-          cell.classList.add('cell-free');
+            }
         }
-      });
+        return cookieValue;
+    }
 
-      updateSummary();
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+                xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+            }
+        }
+    });
+
+    const tripId = {{ trip.id }};
+    const unitPrice = parseFloat("{{ trip.route.base_price|default:'0' }}");
+    const cols = parseInt("{{ cols|default:5 }}") || 5;
+    
+    let gridLower = {{ grid_lower|safe|default:"[]" }};
+    let gridUpper = {{ grid_upper|safe|default:"[]" }};
+    let selectedSeats = [];
+    let timerInterval = null;
+
+    function validarRutChileno(rut) {
+        if (!rut) return false;
+        rut = rut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        if (rut.length < 2) return false;
+        const cuerpo = rut.slice(0, -1);
+        const dvEsperado = rut.slice(-1);
+        if (!/^\d+$/.test(cuerpo)) return false;
+        let suma = 0;
+        let multiplo = 2;
+        for (let i = cuerpo.length - 1; i >= 0; i--) {
+            suma += parseInt(cuerpo[i]) * multiplo;
+            multiplo = multiplo < 7 ? multiplo + 1 : 2;
+        }
+        const dvCalculado = 11 - (suma % 11);
+        let dvFinal = dvCalculado === 11 ? '0' : dvCalculado === 10 ? 'K' : dvCalculado.toString();
+        return dvFinal === dvEsperado;
+    }
+
+    function formatTimeRemaining(expiresAtISO) {
+        const now = new Date();
+        const expires = new Date(expiresAtISO);
+        const diff = expires - now;
+        if (diff <= 0) return "00:00";
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function updateAllTimers() {
+        for (let i = 0; i < selectedSeats.length; i++) {
+            const seat = selectedSeats[i];
+            if (seat.expires_at) {
+                const timeStr = formatTimeRemaining(seat.expires_at);
+                const row = $(`#passenger-table-body tr[data-number="${seat.number}"]`);
+                if (row.length) {
+                    const timerSpan = row.find('.hold-timer-table');
+                    if (timerSpan.length) {
+                        timerSpan.text(timeStr);
+                        if (timeStr === "00:00") liberarAsientoPorExpiracion(seat.number);
+                    }
+                }
+                const seatCell = $(`.seat-cell[data-number="${seat.number}"]`);
+                if (seatCell.length) {
+                    let timerDiv = seatCell.find('.hold-timer-seat');
+                    if (!timerDiv.length) {
+                        timerDiv = $('<div class="hold-timer-seat"></div>');
+                        seatCell.append(timerDiv);
+                    }
+                    timerDiv.text(timeStr);
+                    if (timeStr === "00:00") timerDiv.remove();
+                }
+            }
+        }
+    }
+
+    function liberarAsientoPorExpiracion(seatNumber) {
+        const seatIndex = selectedSeats.findIndex(s => s.number === seatNumber);
+        if (seatIndex === -1) return;
+        const seat = selectedSeats[seatIndex];
+        const seatCell = $(`.seat-cell[data-number="${seat.number}"]`)[0];
+        $.post(`/api/release/${tripId}/`, { seat_id: seat.number })
+            .done(() => {
+                selectedSeats.splice(seatIndex, 1);
+                if (seatCell) seatCell.classList.replace('status-my-hold', 'status-free');
+                updateSummary();
+            });
+    }
+
+    function startGlobalTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (selectedSeats.length > 0 && selectedSeats.some(s => s.expires_at)) updateAllTimers();
+        }, 1000);
+    }
+
+    function getSeatImage(service) {
+        const s = String(service).toLowerCase();
+        if (s === 'cama') return "{% static 'img/cama.png' %}";
+        if (s === 'ejecutivo') return "{% static 'img/ejecutivo.png' %}";
+        return "{% static 'img/semi.png' %}";
+    }
+
+    function renderDeck(containerId, deckNumber, grid) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (!grid || !grid.length) {
+            if (deckNumber === 2) $('#deckSelectorTabs').hide();
+            container.innerHTML = `<div class="text-center p-3 text-muted border rounded bg-light small">Piso ${deckNumber} no configurado.</div>`;
+            return;
+        }
+        container.innerHTML = `
+            <div class="grid-wrapper">
+                <div id="busFrame_${deckNumber}" class="bus-container-frame floor-${deckNumber}">
+                    <div id="seatGrid_${deckNumber}" class="seat-grid"></div>
+                </div>
+            </div>
+        `;
+        const gridContainer = document.getElementById(`seatGrid_${deckNumber}`);
+        gridContainer.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        gridContainer.style.columnGap = "12px";
+        gridContainer.style.rowGap = "8px";
+        for (let r = 0; r < grid.length; r++) {
+            if (!grid[r]) continue;
+            for (let c = 0; c < cols; c++) {
+                const cell = grid[r][c];
+                if (!cell) {
+                    gridContainer.appendChild(Object.assign(document.createElement('div'), {className: 'seat-cell type-space'}));
+                    continue;
+                }
+                const type = cell.type || 'L';
+                let status = cell.status || 'free';
+                const label = cell.label ? String(cell.label).trim() : '';
+                const service = cell.service || 'semi';
+                if (type === 'L' && !label) {
+                    gridContainer.appendChild(Object.assign(document.createElement('div'), {className: 'seat-cell type-space'}));
+                    continue;
+                }
+                if (selectedSeats.some(s => s.number === label)) status = 'my-hold';
+                const div = document.createElement('div');
+                div.className = `seat-cell type-${type} status-${status}`;
+                div.dataset.deck = deckNumber;
+                div.dataset.number = label;
+                if (type === 'L') {
+                    const img = document.createElement('img');
+                    img.src = getSeatImage(service);
+                    div.appendChild(img);
+                    const numberSpan = document.createElement('span');
+                    numberSpan.className = 'seat-number';
+                    numberSpan.textContent = label;
+                    div.appendChild(numberSpan);
+                    const seatData = selectedSeats.find(s => s.number === label);
+                    if (seatData && seatData.expires_at) {
+                        const timerSpan = document.createElement('div');
+                        timerSpan.className = 'hold-timer-seat';
+                        timerSpan.textContent = formatTimeRemaining(seatData.expires_at);
+                        div.appendChild(timerSpan);
+                    }
+                    if (status === 'free' || status === 'my-hold') {
+                        div.style.cursor = 'pointer';
+                        div.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            toggleSeat(div, deckNumber, label, service, unitPrice);
+                        });
+                    }
+                } else {
+                    let icon = '';
+                    if (type === 'B') icon = '<i class="fa-solid fa-restroom text-secondary"></i>';
+                    else if (type === 'E') icon = '<i class="fa-solid fa-stairs text-secondary"></i>';
+                    else if (type === 'D') icon = '<i class="fa-solid fa-door-open text-secondary"></i>';
+                    div.innerHTML = icon;
+                }
+                gridContainer.appendChild(div);
+            }
+        }
+    }
+
+    function toggleSeat(seatElement, deck, number, service, price) {
+        const isSelected = selectedSeats.some(s => s.number === number);
+        const pasajesTab = document.querySelector('#pasajes-tab');
+        if (pasajesTab) (bootstrap.Tab.getInstance(pasajesTab) || new bootstrap.Tab(pasajesTab)).show();
+        if (isSelected) {
+            $.post(`/api/release/${tripId}/`, { seat_id: number })
+                .done(response => {
+                    if (response.ok) {
+                        selectedSeats = selectedSeats.filter(s => s.number !== number);
+                        if (seatElement) seatElement.classList.replace('status-my-hold', 'status-free');
+                        $(seatElement).find('.hold-timer-seat').remove();
+                        updateSummary();
+                        if (selectedSeats.length === 0 && timerInterval) clearInterval(timerInterval);
+                    }
+                });
+        } else {
+            $.post(`/api/hold/${tripId}/`, { seat_id: number })
+                .done(response => {
+                    if (response.ok) {
+                        // 🔥 Se declara una sola vez y se usa luego
+                        let expiresAt = response.expires_at;
+                        if (!expiresAt) {
+                            expiresAt = new Date(Date.now() + 5*60000).toISOString();
+                        }
+                        selectedSeats.push({ deck, number, service, price, expires_at: expiresAt });
+                        if (seatElement) {
+                            seatElement.classList.replace('status-free', 'status-my-hold');
+                            let timerDiv = $(seatElement).find('.hold-timer-seat');
+                            if (!timerDiv.length) {
+                                timerDiv = $('<div class="hold-timer-seat"></div>');
+                                $(seatElement).append(timerDiv);
+                            }
+                            timerDiv.text(formatTimeRemaining(expiresAt));
+                        }
+                        updateSummary();
+                        if (!timerInterval) startGlobalTimer();
+                    } else {
+                        alert(response.error || 'Asiento no disponible.');
+                    }
+                });
+        }
     }
 
     function updateSummary() {
-        const listElement = document.getElementById('selList');
-        const quantityElement = document.getElementById('qty');
-        const totalElement = document.getElementById('total');
-        const seatsField = document.getElementById('seatsField');
-        const emitButton = document.getElementById('btnEmit');
-
-        listElement.innerHTML = '';
-
-        if (selectedSeats.size === 0) {
-            listElement.innerHTML = '<div class="empty-state">No hay asientos seleccionados</div>';
+        const count = selectedSeats.length;
+        let total = 0;
+        selectedSeats.forEach(s => { total += parseFloat(s.price || unitPrice); });
+        $('#total-amount').text('$' + total.toLocaleString('es-CL'));
+        const tbody = $('#passenger-table-body');
+        if (count === 0) {
+            $('#passenger-table-wrapper').hide();
+            $('#checkout-summary-box').hide();
+            $('#empty-seats-alert').fadeIn(150);
+            tbody.html('');
+            if (timerInterval) clearInterval(timerInterval);
         } else {
-            const sortedSeats = Array.from(selectedSeats.values()).sort((a, b) => {
-                return (Number(a.deck) - Number(b.deck)) ||
-                    a.number.localeCompare(b.number, undefined, { numeric: true });
+            $('#empty-seats-alert').hide();
+            $('#passenger-table-wrapper').show();
+            $('#checkout-summary-box').fadeIn(150);
+            let cachedInputs = {};
+            $('#passenger-table-body tr').each(function() {
+                const num = $(this).data('number');
+                cachedInputs[num] = {
+                    rut: $(this).find('.p-rut').val(),
+                    name: $(this).find('.p-name').val(),
+                    phone: $(this).find('.p-phone').val()
+                };
             });
-
-            sortedSeats.forEach(seat => {
-                const item = document.createElement('div');
-                item.className = 'selected-item';
-
-                // ✅ FIX: botón estaba incompleto (faltaba cerrar)
-                item.innerHTML = `
-                    <span>Asiento <b>${seat.number}</b> (Piso ${seat.deck})</span>
-                    <button type="button"
-                        style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer;"
-                        onclick="removeSeat('${seat.deck}','${seat.number}')">✕</button>
+            tbody.html('');
+            selectedSeats.forEach((seat, idx) => {
+                const cached = cachedInputs[seat.number] || {};
+                const timeRemaining = seat.expires_at ? formatTimeRemaining(seat.expires_at) : '';
+                const timerHtml = timeRemaining ? `<span class="hold-timer-table">⏱️ ${timeRemaining}</span>` : '';
+                const rowHtml = `
+                    <tr data-number="${seat.number}" data-deck="${seat.deck}">
+                        <td><span class="seat-badge">${seat.number}</span>${timerHtml}</td>
+                        <td>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control form-control-sm p-rut" value="${cached.rut || ''}" placeholder="12345678-9">
+                                <button class="btn btn-secondary btn-search-passenger-compact" type="button"><i class="fas fa-search"></i></button>
+                            </div>
+                        </td>
+                        <td><input type="text" class="form-control form-control-sm p-name" value="${cached.name || ''}" placeholder="Nombre Pasajero"></td>
+                        <td><input type="text" class="form-control form-control-sm p-phone" value="${cached.phone || ''}" placeholder="912345678"></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                ${idx > 0 ? `<button type="button" class="btn btn-outline-secondary btn-clone-first"><i class="fas fa-copy"></i></button>` : ''}
+                                <button type="button" class="btn btn-danger btn-remove-seat"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                        </td>
+                    </tr>
                 `;
-                listElement.appendChild(item);
+                tbody.append(rowHtml);
             });
         }
-
-        const quantity = selectedSeats.size;
-        const total = price * quantity;
-
-        quantityElement.textContent = quantity;
-        totalElement.textContent = total.toLocaleString();
-
-        const hasPassengerData = document.getElementById('buyerNameDisplay').value.trim() !== '';
-        emitButton.disabled = quantity === 0 || !hasPassengerData;
-
-        seatsField.value = JSON.stringify(Array.from(selectedSeats.values()));
     }
 
-    // ✅ IMPORTANTE: tenías una segunda removeSeat() que pisaba la buena.
-    // La dejo, pero RENOMBRADA para no romper nada si algún código viejo la usa.
-    function removeSeatLegacy(seatNumber) {
-        selectedSeats.delete(seatNumber);
-
-        document.querySelectorAll('.cell').forEach(cell => {
-            if (cell.dataset.number === seatNumber) {
-                cell.classList.remove('cell-sel');
-                cell.classList.add('cell-free');
-            }
-        });
-
-        updateSummary();
-    }
-
-    // =============================================
-    // ✅ CÓDIGO MEJORADO PARA SISTEMA DE CLIENTES (NO TOCADO)
-    // =============================================
-    let selectedCustomer = null;
-
-    function searchCustomer() {
-        const query = document.getElementById('customerSearch').value.trim();
-        if (query.length < 2) {
-            alert('Ingrese al menos 2 caracteres para buscar');
+    $(document).on('click', '.btn-search-passenger-compact', function() {
+        const btn = $(this);
+        const row = btn.closest('tr');
+        const rutInput = row.find('.p-rut');
+        const query = rutInput.val().trim();
+        if (query.length < 2) return;
+        if (!validarRutChileno(query)) {
+            alert('RUT inválido. Use formato 12345678-9');
+            rutInput.focus();
             return;
         }
-
-        console.log('🔍 Buscando cliente:', query);
-
-        const searchBtn = document.querySelector('.customer-search .btn');
-        const originalText = searchBtn.textContent;
-        searchBtn.textContent = '⏳ Buscando...';
-        searchBtn.disabled = true;
-
-        fetch(`{% url 'search_customer' %}?q=${encodeURIComponent(query)}`)
-            .then(response => {
-                if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                console.log('✅ Resultados de búsqueda:', data);
-
-                const resultsDiv = document.getElementById('customerResults');
-                resultsDiv.innerHTML = '';
-
-                if (data.customers && data.customers.length === 0) {
-                    resultsDiv.innerHTML = '<div class="customer-result">No se encontraron clientes</div>';
-                } else if (data.customers) {
-                    data.customers.forEach(customer => {
-                        const div = document.createElement('div');
-                        div.className = 'customer-result';
-                        div.innerHTML = `
-                            <strong>${customer.full_name}</strong>
-                            <div style="font-size: 12px; color: #6b7280;">RUT: ${customer.national_id}</div>
-                            ${customer.phone ? `<div style="font-size: 12px; color: #6b7280;">Tel: ${customer.phone}</div>` : ''}
-                        `;
-                        div.onclick = () => selectCustomer(customer);
-                        resultsDiv.appendChild(div);
-                    });
+        btn.html('<i class="fas fa-spinner fa-spin"></i>');
+        $.ajax({
+            url: '/search-customer/',
+            type: 'GET',
+            data: { q: query },
+            success: function(data) {
+                if (data.customers && data.customers.length > 0) {
+                    const c = data.customers[0];
+                    row.find('.p-name').val(c.full_name).css('background-color', '#e8f5e9');
+                    row.find('.p-phone').val(c.phone || '');
+                    setTimeout(() => row.find('.p-name').css('background-color', '#fff'), 700);
                 } else {
-                    resultsDiv.innerHTML = '<div class="customer-result">Error en la búsqueda</div>';
+                    row.find('.p-name').val('').focus();
                 }
-
-                resultsDiv.style.display = 'block';
-            })
-            .catch(error => {
-                console.error('❌ Error buscando cliente:', error);
-                alert('Error al buscar clientes. Verifique la consola para más detalles.');
-            })
-            .finally(() => {
-                searchBtn.textContent = originalText;
-                searchBtn.disabled = false;
-            });
-    }
-
-    function selectCustomer(customer) {
-        selectedCustomer = customer;
-
-        console.log('👤 Cliente seleccionado:', customer);
-
-        document.getElementById('customerSelected').style.display = 'block';
-        document.getElementById('selectedName').textContent = customer.full_name;
-        document.getElementById('selectedRut').textContent = `RUT: ${customer.national_id}`;
-
-        document.getElementById('customerResults').style.display = 'none';
-        document.getElementById('newCustomerForm').style.display = 'none';
-        document.getElementById('manualMode').style.display = 'none';
-        document.getElementById('btnNewCustomer').style.display = 'block';
-        document.getElementById('btnManual').style.display = 'block';
-        document.getElementById('customerSearch').value = '';
-
-        document.getElementById('customerId').value = customer.id;
-        document.getElementById('buyerName').value = customer.full_name;
-        document.getElementById('documentNumber').value = customer.national_id;
-
-        document.getElementById('buyerNameDisplay').value = customer.full_name;
-        document.getElementById('documentNumberDisplay').value = customer.national_id;
-
-        validateCheckout();
-    }
-
-    function clearCustomer() {
-        selectedCustomer = null;
-
-        document.getElementById('customerSelected').style.display = 'none';
-
-        document.getElementById('customerId').value = '';
-        document.getElementById('buyerName').value = '';
-        document.getElementById('documentNumber').value = '';
-        document.getElementById('buyerNameDisplay').value = '';
-        document.getElementById('documentNumberDisplay').value = '';
-
-        document.getElementById('btnNewCustomer').style.display = 'block';
-        document.getElementById('btnManual').style.display = 'block';
-
-        validateCheckout();
-    }
-
-    function showNewCustomerForm() {
-        document.getElementById('newCustomerForm').style.display = 'block';
-        document.getElementById('manualMode').style.display = 'none';
-        document.getElementById('btnNewCustomer').style.display = 'none';
-        document.getElementById('btnManual').style.display = 'none';
-        document.getElementById('customerResults').style.display = 'none';
-    }
-
-    function cancelNewCustomer() {
-        document.getElementById('newCustomerForm').style.display = 'none';
-        document.getElementById('btnNewCustomer').style.display = 'block';
-        document.getElementById('btnManual').style.display = 'block';
-
-        document.getElementById('newRut').value = '';
-        document.getElementById('newName').value = '';
-        document.getElementById('newPhone').value = '';
-        document.getElementById('newEmail').value = '';
-    }
-
-    function saveNewCustomer() {
-        const rut = document.getElementById('newRut').value.trim();
-        const name = document.getElementById('newName').value.trim();
-        const phone = document.getElementById('newPhone').value.trim();
-        const email = document.getElementById('newEmail').value.trim();
-
-        console.log('📝 Intentando guardar cliente:', { rut, name, phone, email });
-
-        if (!rut) {
-            alert('❌ RUT es obligatorio');
-            return;
-        }
-
-        const finalName = name || "Cliente";
-
-        const saveBtn = document.querySelector('#newCustomerForm .btn-success');
-        const originalText = saveBtn.textContent;
-        saveBtn.textContent = '⏳ Guardando...';
-        saveBtn.disabled = true;
-
-        const formData = new FormData();
-        formData.append('national_id', rut);
-        formData.append('full_name', finalName);
-        formData.append('phone', phone);
-        formData.append('email', email);
-
-        console.log('📤 Enviando datos al servidor...');
-
-        fetch("{% url 'create_customer' %}", {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value
-            }
-        })
-        .then(response => {
-            console.log('📥 Respuesta del servidor - Status:', response.status);
-            if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            console.log('✅ Respuesta JSON del servidor:', data);
-
-            if (data.success) {
-                selectCustomer(data.customer);
-                cancelNewCustomer();
-                alert('✅ Cliente guardado exitosamente');
-            } else {
-                alert('❌ Error: ' + (data.error || 'No se pudo guardar el cliente'));
-            }
-        })
-        .catch(error => {
-            console.error('❌ Error guardando cliente:', error);
-            alert('❌ Error de conexión: ' + error.message);
-        })
-        .finally(() => {
-            saveBtn.textContent = originalText;
-            saveBtn.disabled = false;
+            },
+            complete: function() { btn.html('<i class="fas fa-search"></i>'); }
         });
-    }
-
-    function showManualMode() {
-        document.getElementById('manualMode').style.display = 'block';
-        document.getElementById('newCustomerForm').style.display = 'none';
-        document.getElementById('btnNewCustomer').style.display = 'none';
-        document.getElementById('btnManual').style.display = 'none';
-        document.getElementById('customerResults').style.display = 'none';
-    }
-
-    function cancelManualMode() {
-        document.getElementById('manualMode').style.display = 'none';
-        document.getElementById('btnNewCustomer').style.display = 'block';
-        document.getElementById('btnManual').style.display = 'block';
-
-        document.getElementById('manualName').value = '';
-        document.getElementById('manualRut').value = '';
-    }
-
-    function saveManualData() {
-        const name = document.getElementById('manualName').value.trim();
-        const rut = document.getElementById('manualRut').value.trim();
-
-        if (!name) {
-            alert('❌ El nombre del pasajero es obligatorio');
-            return;
-        }
-
-        document.getElementById('customerId').value = '';
-        document.getElementById('buyerName').value = name;
-        document.getElementById('documentNumber').value = rut;
-
-        document.getElementById('buyerNameDisplay').value = name;
-        document.getElementById('documentNumberDisplay').value = rut;
-
-        cancelManualMode();
-
-        document.getElementById('customerSelected').style.display = 'block';
-        document.getElementById('selectedName').textContent = name;
-        document.getElementById('selectedRut').textContent = rut ? `RUT: ${rut}` : 'Sin documento';
-
-        validateCheckout();
-        alert('✅ Datos del pasajero guardados');
-    }
-
-    function validateCheckout() {
-  const hasSeats = selectedSeats.size > 0;
-  const hasPassengerData = document.getElementById('buyerNameDisplay').value.trim() !== '';
-  const pmEl = document.getElementById('paymentMethod');
-  const hasPaymentMethod = pmEl ? pmEl.value.trim() !== '' : true;
-
-  document.getElementById('btnEmit').disabled = !(hasSeats && hasPassengerData && hasPaymentMethod);
-}
-
-
-    function testCustomerURLs() {
-        console.log('🧪 Probando URLs de clientes...');
-        fetch('/booking/customer/test/')
-            .then(response => response.json())
-            .then(data => {
-                console.log('✅ Test URL funcionando:', data);
-                alert('✅ URLs de clientes funcionando correctamente');
-            })
-            .catch(error => {
-                console.error('❌ Test URL falló:', error);
-                alert('❌ Error en URLs de clientes. Verifique la consola.');
-            });
-    }
-
-    const originalUpdateSummary = updateSummary;
-    updateSummary = function() {
-        originalUpdateSummary();
-        validateCheckout();
-    };
-
-    document.addEventListener('DOMContentLoaded', function() {
-  const pmEl = document.getElementById('paymentMethod');
-  if (pmEl) {
-    pmEl.addEventListener('change', validateCheckout);
-  }
     });
 
-
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.customer-section')) {
-            document.getElementById('customerResults').style.display = 'none';
-        }
+    $(document).on('click', '.btn-clone-first', function() {
+        const firstRow = $('#passenger-table-body tr').first();
+        const currentRow = $(this).closest('tr');
+        currentRow.find('.p-rut').val(firstRow.find('.p-rut').val());
+        currentRow.find('.p-name').val(firstRow.find('.p-name').val());
+        currentRow.find('.p-phone').val(firstRow.find('.p-phone').val());
     });
 
-    let searchTimeout;
-    document.getElementById('customerSearch').addEventListener('input', function(e) {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            if (e.target.value.trim().length >= 2) {
-                searchCustomer();
-            }
-        }, 500);
+    $(document).on('click', '.btn-remove-seat', function() {
+        const num = String($(this).closest('tr').data('number'));
+        const cell = $(`.seat-cell[data-number="${num}"]`)[0];
+        const seatObj = selectedSeats.find(s => s.number === num);
+        if (seatObj) toggleSeat(cell, seatObj.deck, num, seatObj.service, seatObj.price);
     });
 
-    document.getElementById('customerSearch').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            searchCustomer();
-        }
-    });
-
-    document.getElementById('newRut').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            saveNewCustomer();
-        }
-    });
-
-    document.getElementById('manualName').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            saveManualData();
-        }
-    });
-
-    // =============================================
-    // INICIALIZACIÓN MEJORADA
-    // =============================================
-    document.addEventListener('DOMContentLoaded', function() {
-        // ✅ Ahora sí existe drawGrid y el mapa vuelve a aparecer
-        drawGrid(document.getElementById('gridL'), lower, 1);
-        if (upper && upper.length > 0) {
-            drawGrid(document.getElementById('gridU'), upper, 2);
-        }
-
-        validateCheckout();
-
-        console.log('✅ Sistema de venta inicializado correctamente');
-        if (DEBUG && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    setTimeout(testCustomerURLs, 1000);
-}
-
-    });
-
-    function debugCustomerSystem() {
-        console.log('=== DEBUG SISTEMA CLIENTES ===');
-        console.log('Selected Customer:', selectedCustomer);
-        console.log('Selected Seats:', Array.from(selectedSeats.values()));
-        console.log('Form Data:', {
-            customerId: document.getElementById('customerId').value,
-            buyerName: document.getElementById('buyerName').value,
-            documentNumber: document.getElementById('documentNumber').value,
-            buyerNameDisplay: document.getElementById('buyerNameDisplay').value,
-            documentNumberDisplay: document.getElementById('documentNumberDisplay').value
+    $('#manifest-search-input').on('keyup', function() {
+        const val = $(this).val().toLowerCase().trim();
+        $('#manifest-table-body .manifest-row-item').each(function() {
+            const text = $(this).text().toLowerCase();
+            $(this).toggle(text.includes(val));
         });
-        console.log('Checkout Enabled:', !document.getElementById('btnEmit').disabled);
-    }
+    });
 
-    window.debugCustomerSystem = debugCustomerSystem;
-    window.testCustomerURLs = testCustomerURLs;
+    $('#confirm-sale').click(() => {
+        if (selectedSeats.length === 0) return alert('Seleccione asientos.');
+        let valid = true;
+        const seatsData = [];
+        $('#passenger-table-body tr').each(function() {
+            const num = $(this).data('number');
+            const deck = $(this).data('deck');
+            const rut = $(this).find('.p-rut').val().trim();
+            const name = $(this).find('.p-name').val().trim();
+            const phone = $(this).find('.p-phone').val().trim();
+            if (!name) {
+                alert(`Ingrese el nombre para el Asiento ${num}.`);
+                $(this).find('.p-name').focus();
+                valid = false;
+                return false;
+            }
+            if (rut && !validarRutChileno(rut)) {
+                alert(`RUT inválido para asiento ${num}. Use formato 12345678-9`);
+                $(this).find('.p-rut').focus();
+                valid = false;
+                return false;
+            }
+            seatsData.push({ deck: deck, number: num, passenger_rut: rut, passenger_name: name, passenger_email: "", passenger_phone: phone });
+        });
+        if (!valid) return;
+        const paymentMethod = $('#payment-method').val();
+        const form = $('<form method="post" action="{% url 'pos_checkout' trip.id %}"></form>');
+        form.append(`<input type="hidden" name="csrfmiddlewaretoken" value="${getCookie('csrftoken')}">`);
+        form.append(`<input type="hidden" name="seats" value='${JSON.stringify(seatsData)}'>`);
+        form.append(`<input type="hidden" name="payment_method" value="${paymentMethod}">`);
+        form.append(`<input type="hidden" name="buyer_name" value="${seatsData[0].passenger_name}">`);
+        $('body').append(form);
+        form.submit();
+    });
+
+    $(document).ready(function() {
+        renderDeck('deck-1-container', 1, gridLower);
+        renderDeck('deck-2-container', 2, gridUpper);
+        updateSummary();
+        if (selectedSeats.some(s => s.expires_at)) startGlobalTimer();
+        document.querySelectorAll('#deckSelectorTabs button, #posModulesTab button').forEach(el => {
+            el.addEventListener('click', function(e) {
+                e.preventDefault();
+                (new bootstrap.Tab(this)).show();
+            });
+        });
+    });
 </script>
-
 {% endblock %}

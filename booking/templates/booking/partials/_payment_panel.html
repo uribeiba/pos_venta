@@ -1,0 +1,16 @@
+<div class="p-3 border-top">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <span class="fw-semibold">Método de pago</span>
+        <select id="payment-method" class="form-select w-auto">
+            <option value="cash">💵 Efectivo</option>
+            <option value="card">💳 Tarjeta</option>
+        </select>
+    </div>
+    <div class="d-flex justify-content-between align-items-end mb-4">
+        <span class="text-muted small">Total a pagar</span>
+        <span id="total-amount" class="total-amount">$0</span>
+    </div>
+    <button id="confirm-sale" class="btn btn-primary btn-checkout w-100 py-3">
+        <i class="fas fa-print me-2"></i> EMITIR BOLETO
+    </button>
+</div>

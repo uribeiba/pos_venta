@@ -1,0 +1,81 @@
+/* Mejoras visuales sobre tu diseño original */
+body {
+    background: #f4f6f9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.card {
+    border-radius: 20px !important;
+    overflow: hidden;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.05) !important;
+    border: none !important;
+}
+
+.card-header {
+    background: white !important;
+    border-bottom: 1px solid #eef2f6 !important;
+    font-weight: 700;
+    padding: 1rem 1.5rem;
+}
+
+.btn-checkout-primary {
+    background: #2c3e50 !important;
+    border-radius: 40px !important;
+    padding: 12px !important;
+    font-weight: 700;
+    transition: all 0.2s;
+}
+.btn-checkout-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+/* mapa de asientos */
+.bus-container-frame {
+    border-radius: 24px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.seat-cell {
+    transition: transform 0.1s;
+}
+.seat-cell:hover {
+    transform: scale(1.05);
+}
+
+/* acordeón más limpio */
+.accordion-button {
+    background: white;
+    font-weight: 600;
+    border-radius: 12px !important;
+}
+.accordion-button:not(.collapsed) {
+    background: #f8fafc;
+    color: #2c3e50;
+}
+
+/* inputs */
+.form-control, .form-select {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 0.6rem 1rem;
+}
+
+/* layaout 70/30 (si tu template ya lo tiene, esto lo refuerza) */
+.pos-main-wrapper {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+.seatmap-main-panel {
+    flex: 7;
+}
+.sidebar-sale-panel {
+    flex: 3;
+    position: sticky;
+    top: 20px;
+}
+@media (max-width: 992px) {
+    .pos-main-wrapper { flex-direction: column; }
+    .sidebar-sale-panel { position: static; }
+}

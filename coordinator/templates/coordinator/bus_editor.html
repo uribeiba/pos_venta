@@ -101,7 +101,7 @@
    SEGUNDO PISO
    ========================================================================== */
 .bus-container-frame.floor-2 {
-    background-image: url('{% static "img/superior1.png" %}');
+    background-image: url('{% static "img/superior.png" %}');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: 100% 100%;
@@ -384,11 +384,11 @@
 <script>
     function getSeatImage(service) {
         if (service === 'cama') {
-            return "{% static 'img/eje00.png' %}";
+            return "{% static 'img/cama.png' %}";
         } else if (service === 'ejecutivo') {
-            return "{% static 'img/aa1.png' %}";
+            return "{% static 'img/ejecutivo.png' %}";
         } else {
-            return "{% static 'img/eje0.png' %}";
+            return "{% static 'img/semi.png' %}";
         }
     }
     
