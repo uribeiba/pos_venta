@@ -1,0 +1,97 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}POS - Cejer{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{% static 'img/favicon.ico' %}">
+    <!-- Bootstrap 5 + Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <!-- jQuery (necesario para Select2 y algunos plugins) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Chart.js (para gráficos) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    {% block extra_css %}{% endblock %}
+    <style>
+        body {
+            background: #f0f2f5;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .navbar-pos {
+            background: #2c3e50;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .navbar-pos .navbar-brand {
+            font-weight: 700;
+            color: white;
+        }
+        .navbar-pos .nav-link {
+            color: #cbd5e1;
+        }
+        .navbar-pos .nav-link:hover {
+            color: white;
+        }
+        .user-info {
+            background: #1e2b38;
+            border-radius: 2rem;
+            padding: 0.3rem 1rem;
+            color: white;
+        }
+        .content-wrapper {
+            padding: 1.5rem 2rem;
+        }
+        .footer-pos {
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            padding: 1rem;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Barra superior -->
+    <nav class="navbar navbar-pos navbar-expand-lg px-3">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{% url 'pos_home' %}">
+                <i class="fas fa-ticket-alt me-2"></i> Cejer | Punto de Venta
+            </a>
+            <div class="ms-auto d-flex align-items-center gap-3">
+                <div class="user-info">
+                    <i class="fas fa-user-circle me-1"></i> {{ request.user.username }}
+                </div>
+                <form method="post" action="{% url 'admin:logout' %}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-light">
+                        <i class="fas fa-sign-out-alt"></i> Salir
+                    </button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="content-wrapper">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        {% block content %}{% endblock %}
+    </div>
+
+    <div class="footer-pos">
+        <i class="fas fa-bus"></i> Cejer - Sistema de Ventas de Pasajes
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -126,11 +126,12 @@ def cajero_required(view_func): return role_required(['admin', 'supervisor', 've
 # ============================================================================
 # 3. VISTAS PRINCIPALES DEL PUNTO DE VENTA (POS)
 # ============================================================================
-
 @login_required
 @vendedor_required
 def pos_home(request):
-    """ Lista de viajes filtrables para la terminal. Solo muestra salidas vigentes. """
+    """ Lista de viajes filtrables para la terminal. Solo muestra salidas vigentes.
+        Además, muestra el dashboard del vendedor con métricas, caja y ventas recientes.
+    """
     now = timezone.localtime()
     q_date = (request.GET.get("date") or "").strip()
     origin_id = (request.GET.get("origin_id") or "").strip()
@@ -146,6 +147,9 @@ def pos_home(request):
     else:
         the_date = now.date()
 
+    # ========================================================================
+    # 1. LÓGICA DE BÚSQUEDA DE VIAJES (EXISTENTE, SIN CAMBIOS)
+    # ========================================================================
     if not did_search:
         trips = Trip.objects.none()
     else:
@@ -155,12 +159,30 @@ def pos_home(request):
             departure__date=the_date,
             departure__gte=now,
         )
+        
+        # Filtro por origen (permite ID o nombre)
         if origin_id:
-            trips = trips.filter(route__origin_id=origin_id)
-        if dest_id:
-            trips = trips.filter(route__destination_id=dest_id)
+            if origin_id.isdigit():
+                trips = trips.filter(route__origin_id=origin_id)
+            else:
+                city = City.objects.filter(name__iexact=origin_id).first()
+                if city:
+                    trips = trips.filter(route__origin_id=city.id)
+                else:
+                    trips = trips.none()
 
-        # Optimizaciones de Conteos Colectivos (Evita Query N+1)
+        # Filtro por destino (permite ID o nombre)
+        if dest_id:
+            if dest_id.isdigit():
+                trips = trips.filter(route__destination_id=dest_id)
+            else:
+                city = City.objects.filter(name__iexact=dest_id).first()
+                if city:
+                    trips = trips.filter(route__destination_id=city.id)
+                else:
+                    trips = trips.none()
+
+        # Optimizaciones de Conteos Colectivos
         sold_map = dict(Ticket.objects.filter(trip__in=trips).values("trip").annotate(c=Count("id")).values_list("trip", "c"))
         hold_map = dict(SeatHold.objects.filter(trip__in=trips).values("trip").annotate(c=Count("id")).values_list("trip", "c"))
         
@@ -173,7 +195,45 @@ def pos_home(request):
             t.total = total_by_bus.get(t.bus_id, 0)
             t.free = max(t.total - t.sold - t.hold, 0)
 
+    # ========================================================================
+    # 2. MÉTRICAS DEL VENDEDOR (VENTAS HOY, TENDENCIAS, CAJA)
+    # ========================================================================
+    fecha_hoy = timezone.now().date()
+    
+    # Ventas del día (solo del vendedor actual)
+    ventas_hoy = Ticket.objects.filter(created_at__date=fecha_hoy, created_by=request.user)
+    metrics = ventas_hoy.aggregate(total=Sum('price'), total_count=Count('id'))
+    total_ventas = metrics['total'] or Decimal('0.00')
+    total_boletos = metrics['total_count'] or 0
+    rutas_vendidas = ventas_hoy.values('trip__route').distinct().count()
+    promedio_venta = total_ventas / total_boletos if total_boletos > 0 else Decimal('0.00')
+    
+    # Últimas 10 ventas del vendedor
+    ventas_recientes = ventas_hoy.select_related(
+        'trip__route__origin', 'trip__route__destination', 'seat'
+    ).order_by('-created_at')[:10]
+
+    # Cálculo de tendencias (ayer vs hoy)
+    ayer = fecha_hoy - timedelta(days=1)
+    ventas_ayer = Ticket.objects.filter(created_at__date=ayer, created_by=request.user)
+    metrics_ayer = ventas_ayer.aggregate(total=Sum('price'), total_count=Count('id'))
+    total_ventas_ayer = metrics_ayer['total'] or Decimal('0.00')
+    total_boletos_ayer = metrics_ayer['total_count'] or 0
+
+    tendencia_ventas = calcular_tendencia(total_ventas, total_ventas_ayer)
+    tendencia_boletos = calcular_tendencia(total_boletos, total_boletos_ayer)
+
+    # Estado de la caja del vendedor hoy
+    caja_actual = CashRegister.objects.filter(
+        user=request.user, opening_date__date=fecha_hoy, status='open'
+    ).first()
+    caja_abierta = caja_actual is not None
+
+    # ========================================================================
+    # 3. CONSTRUCCIÓN DEL CONTEXTO
+    # ========================================================================
     ctx = {
+        # Datos del buscador de viajes (originales)
         "title": "POS — Panel de Ventas",
         "date": the_date.strftime("%Y-%m-%d"),
         "cities": City.objects.all().order_by("name"),
@@ -181,6 +241,16 @@ def pos_home(request):
         "dest_id": dest_id,
         "trips": trips,
         "did_search": did_search,
+        # Datos del dashboard de ventas
+        "total_ventas": total_ventas,
+        "total_boletos": total_boletos,
+        "rutas_vendidas": rutas_vendidas,
+        "promedio_venta": promedio_venta,
+        "ventas_recientes": ventas_recientes,
+        "tendencia_ventas": tendencia_ventas,
+        "tendencia_boletos": tendencia_boletos,
+        "caja_abierta": caja_abierta,
+        "caja_actual": caja_actual,
     }
     return render(request, "booking/pos_home.html", ctx)
 
@@ -1146,3 +1216,14 @@ def api_purchase(request, trip_id):
 
     except Exception as e:
         return JsonResponse({'ok': False, 'error': f'Error en el procesador de pagos: {str(e)}'}, status=500)
+
+
+@require_GET
+def api_cities_search(request):
+    """Autocompletado de ciudades (para el buscador del POS)."""
+    query = request.GET.get('q', '').strip()
+    if len(query) < 2:
+        return JsonResponse([], safe=False)
+    cities = City.objects.filter(name__icontains=query)[:10]
+    results = [{'id': c.id, 'name': c.name} for c in cities]
+    return JsonResponse(results, safe=False)
