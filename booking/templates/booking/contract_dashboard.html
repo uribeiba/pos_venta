@@ -1,0 +1,165 @@
+{% extends 'booking/base_pos.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Panel de Convenios{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        background: white;
+        border-radius: 1rem;
+        padding: 1.2rem;
+        transition: all 0.2s;
+        border-left: 4px solid #3b82f6;
+        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    }
+    .stats-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+    }
+    .stats-number {
+        font-size: 2rem;
+        font-weight: 800;
+    }
+    .credit-available {
+        color: #10b981;
+    }
+    .credit-used {
+        color: #f59e0b;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h3 class="mb-4"><i class="fas fa-handshake me-2"></i> Panel de Convenios</h3>
+
+    <!-- Resumen de contratos -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="stats-card">
+                <div class="text-muted small">Total Contratos Activos</div>
+                <div class="stats-number">{{ total_contracts }}</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stats-card">
+                <div class="text-muted small">Crédito Total Disponible</div>
+                <div class="stats-number credit-available">$ {{ total_credit_available|floatformat:0|intcomma }}</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stats-card">
+                <div class="text-muted small">Crédito Utilizado</div>
+                <div class="stats-number credit-used">$ {{ total_credit_used|floatformat:0|intcomma }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selector de contrato -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0"><i class="fas fa-building me-2"></i> Seleccionar Contrato</h5>
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-6">
+                    <select name="contract_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Seleccione un contrato --</option>
+                        {% for c in contracts %}
+                            <option value="{{ c.id }}" {% if selected_contract and selected_contract.id == c.id %}selected{% endif %}>
+                                {{ c.company.name }} - {{ c.contract_number }} (Disp: ${{ c.available_credit|floatformat:0 }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 text-end">
+                    {% if selected_contract %}
+                        <a href="{% url 'contract_employees' selected_contract.id %}" class="btn btn-primary">
+                            <i class="fas fa-users"></i> Gestionar Empleados
+                        </a>
+                    {% endif %}
+                    <a href="{% url 'pos_home' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Volver
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_contract %}
+    <!-- Detalle del contrato -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">{{ selected_contract.company.name }}</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Contrato:</strong> {{ selected_contract.contract_number }}</p>
+                    <p><strong>Límite de crédito:</strong> ${{ selected_contract.credit_limit|intcomma }}</p>
+                    <p><strong>Usado:</strong> ${{ selected_contract.used_credit|intcomma }}</p>
+                    <p><strong>Disponible:</strong> <span class="fw-bold text-success">${{ selected_contract.available_credit|intcomma }}</span></p>
+                    <p><strong>Descuento:</strong> {{ selected_contract.discount_percentage }}%</p>
+                    <p><strong>Vigencia:</strong> {{ selected_contract.valid_from|date:"d/m/Y" }} - {{ selected_contract.valid_to|date:"d/m/Y" }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">Empleados Activos</h5>
+                </div>
+                <div class="card-body">
+                    <p class="display-6">{{ employees|length }}</p>
+                    <a href="{% url 'contract_employees' selected_contract.id %}" class="btn btn-sm btn-outline-primary">Ver todos</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimas compras -->
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0"><i class="fas fa-receipt me-2"></i> Últimas compras</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Pasajero</th>
+                            <th>Asiento</th>
+                            <th>Ruta</th>
+                            <th>Monto</th>
+                            <th>Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ticket in recent_purchases %}
+                        <tr>
+                            <td>{{ ticket.number }}</td>
+                            <td>{{ ticket.buyer_name }}</td>
+                            <td>{{ ticket.seat.number }}</td>
+                            <td>{{ ticket.trip.route.origin.name }} → {{ ticket.trip.route.destination.name }}</td>
+                            <td>${{ ticket.price|intcomma }}</td>
+                            <td>{{ ticket.created_at|date:"d/m/Y H:i" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center">No hay compras registradas para este contrato.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        <i class="fas fa-info-circle fa-3x mb-3"></i>
+        <p>Seleccione un contrato para ver su detalle.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

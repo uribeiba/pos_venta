@@ -1,0 +1,1430 @@
+{% extends 'client_portal/base_public.html' %}
+{% load static %}
+
+{% block title %}Cejer - Viaja Cómodo, Seguro y al Mejor Precio{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    /* ===== PALETA Y VARIABLES ===== */
+    :root {
+        --brand-red: #e30613;
+        --brand-red-hover: #b8050f;
+        --brand-green: #4ca824;
+        --brand-dark: #1a1a1a;
+        --brand-bg-light: #f4f6f9;
+        --brand-muted: #6c757d;
+        --brand-white: #ffffff;
+        --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+        --shadow-md: 0 10px 30px rgba(0,0,0,0.06);
+        --shadow-lg: 0 20px 50px rgba(0,0,0,0.1);
+        --transition-smooth: all 0.3s cubic-bezier(0.4,0,0.2,1);
+        --font-family: 'Inter', sans-serif;
+    }
+
+    body {
+        font-family: var(--font-family);
+        background-color: var(--brand-bg-light);
+        color: var(--brand-dark);
+        overflow-x: hidden;
+    }
+
+    /* ===== NAVBAR PREMIUM ===== */
+    .navbar-premium {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1030;
+        padding: 12px 0;
+        transition: var(--transition-smooth);
+        background: transparent;
+    }
+    .navbar-premium.scrolled {
+        background: var(--brand-white) !important;
+        padding: 8px 0;
+        box-shadow: var(--shadow-md);
+    }
+    .navbar-premium .navbar-brand img {
+        height: 80px;
+        width: auto;
+        object-fit: contain;
+        transition: var(--transition-smooth);
+    }
+    .navbar-premium.scrolled .navbar-brand img {
+        height: 65px;
+    }
+    .navbar-premium .nav-link {
+        color: var(--brand-white) !important;
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 8px 18px !important;
+        transition: var(--transition-smooth);
+    }
+    .navbar-premium .nav-link:hover {
+        color: var(--brand-red) !important;
+    }
+    .navbar-premium.scrolled .nav-link {
+        color: var(--brand-dark) !important;
+    }
+    .navbar-premium.scrolled .nav-link:hover {
+        color: var(--brand-red) !important;
+    }
+    .btn-login-premium {
+        background: transparent;
+        border: 2px solid var(--brand-white);
+        color: var(--brand-white);
+        font-weight: 700;
+        border-radius: 50px;
+        padding: 10px 28px;
+        transition: var(--transition-smooth);
+        font-size: 0.95rem;
+    }
+    .btn-login-premium:hover {
+        background: var(--brand-white);
+        color: var(--brand-dark);
+        border-color: var(--brand-white);
+    }
+    .navbar-premium.scrolled .btn-login-premium {
+        border-color: var(--brand-dark);
+        color: var(--brand-dark);
+    }
+    .navbar-premium.scrolled .btn-login-premium:hover {
+        background: var(--brand-dark);
+        color: var(--brand-white);
+        border-color: var(--brand-dark);
+    }
+    .btn-reservas-nav {
+        background: rgba(245,130,31,0.15);
+        border: 2px solid #f5821f;
+        color: #f5821f !important;
+        border-radius: 50px;
+        padding: 8px 20px !important;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: var(--transition-smooth);
+    }
+    .btn-reservas-nav:hover {
+        background: #f5821f;
+        color: white !important;
+    }
+    .navbar-premium.scrolled .btn-reservas-nav {
+        border-color: #f5821f;
+        color: #f5821f !important;
+    }
+    .navbar-premium.scrolled .btn-reservas-nav:hover {
+        background: #f5821f;
+        color: white !important;
+    }
+    .navbar-toggler {
+        border-color: rgba(255,255,255,0.8);
+    }
+    .navbar-toggler-icon {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.9)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+    }
+    .navbar-premium.scrolled .navbar-toggler {
+        border-color: rgba(0,0,0,0.3);
+    }
+    .navbar-premium.scrolled .navbar-toggler-icon {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(0,0,0,0.7)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+    }
+
+    /* ===== HERO ===== */
+    .hero-premium {
+        position: relative;
+        height: 680px;
+        display: flex;
+        align-items: center;
+        padding-top: 100px;
+        overflow: hidden;
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+        transition: background-image 0.8s ease-in-out;
+    }
+    .hero-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.65));
+        z-index: 1;
+    }
+    .hero-content {
+        position: relative;
+        z-index: 2;
+    }
+    .hero-title {
+        font-size: 4rem;
+        font-weight: 800;
+        color: var(--brand-white);
+        text-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        line-height: 1.15;
+    }
+    .hero-subtitle {
+        font-size: 1.5rem;
+        color: rgba(255,255,255,0.95);
+        text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    @keyframes fadeInUp {
+        from { opacity:0; transform:translateY(20px); }
+        to { opacity:1; transform:translateY(0); }
+    }
+    .hero-content .badge,
+    .hero-content .hero-title,
+    .hero-content .hero-subtitle,
+    .hero-content .btn {
+        animation: fadeInUp 0.6s ease-out forwards;
+    }
+    .hero-content .hero-title { animation-delay:0.1s; }
+    .hero-content .hero-subtitle { animation-delay:0.2s; }
+    .hero-content .btn { animation-delay:0.3s; }
+
+    /* ===== BUSCADOR FLOTANTE ===== */
+    .search-wrapper-floating {
+        position: relative;
+        margin-top: -100px;
+        z-index: 100;
+        padding: 0 15px;
+    }
+    .search-card-premium {
+        background: var(--brand-white);
+        border-radius: 24px;
+        padding: 35px;
+        box-shadow: var(--shadow-lg);
+        border: 1px solid rgba(226,232,240,0.8);
+    }
+    .search-card-premium .form-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #6c757d;
+        margin-bottom: 6px;
+        display: block;
+    }
+    .search-card-premium .form-control {
+        height: 58px;
+        padding: 0 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 14px;
+        font-size: 0.95rem;
+        transition: var(--transition-smooth);
+        width: 100%;
+        background: white;
+    }
+    .search-card-premium .form-control:focus {
+        border-color: var(--brand-green);
+        box-shadow: 0 0 0 4px rgba(76,168,36,0.15);
+        outline: none;
+    }
+    .btn-search-premium {
+        background: var(--brand-red);
+        color: var(--brand-white);
+        border: none;
+        height: 58px;
+        border-radius: 14px;
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: 0.5px;
+        transition: var(--transition-smooth);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        box-shadow: 0 4px 14px rgba(227,6,19,0.3);
+        white-space: nowrap;
+        padding: 0 28px;
+    }
+    .btn-search-premium:hover {
+        background: var(--brand-red-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(227,6,19,0.4);
+        color: var(--brand-white);
+    }
+
+    /* ===== SECCIONES GENERALES ===== */
+    .section-padding { padding: 80px 0; }
+    .section-title-wrapper { text-align: center; margin-bottom: 50px; }
+    .section-title { font-size: 2.2rem; font-weight: 800; color: var(--brand-dark); }
+    .section-subtitle-text { color: var(--brand-muted); font-size: 1.1rem; }
+
+    /* ===== BENEFICIOS CARDS (existentes) ===== */
+    .benefit-card {
+        background: var(--brand-white);
+        border-radius: 20px;
+        padding: 40px 30px;
+        text-align: center;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #f1f5f9;
+        transition: var(--transition-smooth);
+        height: 100%;
+    }
+    .benefit-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-md);
+    }
+    .benefit-icon-box {
+        width: 70px;
+        height: 70px;
+        background: #f0f9eb;
+        color: var(--brand-green);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        margin: 0 auto 24px auto;
+    }
+
+    /* ===== PROMOCIONES FLASH ===== */
+    .flash-card {
+        background: var(--brand-white);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        border: 2px solid transparent;
+        position: relative;
+    }
+    .flash-card:hover {
+        transform: translateY(-6px);
+        box-shadow: var(--shadow-md);
+        border-color: var(--brand-red);
+    }
+    .flash-badge {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        background: var(--brand-red);
+        color: white;
+        padding: 4px 14px;
+        border-radius: 50px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        animation: pulse-badge 1.5s infinite;
+    }
+    @keyframes pulse-badge {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    .flash-timer {
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 50px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .flash-price {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--brand-red);
+    }
+    .flash-original-price {
+        text-decoration: line-through;
+        color: var(--brand-muted);
+        font-size: 1rem;
+        margin-left: 10px;
+    }
+
+    /* ===== PRÓXIMAS SALIDAS ===== */
+    .departure-card {
+        background: var(--brand-white);
+        border-radius: 16px;
+        padding: 20px 24px;
+        box-shadow: var(--shadow-sm);
+        border-left: 6px solid var(--brand-green);
+        transition: var(--transition-smooth);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .departure-card:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateX(4px);
+    }
+    .departure-time {
+        font-weight: 700;
+        color: var(--brand-dark);
+        font-size: 1.1rem;
+    }
+    .departure-route {
+        font-weight: 600;
+        color: var(--brand-dark);
+    }
+    .departure-price {
+        font-weight: 700;
+        color: var(--brand-green);
+        font-size: 1.2rem;
+    }
+
+    /* ===== DESTINOS POPULARES (mejorados) ===== */
+    .destination-card {
+        border-radius: 20px;
+        overflow: hidden;
+        background: var(--brand-white);
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        border: none;
+    }
+    .destination-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-md);
+    }
+    .destination-img-wrapper {
+        position: relative;
+        height: 220px;
+        overflow: hidden;
+    }
+    .destination-img-wrapper img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: var(--transition-smooth);
+    }
+    .destination-card:hover .destination-img-wrapper img {
+        scale: 1.08;
+    }
+    .destination-badge {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: var(--brand-red);
+        color: var(--brand-white);
+        padding: 6px 14px;
+        border-radius: 50px;
+        font-weight: 700;
+        font-size: 0.85rem;
+    }
+    .btn-outline-custom-action {
+        border: 2px solid var(--brand-green);
+        color: var(--brand-dark);
+        transition: var(--transition-smooth);
+        background: transparent;
+        border-radius: 50px;
+        padding: 8px 16px;
+        font-weight: 600;
+    }
+    .btn-outline-custom-action:hover {
+        background-color: var(--brand-green);
+        color: white;
+    }
+
+    /* ===== MAPA INTERACTIVO ===== */
+    .map-container {
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow: var(--shadow-md);
+        background: #eef2f7;
+        position: relative;
+        height: 420px;
+    }
+    .map-container iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+    }
+    .map-legend {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(255,255,255,0.9);
+        backdrop-filter: blur(6px);
+        padding: 12px 18px;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ===== FLOTA ===== */
+    .fleet-card {
+        background: var(--brand-white);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        height: 100%;
+    }
+    .fleet-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-md);
+    }
+    .fleet-img {
+        height: 180px;
+        object-fit: cover;
+        width: 100%;
+    }
+    .fleet-body {
+        padding: 20px;
+    }
+    .fleet-badge {
+        background: #e9ecef;
+        padding: 2px 12px;
+        border-radius: 50px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    /* ===== SERVICIOS A BORDO ===== */
+    .service-icon {
+        font-size: 2.5rem;
+        color: var(--brand-green);
+        margin-bottom: 12px;
+        display: block;
+    }
+
+    /* ===== OPINIONES ===== */
+    .testimonial-card {
+        background: var(--brand-white);
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #f1f5f9;
+        transition: var(--transition-smooth);
+        height: 100%;
+    }
+    .testimonial-card:hover {
+        box-shadow: var(--shadow-md);
+    }
+    .testimonial-stars {
+        color: #f5b342;
+        font-size: 1.2rem;
+        letter-spacing: 2px;
+    }
+    .testimonial-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    /* ===== ESTADÍSTICAS ANIMADAS ===== */
+    .stat-number {
+        font-size: 3.5rem;
+        font-weight: 800;
+        color: var(--brand-red);
+        line-height: 1.2;
+    }
+    .stat-label {
+        font-size: 1rem;
+        color: var(--brand-muted);
+        font-weight: 500;
+    }
+
+    /* ===== EMPRESAS QUE CONFÍAN ===== */
+    .company-logo {
+        filter: grayscale(100%);
+        opacity: 0.6;
+        transition: var(--transition-smooth);
+        max-height: 60px;
+        object-fit: contain;
+    }
+    .company-logo:hover {
+        filter: grayscale(0);
+        opacity: 1;
+    }
+
+    /* ===== PROGRAMA DE BENEFICIOS ===== */
+    .benefit-program-card {
+        background: var(--brand-white);
+        border-radius: 20px;
+        padding: 30px;
+        text-align: center;
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        border-top: 6px solid var(--brand-green);
+    }
+    .benefit-program-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-md);
+    }
+    .benefit-program-icon {
+        font-size: 2.8rem;
+        color: var(--brand-green);
+        margin-bottom: 16px;
+    }
+
+    /* ===== APP MÓVIL ===== */
+    .app-section {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 32px;
+        padding: 60px 40px;
+        color: white;
+    }
+    .app-section .btn-app {
+        background: var(--brand-white);
+        color: var(--brand-dark);
+        border-radius: 50px;
+        padding: 12px 32px;
+        font-weight: 700;
+        transition: var(--transition-smooth);
+    }
+    .app-section .btn-app:hover {
+        background: var(--brand-green);
+        color: white;
+        transform: scale(1.02);
+    }
+    .app-qr {
+        width: 120px;
+        height: 120px;
+        background: white;
+        padding: 8px;
+        border-radius: 16px;
+    }
+
+    /* ===== BLOG ===== */
+    .blog-card {
+        background: var(--brand-white);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        height: 100%;
+    }
+    .blog-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-md);
+    }
+    .blog-img {
+        height: 180px;
+        object-fit: cover;
+        width: 100%;
+    }
+    .blog-body {
+        padding: 20px;
+    }
+    .blog-meta {
+        font-size: 0.8rem;
+        color: var(--brand-muted);
+    }
+
+    /* ===== REDES SOCIALES ===== */
+    .social-feed-item {
+        background: var(--brand-white);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .social-feed-item:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateY(-2px);
+    }
+    .social-icon-circle {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: #f0f2f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        color: var(--brand-dark);
+        flex-shrink: 0;
+    }
+
+    /* ===== CTA FINAL ===== */
+    .cta-final {
+        background: linear-gradient(135deg, var(--brand-red) 0%, #b8050f 100%);
+        border-radius: 32px;
+        padding: 60px 40px;
+        color: white;
+        text-align: center;
+    }
+    .cta-final .btn-cta {
+        background: var(--brand-white);
+        color: var(--brand-red);
+        border-radius: 50px;
+        padding: 16px 48px;
+        font-weight: 800;
+        font-size: 1.2rem;
+        transition: var(--transition-smooth);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+    .cta-final .btn-cta:hover {
+        transform: scale(1.04);
+        background: #f8f9fa;
+    }
+
+    /* ===== FOOTER ===== */
+    .footer-premium-clean {
+        background-color: #111111;
+        color: #ffffff;
+    }
+    .footer-logo {
+        height: 70px !important;
+        width: auto;
+        filter: brightness(0) invert(1);
+        margin-bottom: 15px;
+        transition: var(--transition-smooth);
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 991.98px) {
+        .hero-premium { height: 550px; text-align: center; }
+        .hero-title { font-size: 2.6rem; }
+        .search-wrapper-floating { margin-top: -60px; }
+        .search-card-premium { padding: 25px; }
+        .search-card-premium .row {
+            flex-wrap: wrap;
+        }
+        .search-card-premium .col,
+        .search-card-premium .col-auto {
+            flex: 0 0 auto;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .btn-search-premium { width: 100% !important; }
+        .navbar-premium {
+            background: rgba(0,0,0,0.7) !important;
+            backdrop-filter: blur(10px);
+            padding: 8px 0;
+        }
+        .navbar-premium.scrolled {
+            background: var(--brand-white) !important;
+            backdrop-filter: blur(0px);
+            padding: 6px 0;
+        }
+        .navbar-premium .navbar-brand img { height: 60px !important; }
+        .navbar-premium.scrolled .navbar-brand img { height: 50px !important; }
+        .navbar-collapse {
+            background: var(--brand-white);
+            border-radius: 16px;
+            margin-top: 12px;
+            padding: 16px;
+            box-shadow: var(--shadow-md);
+        }
+        .navbar-premium .navbar-collapse .nav-link {
+            color: var(--brand-dark) !important;
+        }
+        .navbar-premium .navbar-collapse .nav-link:hover {
+            color: var(--brand-red) !important;
+        }
+        .navbar-premium .navbar-collapse .btn-login-premium {
+            border-color: var(--brand-dark);
+            color: var(--brand-dark);
+            width: 100%;
+            text-align: center;
+        }
+        .navbar-premium .navbar-collapse .btn-login-premium:hover {
+            background: var(--brand-dark);
+            color: var(--brand-white);
+            border-color: var(--brand-dark);
+        }
+        .navbar-premium .navbar-collapse .btn-reservas-nav {
+            border-color: var(--brand-dark);
+            color: var(--brand-dark) !important;
+            width: 100%;
+            text-align: center;
+        }
+        .navbar-premium .navbar-collapse .btn-reservas-nav:hover {
+            background: var(--brand-dark);
+            color: var(--brand-white) !important;
+            border-color: var(--brand-dark);
+        }
+        .stat-number { font-size: 2.6rem; }
+        .app-section { padding: 40px 20px; }
+        .cta-final { padding: 40px 20px; }
+    }
+
+    @media (max-width: 480px) {
+        .hero-title { font-size: 2rem; }
+        .hero-subtitle { font-size: 1.1rem; }
+        .search-card-premium { padding: 20px; }
+        .btn-search-premium { height: 50px; font-size: 0.9rem; }
+        .section-title { font-size: 1.6rem; }
+        .section-padding { padding: 50px 0; }
+        .navbar-premium .navbar-brand img { height: 50px !important; }
+        .stat-number { font-size: 2rem; }
+        .flash-price { font-size: 1.4rem; }
+        .departure-card { flex-direction: column; align-items: stretch; text-align: center; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ========== NAVBAR ========== -->
+<nav class="navbar navbar-expand-lg navbar-premium" id="mainNavbar">
+    <div class="container">
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'client_portal:home' %}">
+            <img src="{% static 'img/logo.png' %}" alt="Buses Cejer">
+        </a>
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavPremium" aria-label="Menú">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNavPremium">
+            <ul class="navbar-nav ms-auto align-items-center gap-2">
+                <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}">Inicio</a></li>
+                <li class="nav-item"><a class="nav-link" href="#destinos">Destinos</a></li>
+                <li class="nav-item"><a class="nav-link" href="#promociones">Promociones</a></li>
+                <li class="nav-item"><a class="nav-link" href="#nosotros">Nosotros</a></li>
+                <li class="nav-item"><a class="nav-link" href="#faq">Ayuda</a></li>
+                {% if user.is_authenticated %}
+                <li class="nav-item">
+                    <a class="nav-link btn-reservas-nav" href="{% url 'client_portal:my_reservations' %}">
+                        <i class="fas fa-ticket-alt me-1"></i> Mis reservas
+                    </a>
+                </li>
+                {% endif %}
+                <li class="nav-item ms-lg-2">
+                    {% if user.is_authenticated %}
+                        <a class="btn btn-login-premium" href="#"><i class="fas fa-user-circle me-1"></i> {{ user.username }}</a>
+                    {% else %}
+                        <a class="btn btn-login-premium" href="#"><i class="far fa-user me-2"></i>Iniciar Sesión</a>
+                    {% endif %}
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- ========== HERO SLIDER ========== -->
+<section class="hero-premium" id="heroSlider">
+    <div class="hero-overlay"></div>
+    <div class="container hero-content">
+        <div class="row">
+            <div class="col-lg-9 mx-auto text-center text-white">
+                <span class="badge bg-success text-white mb-3 px-3 py-2 rounded-pill fw-bold text-uppercase" style="background-color: var(--brand-green) !important;">
+                    <i class="fas fa-search me-1"></i> Paso 1: Selecciona Origen y Destino
+                </span>
+                <h1 class="hero-title mb-3" id="heroTitle">Descansar viajando</h1>
+                <p class="hero-subtitle mb-4 d-none d-md-block" id="heroSubtitle">Compra tus pasajes de forma rápida y segura con nosotros.</p>
+                <a href="#destinos" class="btn btn-outline-light btn-lg rounded-pill px-4 py-2 fs-6 fw-bold">Ver Destinos <i class="fas fa-arrow-down ms-2"></i></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ========== BUSCADOR FLOTANTE ========== -->
+<div class="container search-wrapper-floating">
+    <div class="search-card-premium">
+        <form id="searchForm" method="GET" action="{% url 'client_portal:search_trips' %}">
+            <div class="row g-3 align-items-end">
+                <div class="col">
+                    <label for="origen" class="form-label">¿De dónde partes?</label>
+                    <input type="text" id="origen" name="origin" class="form-control" placeholder="Origen" required>
+                </div>
+                <div class="col">
+                    <label for="destino" class="form-label">¿A dónde quieres ir?</label>
+                    <input type="text" id="destino" name="destination" class="form-control" placeholder="Destino" required>
+                </div>
+                <div class="col">
+                    <label for="fecha_viaje" class="form-label">Ida</label>
+                    <input type="date" id="fecha_viaje" name="date" class="form-control" required>
+                </div>
+                <div class="col">
+                    <label for="fecha_vuelta" class="form-label">Vuelta <span style="font-weight: normal;">(opcional)</span></label>
+                    <input type="date" id="fecha_vuelta" name="return_date" class="form-control">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-search-premium">
+                        <i class="fas fa-search me-2"></i> Buscar
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========== PROMOCIONES FLASH ========== -->
+<section id="promociones" class="section-padding" style="padding-top: 40px;">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">🔥 Promociones Flash</h2>
+            <p class="section-subtitle-text">Ofertas por tiempo limitado. ¡Aprovecha antes de que se agoten!</p>
+        </div>
+        <div class="row g-4">
+            {% for promo in flash_promotions %}
+            <div class="col-lg-3 col-md-6">
+                <div class="flash-card">
+                    <div class="flash-badge">🔥 Flash</div>
+                    <img src="{{ promo.image.url }}" alt="{{ promo.title }}" class="img-fluid" style="height:200px;width:100%;object-fit:cover;">
+                    <div class="p-4">
+                        <h5 class="fw-bold">{{ promo.title }}</h5>
+                        <p class="text-muted small">{{ promo.description|truncatechars:60 }}</p>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="flash-price">${{ promo.discounted_price }}</span>
+                            <span class="flash-original-price">${{ promo.original_price }}</span>
+                        </div>
+                        <div class="mt-3 d-flex justify-content-between align-items-center">
+                            <span class="flash-timer"><i class="far fa-clock"></i> <span class="countdown-timer" data-end="{{ promo.end_time|date:'Y-m-d H:i:s' }}">--:--:--</span></span>
+                            <a href="{{ promo.link }}" class="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3">Reservar</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">No hay promociones activas en este momento.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== PRÓXIMAS SALIDAS ========== -->
+<section class="section-padding bg-white">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">🚌 Próximas Salidas</h2>
+            <p class="section-subtitle-text">Viajes disponibles en las próximas horas. ¡No te quedes sin tu cupo!</p>
+        </div>
+        <div class="row g-3">
+            {% for trip in upcoming_trips %}
+            <div class="col-12">
+                <div class="departure-card">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <span class="departure-time"><i class="far fa-clock me-1"></i> {{ trip.departure_time|time:"H:i" }}</span>
+                        <span class="departure-route"><i class="fas fa-arrow-right me-1"></i> {{ trip.origin }} → {{ trip.destination }}</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <span class="departure-price">${{ trip.price }}</span>
+                        <span class="text-muted small">Asientos: {{ trip.available_seats }}</span>
+                        <a href="{{ trip.link }}" class="btn btn-sm btn-success rounded-pill px-3 fw-bold">Reservar</a>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">No hay viajes próximos disponibles.</div>
+            {% endfor %}
+        </div>
+        <div class="text-center mt-4">
+            <a href="{% url 'client_portal:search_trips' %}" class="btn btn-outline-primary rounded-pill px-5 fw-bold">Ver todos los viajes</a>
+        </div>
+    </div>
+</section>
+
+<!-- ========== DESTINOS POPULARES (mejorado) ========== -->
+<section id="destinos" class="section-padding">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">📍 Destinos Más Populares</h2>
+            <p class="section-subtitle-text">Explora los tramos más solicitados con tarifas preferenciales todo el año.</p>
+        </div>
+        <div class="row g-4">
+            {% for dest in popular_destinations %}
+            <div class="col-lg-3 col-md-6">
+                <div class="destination-card">
+                    <div class="destination-img-wrapper">
+                        <img src="{{ dest.image.url }}" alt="{{ dest.name }}">
+                        <span class="destination-badge">Desde ${{ dest.price_from }}</span>
+                    </div>
+                    <div class="p-4">
+                        <h5 class="fw-bold text-dark mb-1">{{ dest.origin }} → {{ dest.name }}</h5>
+                        <p class="text-muted small mb-3"><i class="far fa-clock me-1"></i> Duración aprox: {{ dest.duration }}</p>
+                        <a href="{{ dest.link }}" class="btn btn-outline-custom-action btn-sm w-100 fw-bold">Ver Horarios</a>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">No hay destinos disponibles.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== MAPA INTERACTIVO ========== -->
+<section class="section-padding bg-white">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">🗺️ Nuestras Rutas</h2>
+            <p class="section-subtitle-text">Conoce toda nuestra cobertura nacional en un solo vistazo.</p>
+        </div>
+        <div class="map-container">
+            <!-- Mapa dinámico (ejemplo con Leaflet o Google Maps) -->
+            <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3329717.065860853!2d-72.41617633575504!3d-33.518345115015006!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x9662c5410425af2f%3A0x8475d53c400f0931!2sChile!5e0!3m2!1ses!2scl!4v1719277623415!5m2!1ses!2scl" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div class="map-legend">
+                <i class="fas fa-circle text-success me-1"></i> Terminales principales
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ========== NUESTRA FLOTA ========== -->
+<section id="nosotros" class="section-padding">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">🚍 Nuestra Flota</h2>
+            <p class="section-subtitle-text">Buses de última generación para tu comodidad y seguridad.</p>
+        </div>
+        <div class="row g-4">
+            {% for bus in fleet %}
+            <div class="col-lg-3 col-md-6">
+                <div class="fleet-card">
+                    <img src="{{ bus.image.url }}" alt="{{ bus.name }}" class="fleet-img">
+                    <div class="fleet-body">
+                        <h5 class="fw-bold">{{ bus.name }}</h5>
+                        <p class="text-muted small">{{ bus.capacity }} pasajeros • {{ bus.features }}</p>
+                        <span class="fleet-badge">{{ bus.category }}</span>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">Información de flota próximamente.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== SERVICIOS A BORDO ========== -->
+<section class="section-padding bg-white">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">✨ Servicios a Bordo</h2>
+            <p class="section-subtitle-text">Disfruta de amenities que hacen tu viaje más placentero.</p>
+        </div>
+        <div class="row g-4">
+            {% for service in onboard_services %}
+            <div class="col-lg-3 col-md-6">
+                <div class="text-center p-4 bg-light rounded-4 h-100">
+                    <i class="{{ service.icon }} service-icon"></i>
+                    <h5 class="fw-bold">{{ service.name }}</h5>
+                    <p class="text-muted small mb-0">{{ service.description }}</p>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">Lista de servicios próximamente.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== OPINIONES VERIFICADAS ========== -->
+<section class="section-padding">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">⭐ Opiniones Verificadas</h2>
+            <p class="section-subtitle-text">Lo que nuestros pasajeros dicen de nosotros.</p>
+        </div>
+        <div class="row g-4">
+            {% for testimonial in testimonials %}
+            <div class="col-lg-4 col-md-6">
+                <div class="testimonial-card">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <img src="{{ testimonial.avatar.url }}" alt="{{ testimonial.name }}" class="testimonial-avatar">
+                        <div>
+                            <h6 class="fw-bold mb-0">{{ testimonial.name }}</h6>
+                            <span class="testimonial-stars">
+                                {% for i in ""|rjust:testimonial.rating %}★{% endfor %}
+                            </span>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-3">"{{ testimonial.comment }}"</p>
+                    <span class="badge bg-success">Verificado</span>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">No hay opiniones disponibles.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== ESTADÍSTICAS ANIMADAS ========== -->
+<section class="section-padding bg-white">
+    <div class="container">
+        <div class="row g-4 text-center">
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-number" data-count="{{ stats.passengers }}">0</div>
+                <div class="stat-label">Pasajeros transportados</div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-number" data-count="{{ stats.years }}">0</div>
+                <div class="stat-label">Años de experiencia</div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-number" data-count="{{ stats.routes }}">0</div>
+                <div class="stat-label">Rutas cubiertas</div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-number" data-count="{{ stats.punctuality }}">0</div>
+                <div class="stat-label">% de puntualidad</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ========== EMPRESAS QUE CONFÍAN ========== -->
+<section class="section-padding">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">🏢 Empresas que Confían en Cejer</h2>
+            <p class="section-subtitle-text">Grandes compañías eligen nuestra flota para sus traslados corporativos.</p>
+        </div>
+        <div class="row g-4 justify-content-center align-items-center">
+            {% for company in trusted_companies %}
+            <div class="col-lg-2 col-md-3 col-4">
+                <img src="{{ company.logo.url }}" alt="{{ company.name }}" class="company-logo img-fluid">
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">Próximamente mostraremos nuestros aliados.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== PROGRAMA DE BENEFICIOS ========== -->
+<section class="section-padding bg-white">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">🎁 Programa de Beneficios</h2>
+            <p class="section-subtitle-text">Únete y acumula puntos para canjear por descuentos y ventajas exclusivas.</p>
+        </div>
+        <div class="row g-4">
+            {% for benefit in benefits %}
+            <div class="col-lg-3 col-md-6">
+                <div class="benefit-program-card">
+                    <div class="benefit-program-icon"><i class="{{ benefit.icon }}"></i></div>
+                    <h5 class="fw-bold">{{ benefit.name }}</h5>
+                    <p class="text-muted small">{{ benefit.description }}</p>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">Próximamente más beneficios.</div>
+            {% endfor %}
+        </div>
+        <div class="text-center mt-4">
+            <a href="#" class="btn btn-success rounded-pill px-5 fw-bold">Quiero ser parte</a>
+        </div>
+    </div>
+</section>
+
+<!-- ========== APP MÓVIL ========== -->
+<section class="section-padding">
+    <div class="container">
+        <div class="app-section row align-items-center g-4">
+            <div class="col-lg-6">
+                <h2 class="fw-bold">📱 Descarga nuestra App</h2>
+                <p class="text-light opacity-75">Compra, gestiona tus reservas y viaja con más beneficios desde tu celular.</p>
+                <div class="d-flex flex-wrap gap-3 mt-3">
+                    <a href="#" class="btn btn-app"><i class="fab fa-apple me-2"></i>App Store</a>
+                    <a href="#" class="btn btn-app"><i class="fab fa-google-play me-2"></i>Google Play</a>
+                </div>
+            </div>
+            <div class="col-lg-6 text-center">
+                <img src="{% static 'img/app-mockup.png' %}" alt="App Cejer" class="img-fluid" style="max-height: 300px;">
+                <div class="mt-3">
+                    <span class="badge bg-light text-dark p-2">Escanea el QR</span>
+                    <img src="{% static 'img/qr-code.png' %}" alt="QR" class="app-qr d-block mx-auto mt-2">
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ========== BLOG / NOTICIAS ========== -->
+<section class="section-padding bg-white">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">📰 Blog & Noticias</h2>
+            <p class="section-subtitle-text">Consejos, destinos y novedades del mundo del transporte.</p>
+        </div>
+        <div class="row g-4">
+            {% for post in blog_posts %}
+            <div class="col-lg-4 col-md-6">
+                <div class="blog-card">
+                    <img src="{{ post.image.url }}" alt="{{ post.title }}" class="blog-img">
+                    <div class="blog-body">
+                        <span class="blog-meta"><i class="far fa-calendar-alt me-1"></i>{{ post.published_at|date:"d M Y" }}</span>
+                        <h5 class="fw-bold mt-2">{{ post.title }}</h5>
+                        <p class="text-muted small">{{ post.summary|truncatechars:80 }}</p>
+                        <a href="{{ post.link }}" class="btn btn-link text-success fw-bold p-0">Leer más →</a>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">Próximamente artículos.</div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ========== REDES SOCIALES ========== -->
+<section class="section-padding">
+    <div class="container">
+        <div class="section-title-wrapper">
+            <h2 class="section-title">📱 Síguenos en Redes</h2>
+            <p class="section-subtitle-text">Conoce nuestras últimas publicaciones y comparte tu experiencia.</p>
+        </div>
+        <div class="row g-3">
+            {% for feed in social_feeds %}
+            <div class="col-lg-4 col-md-6">
+                <div class="social-feed-item">
+                    <div class="social-icon-circle"><i class="{{ feed.icon }}"></i></div>
+                    <div>
+                        <p class="mb-0 small">{{ feed.text|truncatechars:80 }}</p>
+                        <span class="text-muted small">{{ feed.date|timesince }}</span>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12 text-center text-muted">Síguenos para estar al día.</div>
+            {% endfor %}
+        </div>
+        <div class="text-center mt-4">
+            <a href="#" class="btn btn-outline-dark rounded-pill px-4"><i class="fab fa-instagram me-2"></i>@CejerOficial</a>
+            <a href="#" class="btn btn-outline-primary rounded-pill px-4"><i class="fab fa-facebook-f me-2"></i>/Cejer</a>
+        </div>
+    </div>
+</section>
+
+<!-- ========== CTA FINAL ========== -->
+<section class="section-padding" style="padding-bottom: 40px;">
+    <div class="container">
+        <div class="cta-final">
+            <h2 class="fw-bold">✈️ ¡Reserva tu próximo viaje ahora!</h2>
+            <p class="opacity-75 mb-4">Aprovecha nuestras tarifas especiales y garantiza tu asiento en los mejores buses del país.</p>
+            <a href="{% url 'client_portal:search_trips' %}" class="btn btn-cta">Buscar Pasajes <i class="fas fa-arrow-right ms-2"></i></a>
+        </div>
+    </div>
+</section>
+
+<!-- ========== FAQ (existente) ========== -->
+<section id="faq" class="section-padding bg-white" style="padding-top: 40px;">
+    <div class="container" style="max-width: 800px;">
+        <div class="section-title-wrapper text-center">
+            <h2 class="section-title">❓ Preguntas Frecuentes</h2>
+            <p class="section-subtitle-text">Todo lo que necesitas saber antes de iniciar tu próximo viaje con nosotros.</p>
+        </div>
+        <div class="accordion accordion-premium" id="faqAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                        ¿Cómo realizo la compra de un pasaje en línea?
+                    </button>
+                </h2>
+                <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body text-muted">
+                        Simplemente ingresa tu origen, destino, fecha de ida (y opcionalmente tu fecha de vuelta) en nuestro buscador. Elige el horario, selecciona asientos y paga seguro. Recibirás tu boleto por correo.
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                        ¿Puedo cambiar la fecha u hora de mi viaje?
+                    </button>
+                </h2>
+                <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body text-muted">
+                        Sí, hasta 4 horas antes de la salida en agencias o en "Mis Reservas".
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                        ¿Cuál es la política de devoluciones?
+                    </button>
+                </h2>
+                <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body text-muted">
+                        Devolución del 85% si se anula con 4 horas de anticipación.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ========== FOOTER ========== -->
+<footer class="footer-premium-clean text-white pt-5 pb-4">
+    <div class="container">
+        <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+                <div class="mb-3">
+                    <img src="{% static 'img/logo.png' %}" alt="Cejer Logo" class="footer-logo">
+                </div>
+                <p class="text-secondary small">Líderes en transporte terrestre de pasajeros, conectando rutas nacionales con altos estándares de seguridad, puntualidad y servicio.</p>
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <h6 class="text-uppercase fw-bold text-white mb-3">Empresa</h6>
+                <ul class="list-unstyled text-secondary small d-flex flex-column gap-2">
+                    <li><a href="#" class="text-secondary text-decoration-none">Sobre Nosotros</a></li>
+                    <li><a href="#" class="text-secondary text-decoration-none">Nuestra Flota</a></li>
+                    <li><a href="#" class="text-secondary text-decoration-none">Agencias</a></li>
+                </ul>
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <h6 class="text-uppercase fw-bold text-white mb-3">Servicios</h6>
+                <ul class="list-unstyled text-secondary small d-flex flex-column gap-2">
+                    <li><a href="#" class="text-secondary text-decoration-none">Venta de Pasajes</a></li>
+                    <li><a href="#" class="text-secondary text-decoration-none">Carga y Encomiendas</a></li>
+                    <li><a href="#" class="text-secondary text-decoration-none">Convenios Empresa</a></li>
+                </ul>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <h6 class="text-uppercase fw-bold text-white mb-3">Contacto Corporativo</h6>
+                <p class="text-secondary small mb-1"><i class="fas fa-phone text-success me-2"></i>+56 9 1234 5678</p>
+                <p class="text-secondary small mb-1"><i class="far fa-envelope text-success me-2"></i>soporte@cejer.cl</p>
+                <p class="text-secondary small mb-3"><i class="fas fa-map-marker-alt text-success me-2"></i>Terminal Sur, Santiago, Chile</p>
+                <div class="d-flex gap-3 fs-5">
+                    <a href="#" class="text-secondary"><i class="fab fa-facebook-f"></i></a>
+                    <a href="#" class="text-secondary"><i class="fab fa-instagram"></i></a>
+                    <a href="#" class="text-secondary"><i class="fab fa-twitter"></i></a>
+                </div>
+            </div>
+        </div>
+        <hr class="border-secondary my-4">
+        <div class="text-center text-secondary small">
+            © 2026 Cejer S.A. — Todos los derechos reservados. Diseño centrado en la conversión.
+        </div>
+    </div>
+</footer>
+
+<!-- ========== SCRIPTS MODULARES ========== -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (function() {
+        'use strict';
+
+        // --- 1. NAVBAR SCROLL ---
+        const navbar = document.getElementById('mainNavbar');
+        function handleScroll() {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        }
+        handleScroll();
+        window.addEventListener('scroll', handleScroll);
+
+        // --- 2. HERO SLIDER ---
+        const slides = [
+            { image: "{% static 'img/banner2.png' %}", title: "Descansar viajando", subtitle: "Compra tus pasajes de forma rápida y segura con nosotros." },
+            { image: "{% static 'img/banner3.png' %}", title: "Destinos que te enamoran", subtitle: "Viaja cómodo y seguro a los mejores destinos del país." },
+            { image: "{% static 'img/banner4.png' %}", title: "Flota de Primera", subtitle: "Buses modernos con wifi, aire acondicionado y más servicios." },
+            { image: "{% static 'img/banner5.png' %}", title: "Ofertas Imperdibles", subtitle: "Precios especiales en compras anticipadas. ¡Aprovecha!" }
+        ];
+        let currentIndex = 0;
+        const heroSection = document.getElementById('heroSlider');
+        const heroTitle = document.getElementById('heroTitle');
+        const heroSubtitle = document.getElementById('heroSubtitle');
+
+        function preloadImages() {
+            slides.forEach(s => { const img = new Image(); img.src = s.image; });
+        }
+        preloadImages();
+
+        if (heroSection && slides[0]) {
+            heroSection.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.65)), url('${slides[0].image}')`;
+        }
+
+        function changeSlide() {
+            $(heroTitle).css('opacity', '0');
+            $(heroSubtitle).css('opacity', '0');
+            setTimeout(() => {
+                currentIndex = (currentIndex + 1) % slides.length;
+                const s = slides[currentIndex];
+                heroSection.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.65)), url('${s.image}')`;
+                heroTitle.textContent = s.title;
+                heroSubtitle.textContent = s.subtitle;
+                $(heroTitle).css('opacity', '1');
+                $(heroSubtitle).css('opacity', '1');
+            }, 300);
+        }
+        if (slides.length > 1) {
+            setInterval(changeSlide, 5000);
+        }
+
+        // --- 3. FECHAS MÍNIMAS ---
+        const today = new Date().toISOString().split('T')[0];
+        $('#fecha_viaje').attr('min', today);
+        $('#fecha_vuelta').attr('min', today);
+        $('#fecha_viaje').on('change', function() {
+            let ida = $(this).val();
+            let vuelta = $('#fecha_vuelta').val();
+            if (vuelta && vuelta < ida) { $('#fecha_vuelta').val(ida); }
+            $('#fecha_vuelta').attr('min', ida);
+        });
+        $('#fecha_vuelta').on('change', function() {
+            let ida = $('#fecha_viaje').val();
+            let vuelta = $(this).val();
+            if (ida && vuelta < ida) {
+                alert('La fecha de vuelta no puede ser anterior a la fecha de ida.');
+                $(this).val(ida);
+            }
+        });
+
+        // --- 4. CONTADORES ANIMADOS (ESTADÍSTICAS) ---
+        function animateCounters() {
+            $('.stat-number').each(function() {
+                const $el = $(this);
+                const target = parseInt($el.data('count'), 10);
+                if (isNaN(target)) return;
+                let current = 0;
+                const increment = Math.ceil(target / 60);
+                const timer = setInterval(() => {
+                    current += increment;
+                    if (current >= target) {
+                        current = target;
+                        clearInterval(timer);
+                    }
+                    $el.text(current.toLocaleString());
+                }, 20);
+            });
+        }
+
+        // Intersection Observer para activar contadores al hacer scroll
+        const statsSection = document.querySelector('.stat-number')?.closest('.row');
+        if (statsSection) {
+            const observer = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                    animateCounters();
+                    observer.disconnect();
+                }
+            }, { threshold: 0.3 });
+            observer.observe(statsSection);
+        }
+
+        // --- 5. TEMPORIZADORES PARA PROMOCIONES FLASH ---
+        document.querySelectorAll('.countdown-timer').forEach(el => {
+            const endTime = new Date(el.dataset.end).getTime();
+            if (isNaN(endTime)) return;
+            function updateTimer() {
+                const now = new Date().getTime();
+                let diff = endTime - now;
+                if (diff <= 0) {
+                    el.textContent = '00:00:00';
+                    return;
+                }
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                el.textContent = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+            }
+            updateTimer();
+            setInterval(updateTimer, 1000);
+        });
+
+        // --- 6. SMOOTH SCROLL PARA ENLACES INTERNOS ---
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                const targetEl = document.querySelector(targetId);
+                if (targetEl) {
+                    e.preventDefault();
+                    targetEl.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+    })();
+</script>
+{% endblock %}

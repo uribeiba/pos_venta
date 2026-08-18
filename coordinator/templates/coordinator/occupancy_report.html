@@ -1,0 +1,87 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Reporte de Ocupación{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h3><i class="fas fa-chart-line me-2"></i> Reporte de ocupación - {{ month_name }} {{ year }}</h3>
+        <div>
+            <form method="get" class="d-inline">
+                <input type="month" name="month" value="{{ month }}" class="form-control d-inline-block w-auto" style="display: inline-block;">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+            </form>
+            <a href="?export=csv&month={{ month }}" class="btn btn-success ms-2"><i class="fas fa-file-csv"></i> Exportar CSV</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <canvas id="occupancyChart" height="100"></canvas>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white fw-semibold">Viajes del mes</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" id="occupancyTable">
+                    <thead class="table-light">
+                        <tr><th>Fecha</th><th>Ruta</th><th>Bus</th><th>Asientos totales</th><th>Vendidos</th><th>Ocupación</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for d in data %}
+                        <tr>
+                            <td>{{ d.date }}</td>
+                            <td>{{ d.route }}</td>
+                            <td>{{ d.bus }}</td>
+                            <td>{{ d.total }}</td>
+                            <td>{{ d.sold }}</td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-{% if d.occupancy >= 80 %}danger{% elif d.occupancy >= 50 %}warning{% else %}success{% endif %}" style="width: {{ d.occupancy }}%;">{{ d.occupancy }}%</div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center">No hay viajes en este mes.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('occupancyChart').getContext('2d');
+    const labels = {{ data|map:'date'|join:','|safe }};
+    const occupancyData = {{ data|map:'occupancy'|join:','|safe }};
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ocupación (%)',
+                data: occupancyData,
+                backgroundColor: 'rgba(44, 62, 80, 0.7)',
+                borderColor: '#2c3e50',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true, max: 100, title: { display: true, text: 'Porcentaje ocupado' } }
+            },
+            responsive: true,
+            maintainAspectRatio: true
+        }
+    });
+</script>
+{% endblock %}

@@ -4,94 +4,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}POS - Cejer{% endblock %}</title>
-    <link rel="icon" type="image/x-icon" href="{% static 'img/favicon.ico' %}">
-    <!-- Bootstrap 5 + Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>{% block title %}Cejer POS{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <!-- jQuery (necesario para Select2 y algunos plugins) -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Chart.js (para gráficos) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    {% block extra_css %}{% endblock %}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <style>
-        body {
-            background: #f0f2f5;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        :root { --sidebar-width: 260px; --verde-cejer: #4CAF50; --verde-oscuro: #388E3C; --verde-claro: #C8E6C9; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background-color: #f5f7fa; overflow-x: hidden; }
+        .sidebar {
+            position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100vh;
+            background: #1e2b38; color: #cbd5e1; z-index: 1030; overflow-y: auto;
+            transition: transform 0.3s ease; padding: 0; display: flex; flex-direction: column;
         }
-        .navbar-pos {
-            background: #2c3e50;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        .sidebar .brand { padding: 16px 20px; background: #15222e; border-bottom: 1px solid #2a3a48; display: flex; align-items: center; gap: 12px; }
+        .sidebar .brand img { height: 40px; filter: brightness(0) invert(1); }
+        .sidebar .brand span { font-size: 1.2rem; font-weight: 700; color: white; }
+        .sidebar .agencia-info { padding: 12px 20px; background: #15222e; border-bottom: 1px solid #2a3a48; font-size: 0.85rem; color: #a0b3c9; }
+        .sidebar .agencia-info strong { color: white; display: block; }
+        .sidebar .agencia-info small { display: block; color: #a0b3c9; }
+        .sidebar .user-badge { display: inline-block; background: #2a3a48; padding: 4px 12px; border-radius: 30px; color: white; font-size: 0.8rem; margin-top: 6px; }
+        .sidebar .nav-menu { flex: 1; padding: 12px 0; list-style: none; margin: 0; }
+        .sidebar .nav-menu .nav-item { display: block; padding: 10px 20px; color: #cbd5e1; text-decoration: none; border-left: 3px solid transparent; transition: all 0.2s; font-weight: 500; font-size: 0.9rem; }
+        .sidebar .nav-menu .nav-item:hover, .sidebar .nav-menu .nav-item.active { background: #2a3a48; color: white; border-left-color: var(--verde-cejer); }
+        .sidebar .nav-menu .nav-item i { width: 24px; text-align: center; margin-right: 12px; color: #7a8fa3; }
+        .sidebar .nav-menu .nav-item:hover i, .sidebar .nav-menu .nav-item.active i { color: var(--verde-cejer); }
+        .sidebar .nav-menu .submenu { padding-left: 0; list-style: none; margin: 0; }
+        .sidebar .nav-menu .submenu .nav-item { padding: 6px 20px 6px 48px; font-size: 0.85rem; border-left: 3px solid transparent; }
+        .sidebar .nav-menu .submenu .nav-item i { width: 20px; margin-right: 10px; }
+        .sidebar .nav-divider { border-top: 1px solid #2a3a48; margin: 6px 20px; }
+        .main-content { margin-left: var(--sidebar-width); padding: 20px; min-height: 100vh; transition: margin-left 0.3s ease; }
+        .sidebar-toggle { display: none; background: #1e2b38; color: white; border: none; padding: 8px 14px; border-radius: 6px; font-size: 1.2rem; position: fixed; top: 12px; left: 12px; z-index: 1040; }
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; padding-top: 60px; }
+            .sidebar-toggle { display: block; }
         }
-        .navbar-pos .navbar-brand {
-            font-weight: 700;
-            color: white;
-        }
-        .navbar-pos .nav-link {
-            color: #cbd5e1;
-        }
-        .navbar-pos .nav-link:hover {
-            color: white;
-        }
-        .user-info {
-            background: #1e2b38;
-            border-radius: 2rem;
-            padding: 0.3rem 1rem;
-            color: white;
-        }
-        .content-wrapper {
-            padding: 1.5rem 2rem;
-        }
-        .footer-pos {
-            background: white;
-            border-top: 1px solid #e2e8f0;
-            padding: 1rem;
-            text-align: center;
-            font-size: 0.8rem;
-            color: #64748b;
-            margin-top: 2rem;
-        }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-track { background: #1e2b38; }
+        .sidebar::-webkit-scrollbar-thumb { background: #4a5a6a; border-radius: 10px; }
+        .nav-item.logout { color: #94a3b8; }
+        .nav-item.logout:hover { background: #2a3a48; color: white; }
     </style>
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <!-- Barra superior -->
-    <nav class="navbar navbar-pos navbar-expand-lg px-3">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'pos_home' %}">
-                <i class="fas fa-ticket-alt me-2"></i> Cejer | Punto de Venta
-            </a>
-            <div class="ms-auto d-flex align-items-center gap-3">
-                <div class="user-info">
-                    <i class="fas fa-user-circle me-1"></i> {{ request.user.username }}
-                </div>
-                <form method="post" action="{% url 'admin:logout' %}" class="m-0">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-outline-light">
-                        <i class="fas fa-sign-out-alt"></i> Salir
-                    </button>
-                </form>
-            </div>
+    <nav class="sidebar" id="sidebar">
+        <div class="brand">
+            <img src="{% static 'img/logo.png' %}" alt="Cejer">
+            <span>Punto de Venta</span>
         </div>
+        <div class="agencia-info">
+            <strong><i class="fas fa-map-marker-alt me-1"></i> {{ user.profile.terminal.name|default:"Agencia" }}</strong>
+            {% if user.profile.terminal %}
+                <small>{{ user.profile.terminal.address|default:"" }}</small>
+                <small>Fono: {{ user.profile.terminal.phone|default:"" }}</small>
+            {% endif %}
+            <span class="user-badge"><i class="fas fa-user me-1"></i> {{ user.username }}</span>
+        </div>
+        <ul class="nav-menu">
+            <!-- ===== MENÚ PRINCIPAL ===== -->
+            
+            <!-- ✅ INICIO - VENTAS -->
+            <li><a href="{% url 'pos_home' %}" class="nav-item {% if request.resolver_match.url_name == 'pos_home' %}active{% endif %}">
+                <i class="fas fa-home"></i> Inicio
+            </a></li>
+            
+            <!-- ✅ VENTA PASAJES -->
+            <li><a href="{% url 'pos_home' %}" class="nav-item"><i class="fas fa-ticket-alt"></i> Venta Pasajes</a></li>
+
+            <!-- ✅ CAJA -->
+            <li><a href="{% url 'pos_caja' %}" class="nav-item {% if request.resolver_match.url_name == 'pos_caja' %}active{% endif %}">
+                <i class="fas fa-cash-register"></i> Caja
+            </a></li>
+
+            <!-- Encomienda: oculto para el rol convenio -->
+            {% if user.profile.role != 'convenio' %}
+                <li><a href="#" class="nav-item"><i class="fas fa-box"></i> Encomienda</a></li>
+            {% endif %}
+
+            <li class="nav-divider"></li>
+            
+            <!-- ===== OPERACIONES ===== -->
+            <li>
+                <a href="#" class="nav-item" data-bs-toggle="collapse" data-bs-target="#submenuOperaciones" aria-expanded="false">
+                    <i class="fas fa-cogs"></i> Operaciones <i class="fas fa-chevron-down float-end mt-1"></i>
+                </a>
+                <ul class="submenu collapse" id="submenuOperaciones">
+                    {% if user.profile.role != 'convenio' %}
+                        <li><a href="#" class="nav-item"><i class="fas fa-percent"></i> Devolución 85%</a></li>
+                        <li><a href="#" class="nav-item"><i class="fas fa-percent"></i> Devolución 100% (Sup.)</a></li>
+                    {% endif %}
+                    <li><a href="#" class="nav-item"><i class="fas fa-print"></i> Imprimir a Distancia</a></li>
+                    <li><a href="#" class="nav-item"><i class="fas fa-print"></i> Imprimir Convenio</a></li>
+                    {% if user.profile.role != 'convenio' %}
+                        <li><a href="#" class="nav-item"><i class="fas fa-copy"></i> Copia Web</a></li>
+                        <li><a href="#" class="nav-item"><i class="fas fa-credit-card"></i> Modificar Pago</a></li>
+                    {% endif %}
+                    <li><a href="#" class="nav-item"><i class="fas fa-route"></i> Paradas / Subidas</a></li>
+                </ul>
+            </li>
+            
+            <li class="nav-divider"></li>
+            
+            <!-- ===== CERRAR SESIÓN ===== -->
+            <li>
+                <a href="{% url 'logout' %}" class="nav-item logout" onclick="return confirm('¿Está seguro que desea cerrar sesión?');">
+                    <i class="fas fa-door-open"></i> Cerrar Sesión
+                </a>
+            </li>
+        </ul>
     </nav>
-
-    <div class="content-wrapper">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
+    
+    <button class="sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+    
+    <div class="main-content">{% block content %}{% endblock %}</div>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Sidebar toggle para móviles
+        document.getElementById('sidebarToggle')?.addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
         
-        {% block content %}{% endblock %}
-    </div>
-
-    <div class="footer-pos">
-        <i class="fas fa-bus"></i> Cejer - Sistema de Ventas de Pasajes
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+        // Cerrar sidebar al hacer clic fuera
+        document.addEventListener('click', function(e) {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+                if (!sidebar.contains(e.target) && !toggle.contains(e.target)) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

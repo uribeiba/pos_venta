@@ -1,0 +1,196 @@
+<!-- templates/includes/stepper.html -->
+{% load static %}
+
+<div class="stepper-modern mb-4">
+  <div class="stepper-wrapper">
+    
+    <!-- Paso 1: Busca tu viaje -->
+    <div class="step-item {% if paso_actual == 1 %}active{% endif %} {% if paso_actual > 1 %}completed{% endif %}">
+      <div class="step-icon">
+        {% if paso_actual > 1 %}
+          <i class="fas fa-check"></i>
+        {% else %}
+          <span>1</span>
+        {% endif %}
+      </div>
+      <div class="step-title">Busca tu viaje</div>
+      <div class="step-line"></div>
+    </div>
+
+    <!-- Paso 2: Elige tu horario -->
+    <div class="step-item {% if paso_actual == 2 %}active{% endif %} {% if paso_actual > 2 %}completed{% endif %}">
+      <div class="step-icon">
+        {% if paso_actual > 2 %}
+          <i class="fas fa-check"></i>
+        {% else %}
+          <span>2</span>
+        {% endif %}
+      </div>
+      <div class="step-title">Elige tu horario</div>
+      <div class="step-line"></div>
+    </div>
+
+    <!-- Paso 3: Asientos -->
+    <div class="step-item {% if paso_actual == 3 %}active{% endif %} {% if paso_actual > 3 %}completed{% endif %}">
+      <div class="step-icon">
+        {% if paso_actual > 3 %}
+          <i class="fas fa-check"></i>
+        {% else %}
+          <span>3</span>
+        {% endif %}
+      </div>
+      <div class="step-title">Asientos</div>
+      <div class="step-line"></div>
+    </div>
+
+    <!-- Paso 4: Datos y Pago -->
+    <div class="step-item {% if paso_actual == 4 %}active{% endif %}">
+      <div class="step-icon">
+        <span>4</span>
+      </div>
+      <div class="step-title">Datos y Pago</div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.stepper-modern {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+  border: 1px solid #edf2f7;
+}
+
+.stepper-wrapper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.step-item {
+  flex: 1;
+  text-align: center;
+  position: relative;
+  z-index: 2;
+}
+
+.step-icon {
+  width: 48px;
+  height: 48px;
+  background: #f1f5f9;
+  border: 2px solid #e2e8f0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+  position: relative;
+  z-index: 2;
+  transition: all 0.3s ease;
+}
+
+.step-icon span {
+  font-size: 18px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.step-icon i {
+  font-size: 20px;
+  color: white;
+}
+
+/* Paso activo */
+.step-item.active .step-icon {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59,130,246,0.2);
+}
+
+.step-item.active .step-icon span {
+  color: white;
+}
+
+.step-item.active .step-title {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+/* Paso completado */
+.step-item.completed .step-icon {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.step-item.completed .step-icon span {
+  display: none;
+}
+
+.step-item.completed .step-icon i {
+  display: block;
+}
+
+.step-item.completed .step-title {
+  color: #10b981;
+}
+
+/* Título del paso */
+.step-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  transition: all 0.3s ease;
+}
+
+/* Línea conectora */
+.step-line {
+  position: absolute;
+  top: 24px;
+  left: calc(50% + 24px);
+  width: calc(100% - 48px);
+  height: 2px;
+  background: #e2e8f0;
+  z-index: 0;
+}
+
+.step-item:last-child .step-line {
+  display: none;
+}
+
+/* Línea completada */
+.step-item.completed .step-line {
+  background: #10b981;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .step-icon {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .step-icon span, 
+  .step-icon i {
+    font-size: 14px;
+  }
+  
+  .step-title {
+    font-size: 10px;
+  }
+  
+  .step-line {
+    top: 18px;
+    left: calc(50% + 18px);
+    width: calc(100% - 36px);
+  }
+}
+
+@media (max-width: 576px) {
+  .step-title {
+    font-size: 9px;
+  }
+}
+</style>

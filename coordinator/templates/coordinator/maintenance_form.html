@@ -1,0 +1,74 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Registrar Mantenimiento{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h3><i class="fas fa-wrench me-2"></i> Nuevo mantenimiento</h3>
+        <a href="{% url 'coordinator:maintenance_list' %}" class="btn btn-secondary">Volver</a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Bus</label>
+                        <select name="bus" class="form-select" required>
+                            <option value="">-- Seleccionar bus --</option>
+                            {% for b in buses %}
+                            <option value="{{ b.id }}" {% if selected_bus and selected_bus.id == b.id %}selected{% endif %}>{{ b.plate }} - {{ b.model|default:"-" }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tipo</label>
+                        <select name="maintenance_type" class="form-select" required>
+                            <option value="preventive">Preventivo</option>
+                            <option value="corrective">Correctivo</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" name="date" class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kilometraje actual</label>
+                        <input type="number" name="mileage" class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Próximo mantenimiento (km)</label>
+                        <input type="number" name="next_maintenance_km" class="form-control" value="0">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Descripción del trabajo</label>
+                        <textarea name="description" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Costo</label>
+                        <input type="number" step="100" name="cost" class="form-control" value="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Taller</label>
+                        <input type="text" name="workshop" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Técnico responsable</label>
+                        <input type="text" name="technician" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notas adicionales</label>
+                        <textarea name="notes" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">Guardar mantenimiento</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

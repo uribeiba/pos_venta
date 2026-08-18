@@ -1,0 +1,1229 @@
+{% extends 'booking/base_pos.html' %}
+{% load static %}
+
+{% block title %}POS — Venta de Asientos | {{ trip.route.origin.name }} → {{ trip.route.destination.name }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'booking/css/modern.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+    /* (todos tus estilos existentes, mantenlos igual) */
+    .pos-main-wrapper { display: flex; gap: 20px; align-items: flex-start; margin-top: 10px; }
+    .trip-banner-top { margin-top: -10px; background-color: #1e2b38; color: #cbd5e1; border-radius: 8px; }
+    .seatmap-main-panel { flex: 1.1; min-width: 310px; max-width: 360px; }
+    .sidebar-sale-panel { flex: 1.9; min-width: 450px; }
+    .card-pos-header { background-color: #2c3e50 !important; color: #ffffff; font-weight: 600; font-size: 0.9rem; border-top-left-radius: 1rem; border-top-right-radius: 1rem; }
+    .btn-checkout-primary { background-color: #2c3e50 !important; border-color: #2c3e50 !important; color: white !important; font-weight: 600; border-radius: 30px; transition: all 0.2s ease; }
+    .btn-preview { background-color: #f5821f !important; border-color: #f5821f !important; color: white !important; font-weight: 600; border-radius: 30px; transition: all 0.2s ease; }
+    .btn-preview:hover { background-color: #e06e10 !important; border-color: #e06e10 !important; }
+    .btn-client-display { background-color: transparent !important; border: 2px solid rgba(255,255,255,0.3) !important; color: white !important; font-weight: 600; border-radius: 30px; transition: all 0.2s ease; }
+    .btn-client-display:hover { background-color: rgba(255,255,255,0.15) !important; border-color: white !important; }
+    .nav-pos-tabs { border-bottom: 2px solid #2c3e50; margin-bottom: 15px; }
+    .nav-pos-tabs .nav-link { color: #64748b; font-weight: 600; border: none; padding: 10px 20px; font-size: 0.85rem; }
+    .nav-pos-tabs .nav-link.active { color: white !important; background-color: #2c3e50 !important; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+    .nav-deck-pills { background: #f1f5f9; padding: 4px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: center; border: 1px solid #cbd5e1; }
+    .nav-deck-pills .nav-link { color: #4a5568; font-weight: 700; font-size: 0.8rem; padding: 6px 24px; border-radius: 6px; border: none; background: transparent; }
+    .nav-deck-pills .nav-link.active { background-color: #2c3e50 !important; color: white !important; }
+    .grid-wrapper { text-align: center; display: flex; justify-content: center; align-items: flex-start; min-height: 520px; }
+    .bus-container-frame { position: relative; width: 235px; background-size: 100% 100%; background-repeat: no-repeat; background-position: center; border-radius: 30px; box-sizing: border-box; }
+    .bus-container-frame.floor-1 { background-image: url('{% static "img/inferior.png" %}'); padding: 240px 24px 30px 24px; }
+    .bus-container-frame.floor-2 { background-image: url('{% static "img/superior.png" %}'); padding: 90px 24px 30px 24px; }
+    .seat-grid { display: grid !important; width: 100%; justify-content: center; align-content: start; }
+    .seat-cell { aspect-ratio: 1 / 1; width: 100%; max-width: 38px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .seat-cell img { width: 100%; height: 100%; object-fit: contain; }
+    .seat-number { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); font-size: 10px; font-weight: 800; color: white; text-shadow: 1px 1px 1px rgba(0,0,0,0.9); }
+    .hold-timer-seat { position: absolute; bottom: 2px; right: 2px; font-size: 7px; background: rgba(0,0,0,0.7); color: #ffc107; border-radius: 4px; padding: 0 2px; font-weight: bold; font-family: monospace; pointer-events: none; z-index: 3; }
+    .status-free img { filter: none; }
+    .status-my-hold img, .status-my-hold-active img { filter: hue-rotate(190deg) saturate(2.5) brightness(0.95); }
+    .status-occupied img, .status-sold img, .status-reserved img { filter: hue-rotate(65deg) brightness(0.9) saturate(1.6); cursor: not-allowed !important; }
+    .legend-box { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.75rem; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+    .legend-color { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    .route-timeline { list-style: none; position: relative; padding-left: 20px; }
+    .route-timeline::before { content: ''; position: absolute; left: 5px; top: 5px; bottom: 5px; width: 2px; background: #cbd5e1; }
+    .route-timeline-item { position: relative; padding-bottom: 1.2rem; }
+    .route-timeline-item:last-child { padding-bottom: 0; }
+    .route-timeline-item::before { content: ''; position: absolute; left: -19px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; border: 2px solid #fff; }
+    .route-timeline-item.origin::before { background: #3b82f6; }
+    .route-timeline-item.destination::before { background: #10b981; }
+    .passenger-compact-table th { font-size: 0.78rem; background-color: #f8fafc; color: #475569; font-weight: 600; border-bottom: 2px solid #cbd5e1; }
+    .passenger-compact-table td { padding: 5px 4px !important; vertical-align: middle; }
+    .passenger-compact-table .seat-badge { background-color: #1e2b38; color: white; font-weight: 700; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; display: inline-block; position: relative; }
+    .hold-timer-table { font-size: 0.65rem; color: #ff9800; display: block; font-weight: normal; margin-top: 2px; }
+    @media print { body * { visibility: hidden; } #print-manifest-section, #print-manifest-section * { visibility: visible; } #print-manifest-section { position: absolute; left: 0; top: 0; width: 100%; } .no-print { display: none !important; } }
+    
+    /* ===== ESTILOS PARA EL MODAL DE VISTA PREVIA ===== */
+    .modal-preview .modal-content { border-radius: 20px; overflow: hidden; border: none; }
+    .modal-preview .modal-header { background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); color: white; border: none; padding: 20px 24px; }
+    .modal-preview .modal-body { padding: 24px; max-height: 70vh; overflow-y: auto; }
+    .modal-preview .modal-footer { border-top: 1px solid #e2e8f0; padding: 16px 24px; background: #f8fafc; }
+    .modal-preview .btn-close-white { filter: brightness(0) invert(1); }
+    
+    .preview-seat-item { 
+        display: flex; 
+        justify-content: space-between; 
+        padding: 10px 14px; 
+        border-bottom: 1px solid #f1f5f9; 
+        align-items: center;
+        border-radius: 8px;
+        transition: background 0.2s ease;
+    }
+    .preview-seat-item:hover { background: #f8fafc; }
+    .preview-seat-item .seat-number-display { font-weight: 700; font-size: 1rem; color: #f5821f; }
+    .preview-seat-item .seat-price-display { font-weight: 700; color: #1a1a1a; }
+    
+    .preview-summary-box { 
+        background: #fff7f0; 
+        border-radius: 12px; 
+        padding: 16px 20px; 
+        border: 1px solid #fed7aa;
+    }
+    
+    /* ===== TOAST DE FEEDBACK ===== */
+    .toast-feedback {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        border-radius: 12px;
+        padding: 12px 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        font-weight: 600;
+        font-size: 0.9rem;
+        animation: slideInRight 0.3s ease;
+    }
+    .toast-feedback.success { background: #10b981; color: white; }
+    .toast-feedback.error { background: #e30613; color: white; }
+    .toast-feedback.warning { background: #f59e0b; color: white; }
+    .toast-feedback.info { background: #3b82f6; color: white; }
+    
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+        .pos-main-wrapper { flex-direction: column; align-items: center; }
+        .seatmap-main-panel { max-width: 100%; width: 100%; }
+        .sidebar-sale-panel { min-width: unset; width: 100%; }
+        .bus-container-frame { width: 200px; }
+        .bus-container-frame.floor-1 { padding: 200px 20px 20px 20px; }
+        .bus-container-frame.floor-2 { padding: 70px 20px 20px 20px; }
+        .btn-client-display .d-none { display: inline !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="alert alert-dark border-0 p-2 mb-3 shadow-sm d-flex justify-content-between align-items-center trip-banner-top no-print">
+        <div>
+            <span class="badge bg-warning text-dark me-2">VIAJE #{{ trip.id }}</span>
+            <strong>Ruta:</strong> {{ trip.route.origin.name }} <i class="fas fa-arrow-right mx-1"></i> {{ trip.route.destination.name }}
+            <span class="mx-3">|</span>
+            <strong>Bus/Patente:</strong> {{ trip.bus.plate_number|default:trip.bus.plate|default:"S/P" }}
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <!-- ===== BOTÓN PANTALLA CLIENTE ===== -->
+            <button type="button" class="btn btn-client-display" 
+                    onclick="openClientDisplay()" 
+                    title="Abrir pantalla para el cliente (segunda pantalla)">
+                <i class="fas fa-tv me-1"></i> <span class="d-none d-md-inline">Pantalla Cliente</span>
+            </button>
+            <div class="text-end text-white fw-bold small">
+                <i class="far fa-calendar-alt me-1"></i> {{ trip.departure|date:"d/m/Y H:i" }}
+            </div>
+        </div>
+    </div>
+
+    <div class="pos-main-wrapper">
+        <div class="seatmap-main-panel no-print">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header card-pos-header py-2">
+                    <i class="fas fa-couch me-1"></i> Distribución de Asientos
+                </div>
+                <div class="card-body p-3">
+                    <ul class="nav nav-pills nav-deck-pills" id="deckSelectorTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="piso1-tab" data-bs-toggle="pill" data-bs-target="#piso1-pane" type="button" role="tab">
+                                <i class="fas fa-bus"></i> Piso 1
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="piso2-tab" data-bs-toggle="pill" data-bs-target="#piso2-pane" type="button" role="tab">
+                                <i class="fas fa-level-up-alt"></i> Piso 2
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="deckSelectorTabsContent">
+                        <div class="tab-pane fade show active" id="piso1-pane" role="tabpanel">
+                            <div id="deck-1-container" class="editor-container"></div>
+                        </div>
+                        <div class="tab-pane fade" id="piso2-pane" role="tabpanel">
+                            <div id="deck-2-container" class="editor-container"></div>
+                        </div>
+                    </div>
+                    <div class="legend-box mt-3">
+                        <div><span class="legend-color" style="background:#4299e1; border:1px solid #cbd5e1;"></span> Disponible</div>
+                        <div><span class="legend-color" style="background:#ff9800;"></span> Seleccionado (Naranjo)</div>
+                        <div><span class="legend-color" style="background:#48bb78;"></span> Ocupado / Vendido (Verde)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-sale-panel">
+            <ul class="nav nav-tabs nav-pos-tabs no-print" id="posModulesTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pasajes-tab" data-bs-toggle="tab" data-bs-target="#pasajes-pane" type="button" role="tab">
+                        <i class="fas fa-ticket-alt me-1"></i> Venta Pasajes
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="descripcion-tab" data-bs-toggle="tab" data-bs-target="#descripcion-pane" type="button" role="tab">
+                        <i class="fas fa-route me-1"></i> Descripción
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="detalle-bus-tab" data-bs-toggle="tab" data-bs-target="#detalle-bus-pane" type="button" role="tab">
+                        <i class="fas fa-bus-alt me-1"></i> Detalle del Bus
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="plantilla-recorrido-tab" data-bs-toggle="tab" data-bs-target="#plantilla-recorrido-pane" type="button" role="tab">
+                        <i class="fas fa-print me-1"></i> Plantilla Recorrido
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="posModulesTabContent">
+                <div class="tab-pane fade show active no-print" id="pasajes-pane" role="tabpanel">
+                    <div id="empty-seats-alert" class="card border-0 shadow-sm p-4 text-center text-muted small">
+                        <i class="fas fa-hand-pointer fa-2x mb-2 text-secondary d-block"></i>
+                        Haga clic en los asientos disponibles en el croquis para agregarlos a la planilla de venta.
+                    </div>
+                    <div id="passenger-table-wrapper" class="card border-0 shadow-sm p-2 mb-3" style="display: none;">
+                        <div class="table-responsive">
+                            <table class="table table-sm text-center align-middle passenger-compact-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 12%;">Asiento</th>
+                                        <th style="width: 25%;">RUT / Pasaporte</th>
+                                        <th style="width: 30%;">Nombre Completo</th>
+                                        <th style="width: 18%;">Teléfono</th>
+                                        <th style="width: 15%;">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="passenger-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card border-0 shadow-sm mt-3" id="checkout-summary-box" style="display: none;">
+                        <div class="card-body p-3 bg-light rounded">
+                            <div class="row align-items-center g-2">
+                                <div class="col-md-4">
+                                    <label class="form-label mb-1 small fw-bold">Método de Pago</label>
+                                    <select id="payment-method" class="form-select form-select-sm">
+                                        <option value="cash">Efectivo</option>
+                                        <option value="card">Tarjeta Transbank</option>
+                                        <option value="transfer">Transferencia</option>
+                                    </select>
+                                </div>
+                                <!-- NUEVO: Campo para código promocional -->
+                                <div class="col-md-4">
+                                    <label class="form-label mb-1 small fw-bold">Código promocional</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" id="discount-code" class="form-control" placeholder="Ej: ESTUDIANTE10">
+                                        <span class="input-group-text" id="discount-feedback"></span>
+                                    </div>
+                                    <small class="text-muted" id="discount-info"></small>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <span class="text-muted small d-block">Monto Total:</span>
+                                    <span class="fs-3 fw-bold text-primary" id="total-amount">$0</span>
+                                    <span id="original-total" class="small text-muted text-decoration-line-through" style="display:none;"></span>
+                                </div>
+                                <div class="col-md-12 mt-2">
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <button type="button" id="previewBtn" class="btn btn-preview w-100 py-2">
+                                                <i class="fas fa-eye me-1"></i> VER RESUMEN
+                                            </button>
+                                        </div>
+                                        <div class="col-6">
+                                            <button type="button" id="confirm-sale" class="btn btn-checkout-primary w-100 py-2">
+                                                <i class="fas fa-print me-1"></i> EMITIR BOLETOS
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade no-print" id="descripcion-pane" role="tabpanel">
+                    <div class="card border-0 shadow-sm p-3">
+                        <div class="d-flex align-items-center mb-3 p-2 bg-light rounded">
+                            <div class="bg-primary text-white d-flex align-items-center justify-content-center rounded-circle me-3" style="width: 40px; height: 40px;">
+                                <i class="fas fa-map-marked-alt"></i>
+                            </div>
+                            <div>
+                                <h6 class="mb-0 fw-bold text-dark">{{ trip.route.origin.name }} <i class="fas fa-arrow-right fa-xs mx-1"></i> {{ trip.route.destination.name }}</h6>
+                                <small class="text-muted">Servicio ID: #{{ trip.id }} | Tipo: {{ trip.route.service_type|default:"Estándar" }}</small>
+                            </div>
+                        </div>
+                        <ul class="route-timeline ms-2">
+                            <li class="route-timeline-item origin">
+                                <div class="fw-bold text-dark">{{ trip.route.origin.name }}</div>
+                                <small class="text-muted d-block">Salida: <strong>{{ trip.departure|date:"d M, H:i" }} hrs</strong></small>
+                            </li>
+                            {% for stop in trip.route.stops.all %}
+                            <li class="route-timeline-item">
+                                <div class="text-dark fw-semibold" style="font-size: 0.85rem;">{{ stop.city.name }}</div>
+                                <small class="text-muted d-block">Parada intermedia Nº {{ stop.order }}</small>
+                            </li>
+                            {% empty %}
+                            <li class="route-timeline-item">
+                                <span class="text-muted small fst-italic">Servicio directo sin paradas en ruta.</span>
+                            </li>
+                            {% endfor %}
+                            <li class="route-timeline-item destination">
+                                <div class="fw-bold text-dark">{{ trip.route.destination.name }}</div>
+                                <small class="text-muted d-block">Llegada aprox: <strong>{{ trip.arrival|date:"d M, H:i"|default:"Según tramo" }}</strong></small>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade no-print" id="detalle-bus-pane" role="tabpanel">
+                    <div class="card border-0 shadow-sm p-3">
+                        <div class="p-3 mb-3 text-white rounded d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #1e2b38 0%, #2c3e50 100%);">
+                            <div>
+                                <span class="badge bg-warning text-dark mb-1 fw-bold">PPU: {{ trip.bus.plate_number|default:trip.bus.plate|upper }}</span>
+                                <h5 class="mb-0 fw-bold">{{ trip.bus.model|default:"Bus de Línea" }}</h5>
+                            </div>
+                            <div style="font-size: 2.2rem; opacity: 0.25;"><i class="fas fa-bus"></i></div>
+                        </div>
+                        <table class="table table-sm table-borderless my-2" style="font-size: 0.85rem;">
+                            <tbody>
+                                <tr class="border-bottom"><td class="text-muted">Pisos del Bus:</td><td class="fw-bold text-end">{{ trip.bus.floors|default:"1" }}</td></tr>
+                                <tr class="border-bottom"><td class="text-muted">Capacidad Total:</td><td class="fw-bold text-end">{{ trip.seats_total }} Asientos</td></tr>
+                                <tr class="border-bottom"><td class="text-muted">Piloto:</td><td class="fw-bold text-end">{{ trip.driver1.get_full_name|default:"Asignación Pendiente" }}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="plantilla-recorrido-pane" role="tabpanel">
+                    <div class="card border-0 shadow-sm p-3" id="print-manifest-section">
+                        <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                            <div>
+                                <h5 class="fw-bold text-dark mb-0">PLANILLA DE RECORRIDO — HOJA DE RUTA</h5>
+                                <small class="text-muted">Servicio #{{ trip.id }} | Patente: {{ trip.bus.plate_number|upper }} | Conductor: {{ trip.driver1.get_full_name|default:"S/A" }}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="d-block fw-bold text-primary">{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</span>
+                                <small class="text-secondary">Salida: {{ trip.departure|date:"d/m/Y H:i" }} hrs</small>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3 no-print">
+                            <div class="col-md-8">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-white text-muted"><i class="fas fa-search"></i></span>
+                                    <input type="text" id="manifest-search-input" class="form-control" placeholder="Buscar pasajero por nombre, RUT o asiento...">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" onclick="window.print();" class="btn btn-sm btn-dark w-100 fw-bold">
+                                    <i class="fas fa-print me-1"></i> IMPRIMIR HOJA DE RUTA
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle text-center small" style="font-size:0.82rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 8%;">Asiento</th>
+                                        <th style="width: 8%;">Piso</th>
+                                        <th style="width: 18%;">RUT / Pasaporte</th>
+                                        <th style="width: 35%;">Nombre Pasajero</th>
+                                        <th style="width: 15%;">Destino / Tramo</th>
+                                        <th style="width: 16%;">Estado Pago</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="manifest-table-body">
+                                    {% if tickets %}
+                                        {% for t in tickets %}
+                                        <tr class="manifest-row-item">
+                                            <td class="fw-bold text-primary bg-light">{{ t.seat_number }}</td>
+                                            <td>Piso {{ t.seat_deck }}</td>
+                                            <td class="text-secondary font-monospace">{{ t.passenger_id|default:"—" }}</td>
+                                            <td class="text-start fw-semibold ps-2">{{ t.passenger_name|upper }}</td>
+                                            <td><span class="badge bg-light text-dark border">{{ t.trip.route.destination.name }}</span></td>
+                                            <td><span class="badge bg-success-subtle text-success p-1 rounded">Emitido / Pagado</span></td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="6" class="text-muted p-4 text-center fst-italic">
+                                                <i class="fas fa-info-circle me-1"></i> No se registran pasajes emitidos o reservados para este tramo todavía.
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="row mt-5 pt-4 text-center d-none d-print-flex">
+                            <div class="col-6">
+                                <div class="mx-auto border-top border-dark w-70 pt-2" style="font-size:0.75rem;">Firma Cajero / Despachador</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="mx-auto border-top border-dark w-70 pt-2" style="font-size:0.75rem;">Firma Conductor Titular</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL DE VISTA PREVIA ===== -->
+<div class="modal fade modal-preview" id="previewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-eye me-2"></i> Resumen de Compra</h5>
+                    <span style="font-size: 0.8rem; opacity: 0.7;">Revisa los detalles antes de confirmar</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Asientos -->
+                <div id="previewSeats" class="mb-4"></div>
+                
+                <!-- Resumen -->
+                <div class="preview-summary-box">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div style="font-size: 0.75rem; color: #94a3b8;">Total asientos</div>
+                            <div style="font-weight: 700; font-size: 1.5rem;" id="previewCount">0</div>
+                        </div>
+                        <div class="col-6 text-end">
+                            <div style="font-size: 0.75rem; color: #94a3b8;">Total a pagar</div>
+                            <div style="font-weight: 700; font-size: 1.5rem; color: #f5821f;" id="previewTotal">$0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Datos cliente -->
+                <div class="mt-4">
+                    <h6 class="fw-bold" style="font-size: 0.9rem;"><i class="fas fa-user me-2"></i> Datos del cliente principal</h6>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label style="font-size: 0.7rem; color: #94a3b8;">RUT</label>
+                            <input type="text" class="form-control form-control-sm" id="previewRut" placeholder="12.345.678-9">
+                        </div>
+                        <div class="col-md-4">
+                            <label style="font-size: 0.7rem; color: #94a3b8;">Teléfono</label>
+                            <input type="text" class="form-control form-control-sm" id="previewPhone" placeholder="9XXXXXXXX">
+                        </div>
+                        <div class="col-md-4">
+                            <label style="font-size: 0.7rem; color: #94a3b8;">Nombre completo</label>
+                            <input type="text" class="form-control form-control-sm" id="previewName" placeholder="Nombre del cliente">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius: 50px; padding: 8px 24px;">
+                    <i class="fas fa-times me-2"></i> Cerrar
+                </button>
+                <button type="button" class="btn btn-success" id="previewConfirmBtn" style="border-radius: 50px; padding: 8px 28px; background: #10b981; border-color: #10b981; font-weight: 600;">
+                    <i class="fas fa-check me-2"></i> Confirmar compra
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+                xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+            }
+        }
+    });
+
+    const tripId = {{ trip.id }};
+    const unitPrice = parseFloat("{{ trip.route.base_price|default:'0' }}");
+    const cols = parseInt("{{ cols|default:5 }}") || 5;
+    
+    let gridLower = {{ grid_lower|safe|default:"[]" }};
+    let gridUpper = {{ grid_upper|safe|default:"[]" }};
+    let selectedSeats = [];
+    let timerInterval = null;
+    let currentDiscount = null;
+    let discountPercentage = 0;
+
+    // ===== FUNCIÓN PARA ABRIR PANTALLA CLIENTE =====
+    function openClientDisplay() {
+        const tripId = {{ trip.id }};
+        const url = `/client/client-display/launch/${tripId}/`;
+        window.open(url, '_blank', 'width=1400,height=900,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
+    }
+
+    // ===== FUNCIÓN PARA OBTENER EL PISO ACTIVO (VERSIÓN DEFINITIVA) =====
+    function getActiveDeck() {
+        // 🔍 Método 1: Buscar por data-deck en el tab que tiene clase 'active'
+        const activeTabs = document.querySelectorAll('.deck-tab');
+        for (let tab of activeTabs) {
+            if (tab.classList.contains('active')) {
+                const deck = parseInt(tab.dataset.deck);
+                if (deck && !isNaN(deck)) {
+                    console.log('🔍 Piso activo (método 1 - tab.active):', deck);
+                    return deck;
+                }
+            }
+        }
+        
+        // 🔍 Método 2: Buscar por el deck visible
+        const deck1 = document.getElementById('deck-1');
+        const deck2 = document.getElementById('deck-2');
+        
+        if (deck1 && deck2) {
+            const style1 = window.getComputedStyle(deck1);
+            const style2 = window.getComputedStyle(deck2);
+            
+            // Si el piso 2 está visible y el piso 1 no
+            if (style2.display !== 'none' && style1.display === 'none') {
+                console.log('🔍 Piso activo (método 2 - deck-2 visible):', 2);
+                return 2;
+            }
+            // Si el piso 1 está visible y el piso 2 no
+            if (style1.display !== 'none' && style2.display === 'none') {
+                console.log('🔍 Piso activo (método 2 - deck-1 visible):', 1);
+                return 1;
+            }
+        }
+        
+        // 🔍 Método 3: Buscar por el tab que tiene el contenido visible
+        const piso1Pane = document.getElementById('piso1-pane');
+        const piso2Pane = document.getElementById('piso2-pane');
+        
+        if (piso1Pane && piso2Pane) {
+            if (piso1Pane.classList.contains('show') && piso1Pane.classList.contains('active')) {
+                console.log('🔍 Piso activo (método 3 - piso1-pane activo):', 1);
+                return 1;
+            }
+            if (piso2Pane.classList.contains('show') && piso2Pane.classList.contains('active')) {
+                console.log('🔍 Piso activo (método 3 - piso2-pane activo):', 2);
+                return 2;
+            }
+        }
+        
+        // 🔍 Método 4: Buscar el botón que tiene data-deck y está activo
+        const allButtons = document.querySelectorAll('.deck-tab');
+        for (let btn of allButtons) {
+            const isActive = btn.getAttribute('aria-selected') === 'true';
+            if (isActive) {
+                const deck = parseInt(btn.dataset.deck);
+                if (deck && !isNaN(deck)) {
+                    console.log('🔍 Piso activo (método 4 - aria-selected true):', deck);
+                    return deck;
+                }
+            }
+        }
+        
+        // 🔍 Método 5: Buscar por el contenedor del bus que no está oculto
+        const busFrames = document.querySelectorAll('.bus-container-frame');
+        for (let frame of busFrames) {
+            const parent = frame.closest('.bus-deck');
+            if (parent) {
+                const style = window.getComputedStyle(parent);
+                if (style.display !== 'none') {
+                    const deckNum = parseInt(parent.id.replace('deck-', ''));
+                    if (deckNum && !isNaN(deckNum)) {
+                        console.log('🔍 Piso activo (método 5 - contenedor visible):', deckNum);
+                        return deckNum;
+                    }
+                }
+            }
+        }
+        
+        console.log('🔍 Piso activo (fallback - default 1):', 1);
+        return 1;
+    }
+
+    // ===== SINCRONIZAR CON PANTALLA DEL CLIENTE (ACTUALIZADO) =====
+    function syncWithClientDisplay() {
+        const tripId = {{ trip.id }};
+        
+        // Obtener el piso activo usando el método robusto
+        const activeDeck = getActiveDeck();
+        
+        // 🔍 LOG PARA DEPURAR
+        console.log('📤 Enviando piso activo:', activeDeck);
+        console.log('📤 Asientos seleccionados:', selectedSeats.length);
+        
+        // Obtener datos de la selección actual
+        const seatsData = selectedSeats.map(seat => ({
+            number: seat.number,
+            deck: seat.deck,
+            price: parseFloat(seat.price || unitPrice)
+        }));
+        
+        // Obtener datos del cliente desde la tabla
+        const firstRow = $('#passenger-table-body tr').first();
+        const customerData = {
+            name: firstRow.length ? firstRow.find('.p-name').val() || '' : '',
+            rut: firstRow.length ? firstRow.find('.p-rut').val() || '' : '',
+            phone: firstRow.length ? firstRow.find('.p-phone').val() || '' : '',
+            email: ''
+        };
+        
+        // Enviar asientos a la API de sincronización
+        $.ajax({
+            url: '/client/client-sync/',
+            type: 'POST',
+            data: JSON.stringify({
+                trip_id: tripId,
+                action: 'update_seats',
+                seats: seatsData,
+                active_deck: activeDeck
+            }),
+            contentType: 'application/json',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            success: function(response) {
+                console.log('📤 Respuesta sync (seats):', response);
+                if (response.success) {
+                    // Enviar también datos del cliente
+                    $.ajax({
+                        url: '/client/client-sync/',
+                        type: 'POST',
+                        data: JSON.stringify({
+                            trip_id: tripId,
+                            action: 'update_customer',
+                            customer: customerData
+                        }),
+                        contentType: 'application/json',
+                        headers: {
+                            'X-CSRFToken': getCookie('csrftoken')
+                        }
+                    });
+                }
+            },
+            error: function(xhr) {
+                console.log('❌ Error en sync:', xhr);
+            }
+        });
+    }
+
+    // ===== Sincronizar piso al cambiar de tab (click manual) =====
+    $(document).on('click', '.deck-tab', function() {
+        const deck = $(this).data('deck');
+        console.log('🔄 Click en tab - deck:', deck);
+        
+        // Remover active de todos los tabs
+        $('.deck-tab').removeClass('active');
+        // Remover aria-selected
+        $('.deck-tab').removeAttr('aria-selected');
+        
+        // Agregar active al tab clickeado
+        $(this).addClass('active');
+        $(this).attr('aria-selected', 'true');
+        
+        // Mostrar/ocultar decks
+        $('.bus-deck').hide();
+        $(`#deck-${deck}`).show();
+        
+        // También actualizar los paneles de Bootstrap
+        const targetPane = $(this).data('bs-target') || $(this).attr('data-bs-target');
+        if (targetPane) {
+            $('.tab-pane').removeClass('show active');
+            $(targetPane).addClass('show active');
+        }
+        
+        console.log('✅ Tab activo ahora:', $('.deck-tab.active').data('deck'));
+        console.log('✅ Deck visible:', $(`#deck-${deck}`).is(':visible'));
+        
+        // Sincronizar el cambio de piso con el cliente
+        if (selectedSeats.length > 0) {
+            setTimeout(function() {
+                syncWithClientDisplay();
+            }, 100);
+        }
+    });
+
+    // ===== NUEVO: Evento de Bootstrap cuando se muestra un tab (RESPALDO) =====
+    $(document).on('shown.bs.tab', '.deck-tab', function(e) {
+        const deck = $(this).data('deck');
+        console.log('🔄 (Bootstrap) Tab mostrado - deck:', deck);
+        console.log('🔄 (Bootstrap) Evento target:', e.target);
+        
+        // Sincronizar el cambio de piso con el cliente
+        if (selectedSeats.length > 0) {
+            setTimeout(function() {
+                syncWithClientDisplay();
+            }, 100);
+        }
+    });
+
+    // ===== VALIDAR RUT CHILENO =====
+    function validarRutChileno(rut) {
+        if (!rut) return false;
+        rut = rut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        if (rut.length < 2) return false;
+        const cuerpo = rut.slice(0, -1);
+        const dvEsperado = rut.slice(-1);
+        if (!/^\d+$/.test(cuerpo)) return false;
+        let suma = 0;
+        let multiplo = 2;
+        for (let i = cuerpo.length - 1; i >= 0; i--) {
+            suma += parseInt(cuerpo[i]) * multiplo;
+            multiplo = multiplo < 7 ? multiplo + 1 : 2;
+        }
+        const dvCalculado = 11 - (suma % 11);
+        let dvFinal = dvCalculado === 11 ? '0' : dvCalculado === 10 ? 'K' : dvCalculado.toString();
+        return dvFinal === dvEsperado;
+    }
+
+    function formatTimeRemaining(expiresAtISO) {
+        const now = new Date();
+        const expires = new Date(expiresAtISO);
+        const diff = expires - now;
+        if (diff <= 0) return "00:00";
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function updateAllTimers() {
+        for (let i = 0; i < selectedSeats.length; i++) {
+            const seat = selectedSeats[i];
+            if (seat.expires_at) {
+                const timeStr = formatTimeRemaining(seat.expires_at);
+                const row = $(`#passenger-table-body tr[data-number="${seat.number}"]`);
+                if (row.length) {
+                    const timerSpan = row.find('.hold-timer-table');
+                    if (timerSpan.length) {
+                        timerSpan.text(timeStr);
+                        if (timeStr === "00:00") liberarAsientoPorExpiracion(seat.number);
+                    }
+                }
+                const seatCell = $(`.seat-cell[data-number="${seat.number}"]`);
+                if (seatCell.length) {
+                    let timerDiv = seatCell.find('.hold-timer-seat');
+                    if (!timerDiv.length) {
+                        timerDiv = $('<div class="hold-timer-seat"></div>');
+                        seatCell.append(timerDiv);
+                    }
+                    timerDiv.text(timeStr);
+                    if (timeStr === "00:00") timerDiv.remove();
+                }
+            }
+        }
+    }
+
+    function liberarAsientoPorExpiracion(seatNumber) {
+        const seatIndex = selectedSeats.findIndex(s => s.number === seatNumber);
+        if (seatIndex === -1) return;
+        const seat = selectedSeats[seatIndex];
+        const seatCell = $(`.seat-cell[data-number="${seat.number}"]`)[0];
+        $.post(`/api/release/${tripId}/`, { seat_id: seat.number })
+            .done(() => {
+                selectedSeats.splice(seatIndex, 1);
+                if (seatCell) seatCell.classList.replace('status-my-hold', 'status-free');
+                updateSummary();
+            });
+    }
+
+    function startGlobalTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            if (selectedSeats.length > 0 && selectedSeats.some(s => s.expires_at)) updateAllTimers();
+        }, 1000);
+    }
+
+    function getSeatImage(service) {
+        const s = String(service).toLowerCase();
+        if (s === 'cama') return "{% static 'img/cama.png' %}";
+        if (s === 'ejecutivo') return "{% static 'img/ejecutivo.png' %}";
+        return "{% static 'img/semi.png' %}";
+    }
+
+    function renderDeck(containerId, deckNumber, grid) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (!grid || !grid.length) {
+            if (deckNumber === 2) $('#deckSelectorTabs').hide();
+            container.innerHTML = `<div class="text-center p-3 text-muted border rounded bg-light small">Piso ${deckNumber} no configurado.</div>`;
+            return;
+        }
+        container.innerHTML = `
+            <div class="grid-wrapper">
+                <div id="busFrame_${deckNumber}" class="bus-container-frame floor-${deckNumber}">
+                    <div id="seatGrid_${deckNumber}" class="seat-grid"></div>
+                </div>
+            </div>
+        `;
+        const gridContainer = document.getElementById(`seatGrid_${deckNumber}`);
+        gridContainer.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        gridContainer.style.columnGap = "12px";
+        gridContainer.style.rowGap = "8px";
+        for (let r = 0; r < grid.length; r++) {
+            if (!grid[r]) continue;
+            for (let c = 0; c < cols; c++) {
+                const cell = grid[r][c];
+                if (!cell) {
+                    gridContainer.appendChild(Object.assign(document.createElement('div'), {className: 'seat-cell type-space'}));
+                    continue;
+                }
+                const type = cell.type || 'L';
+                let status = cell.status || 'free';
+                const label = cell.label ? String(cell.label).trim() : '';
+                const service = cell.service || 'semi';
+                if (type === 'L' && !label) {
+                    gridContainer.appendChild(Object.assign(document.createElement('div'), {className: 'seat-cell type-space'}));
+                    continue;
+                }
+                if (selectedSeats.some(s => s.number === label)) status = 'my-hold';
+                const div = document.createElement('div');
+                div.className = `seat-cell type-${type} status-${status}`;
+                div.dataset.deck = deckNumber;
+                div.dataset.number = label;
+                if (type === 'L') {
+                    const img = document.createElement('img');
+                    img.src = getSeatImage(service);
+                    div.appendChild(img);
+                    const numberSpan = document.createElement('span');
+                    numberSpan.className = 'seat-number';
+                    numberSpan.textContent = label;
+                    div.appendChild(numberSpan);
+                    const seatData = selectedSeats.find(s => s.number === label);
+                    if (seatData && seatData.expires_at) {
+                        const timerSpan = document.createElement('div');
+                        timerSpan.className = 'hold-timer-seat';
+                        timerSpan.textContent = formatTimeRemaining(seatData.expires_at);
+                        div.appendChild(timerSpan);
+                    }
+                    if (status === 'free' || status === 'my-hold') {
+                        div.style.cursor = 'pointer';
+                        div.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            toggleSeat(div, deckNumber, label, service, unitPrice);
+                        });
+                    }
+                } else {
+                    let icon = '';
+                    if (type === 'B') icon = '<i class="fa-solid fa-restroom text-secondary"></i>';
+                    else if (type === 'E') icon = '<i class="fa-solid fa-stairs text-secondary"></i>';
+                    else if (type === 'D') icon = '<i class="fa-solid fa-door-open text-secondary"></i>';
+                    div.innerHTML = icon;
+                }
+                gridContainer.appendChild(div);
+            }
+        }
+    }
+
+    // ===== toggleSeat MODIFICADO con sincronización =====
+    function toggleSeat(seatElement, deck, number, service, price) {
+        const isSelected = selectedSeats.some(s => s.number === number);
+        const pasajesTab = document.querySelector('#pasajes-tab');
+        if (pasajesTab) (bootstrap.Tab.getInstance(pasajesTab) || new bootstrap.Tab(pasajesTab)).show();
+        if (isSelected) {
+            $.post(`/api/release/${tripId}/`, { seat_id: number })
+                .done(response => {
+                    if (response.ok) {
+                        selectedSeats = selectedSeats.filter(s => s.number !== number);
+                        if (seatElement) seatElement.classList.replace('status-my-hold', 'status-free');
+                        $(seatElement).find('.hold-timer-seat').remove();
+                        updateSummary();
+                        // ===== SINCRONIZAR CON CLIENTE =====
+                        syncWithClientDisplay();
+                        if (selectedSeats.length === 0 && timerInterval) clearInterval(timerInterval);
+                    }
+                });
+        } else {
+            $.post(`/api/hold/${tripId}/`, { seat_id: number })
+                .done(response => {
+                    if (response.ok) {
+                        let expiresAt = response.expires_at;
+                        if (!expiresAt) {
+                            expiresAt = new Date(Date.now() + 5*60000).toISOString();
+                        }
+                        selectedSeats.push({ deck, number, service, price, expires_at: expiresAt });
+                        if (seatElement) {
+                            seatElement.classList.replace('status-free', 'status-my-hold');
+                            let timerDiv = $(seatElement).find('.hold-timer-seat');
+                            if (!timerDiv.length) {
+                                timerDiv = $('<div class="hold-timer-seat"></div>');
+                                $(seatElement).append(timerDiv);
+                            }
+                            timerDiv.text(formatTimeRemaining(expiresAt));
+                        }
+                        updateSummary();
+                        // ===== SINCRONIZAR CON CLIENTE =====
+                        syncWithClientDisplay();
+                        if (!timerInterval) startGlobalTimer();
+                    } else {
+                        alert(response.error || 'Asiento no disponible.');
+                    }
+                });
+        }
+    }
+
+    // ===== updateSummary MODIFICADO con sincronización =====
+    function updateSummary() {
+        const count = selectedSeats.length;
+        let subtotal = 0;
+        selectedSeats.forEach(s => { subtotal += parseFloat(s.price || unitPrice); });
+        let total = subtotal;
+        let originalTotal = subtotal;
+        if (discountPercentage > 0) {
+            total = subtotal * (1 - discountPercentage / 100);
+        }
+        $('#total-amount').text('$' + total.toLocaleString('es-CL'));
+        if (discountPercentage > 0) {
+            $('#original-total').text('$' + originalTotal.toLocaleString('es-CL')).show();
+        } else {
+            $('#original-total').hide();
+        }
+        
+        const tbody = $('#passenger-table-body');
+        if (count === 0) {
+            $('#passenger-table-wrapper').hide();
+            $('#checkout-summary-box').hide();
+            $('#empty-seats-alert').fadeIn(150);
+            tbody.html('');
+            if (timerInterval) clearInterval(timerInterval);
+        } else {
+            $('#empty-seats-alert').hide();
+            $('#passenger-table-wrapper').show();
+            $('#checkout-summary-box').fadeIn(150);
+            let cachedInputs = {};
+            $('#passenger-table-body tr').each(function() {
+                const num = $(this).data('number');
+                cachedInputs[num] = {
+                    rut: $(this).find('.p-rut').val(),
+                    name: $(this).find('.p-name').val(),
+                    phone: $(this).find('.p-phone').val()
+                };
+            });
+            tbody.html('');
+            selectedSeats.forEach((seat, idx) => {
+                const cached = cachedInputs[seat.number] || {};
+                const timeRemaining = seat.expires_at ? formatTimeRemaining(seat.expires_at) : '';
+                const timerHtml = timeRemaining ? `<span class="hold-timer-table">⏱️ ${timeRemaining}</span>` : '';
+                const rowHtml = `
+                    <tr data-number="${seat.number}" data-deck="${seat.deck}">
+                        <td><span class="seat-badge">${seat.number}</span>${timerHtml}</td>
+                        <td>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control form-control-sm p-rut" value="${cached.rut || ''}" placeholder="12345678-9">
+                                <button class="btn btn-secondary btn-search-passenger-compact" type="button"><i class="fas fa-search"></i></button>
+                            </div>
+                        </td>
+                        <td><input type="text" class="form-control form-control-sm p-name" value="${cached.name || ''}" placeholder="Nombre Pasajero"></td>
+                        <td><input type="text" class="form-control form-control-sm p-phone" value="${cached.phone || ''}" placeholder="912345678"></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                ${idx > 0 ? `<button type="button" class="btn btn-outline-secondary btn-clone-first"><i class="fas fa-copy"></i></button>` : ''}
+                                <button type="button" class="btn btn-danger btn-remove-seat"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                tbody.append(rowHtml);
+            });
+        }
+        
+        // ===== SINCRONIZAR CON CLIENTE (solo si hay asientos seleccionados) =====
+        if (selectedSeats.length > 0) {
+            syncWithClientDisplay();
+        }
+    }
+
+    // ===== FUNCIÓN PARA MOSTRAR TOAST =====
+    function showToast(message, type = 'success') {
+        const existingToast = $('.toast-feedback');
+        if (existingToast.length) existingToast.remove();
+        
+        const toast = $(`<div class="toast-feedback ${type}">${message}</div>`);
+        $('body').append(toast);
+        setTimeout(() => {
+            toast.fadeOut(300, function() { $(this).remove(); });
+        }, 3000);
+    }
+
+    // ===== VALIDAR CÓDIGO PROMOCIONAL (CORREGIDO) =====
+let discountTimeout = null;
+$('#discount-code').on('input', function() {
+    clearTimeout(discountTimeout);
+    const code = $(this).val().trim();
+    const feedbackSpan = $('#discount-feedback');
+    const infoSpan = $('#discount-info');
+    if (code.length < 3) {
+        feedbackSpan.html('');
+        infoSpan.html('');
+        currentDiscount = null;
+        discountPercentage = 0;
+        updateSummary();
+        return;
+    }
+    discountTimeout = setTimeout(() => {
+        feedbackSpan.html('<i class="fas fa-spinner fa-spin"></i>');
+        
+        // ===== CALCULAR SUBTOTAL (sin descuento) =====
+        const subtotal = selectedSeats.reduce((acc, s) => acc + parseFloat(s.price || unitPrice), 0);
+        
+        // ===== ENVIAR TRIP_ID Y TOTAL AL BACKEND =====
+        $.get(`/api/validate-discount/?code=${encodeURIComponent(code)}&trip_id=${tripId}&total=${subtotal}`)
+            .done(data => {
+                if (data.valid) {
+                    feedbackSpan.html('<i class="fas fa-check-circle text-success"></i>');
+                    infoSpan.html(`Descuento aplicado: ${data.percentage}%`).removeClass('text-danger').addClass('text-success');
+                    currentDiscount = code;
+                    discountPercentage = data.percentage;
+                    showToast(`✅ Descuento del ${data.percentage}% aplicado`, 'success');
+                } else {
+                    feedbackSpan.html('<i class="fas fa-times-circle text-danger"></i>');
+                    infoSpan.html(data.error || 'Código inválido').removeClass('text-success').addClass('text-danger');
+                    currentDiscount = null;
+                    discountPercentage = 0;
+                    showToast(`❌ ${data.error || 'Código inválido'}`, 'error');
+                }
+                updateSummary();
+            })
+            .fail(() => {
+                feedbackSpan.html('<i class="fas fa-exclamation-triangle text-danger"></i>');
+                infoSpan.html('Error al validar').addClass('text-danger');
+                currentDiscount = null;
+                discountPercentage = 0;
+                updateSummary();
+                showToast('❌ Error al conectar con el servidor', 'error');
+            });
+    }, 500);
+});
+
+    // ===== BUSCAR CLIENTE POR RUT =====
+    $(document).on('click', '.btn-search-passenger-compact', function() {
+        const btn = $(this);
+        const row = btn.closest('tr');
+        const rutInput = row.find('.p-rut');
+        const query = rutInput.val().trim();
+        if (query.length < 2) {
+            showToast('Ingresa al menos 2 caracteres para buscar.', 'warning');
+            return;
+        }
+        if (!validarRutChileno(query)) {
+            showToast('RUT inválido. Formato: 12345678-9', 'error');
+            rutInput.focus();
+            return;
+        }
+        btn.html('<i class="fas fa-spinner fa-spin"></i>');
+        $.ajax({
+            url: '/search-customer/',
+            type: 'GET',
+            data: { q: query },
+            success: function(data) {
+                if (data.customers && data.customers.length > 0) {
+                    const c = data.customers[0];
+                    row.find('.p-name').val(c.full_name).css('background-color', '#dcfce7');
+                    row.find('.p-phone').val(c.phone || '');
+                    setTimeout(() => row.find('.p-name').css('background-color', ''), 700);
+                    showToast(`✅ Cliente encontrado: ${c.full_name}`, 'success');
+                } else {
+                    row.find('.p-name').val('').focus();
+                    showToast(`⚠️ No se encontró cliente con RUT: ${query}`, 'warning');
+                }
+            },
+            complete: function() { btn.html('<i class="fas fa-search"></i>'); }
+        });
+    });
+
+    // ===== CLONAR DATOS DEL PRIMER PASAJERO =====
+    $(document).on('click', '.btn-clone-first', function() {
+        const firstRow = $('#passenger-table-body tr').first();
+        const currentRow = $(this).closest('tr');
+        currentRow.find('.p-rut').val(firstRow.find('.p-rut').val());
+        currentRow.find('.p-name').val(firstRow.find('.p-name').val());
+        currentRow.find('.p-phone').val(firstRow.find('.p-phone').val());
+        currentRow.css('background-color', '#dcfce7');
+        setTimeout(() => currentRow.css('background-color', ''), 500);
+        showToast('📋 Datos copiados del primer pasajero', 'info');
+    });
+
+    // ===== ELIMINAR ASIENTO =====
+    $(document).on('click', '.btn-remove-seat', function() {
+        const num = String($(this).closest('tr').data('number'));
+        const cell = $(`.seat-cell[data-number="${num}"]`)[0];
+        const seatObj = selectedSeats.find(s => s.number === num);
+        if (seatObj) toggleSeat(cell, seatObj.deck, num, seatObj.service, seatObj.price);
+    });
+
+    // ===== MODAL DE VISTA PREVIA =====
+    function openPreviewModal() {
+        if (selectedSeats.length === 0) {
+            showToast('No hay asientos seleccionados para previsualizar.', 'warning');
+            return;
+        }
+        
+        let html = '';
+        let total = 0;
+        selectedSeats.forEach((seat) => {
+            const price = parseFloat(seat.price || unitPrice);
+            total += price;
+            html += `
+                <div class="preview-seat-item">
+                    <div>
+                        <span class="seat-number-display">💺 Asiento ${seat.number}</span>
+                        <span style="font-size: 0.75rem; color: #94a3b8; margin-left: 8px;">Piso ${seat.deck || 1}</span>
+                    </div>
+                    <div class="seat-price-display">$${Math.round(price).toLocaleString()}</div>
+                </div>
+            `;
+        });
+        
+        $('#previewSeats').html(html);
+        $('#previewCount').text(selectedSeats.length);
+        
+        let finalTotal = total;
+        if (discountPercentage > 0) {
+            finalTotal = total * (1 - discountPercentage / 100);
+        }
+        $('#previewTotal').text('$' + Math.round(finalTotal).toLocaleString());
+        
+        // Cargar datos del primer pasajero
+        const firstRow = $('#passenger-table-body tr').first();
+        if (firstRow.length) {
+            $('#previewRut').val(firstRow.find('.p-rut').val());
+            $('#previewName').val(firstRow.find('.p-name').val());
+            const phone = firstRow.find('.p-phone').val() || '';
+            const maskedPhone = phone.length > 4 ? phone.slice(0, -4) + 'XXXX' : phone;
+            $('#previewPhone').val(maskedPhone);
+        }
+        
+        $('#previewModal').modal('show');
+    }
+
+    // ===== EVENTO: BOTÓN VER RESUMEN =====
+    $('#previewBtn').click(openPreviewModal);
+
+    // ===== EVENTO: CONFIRMAR DESDE MODAL =====
+    $('#previewConfirmBtn').click(function() {
+        const rut = $('#previewRut').val().trim();
+        const name = $('#previewName').val().trim();
+        if (!rut || !name) {
+            showToast('Completa el RUT y nombre del cliente principal.', 'warning');
+            return;
+        }
+        if (!validarRutChileno(rut)) {
+            showToast('RUT inválido. Formato: 12345678-9', 'error');
+            return;
+        }
+        // Copiar datos al primer pasajero
+        const firstRow = $('#passenger-table-body tr').first();
+        if (firstRow.length) {
+            firstRow.find('.p-rut').val(rut);
+            firstRow.find('.p-name').val(name);
+            const phone = $('#previewPhone').val().replace(/XXXX$/, '');
+            firstRow.find('.p-phone').val(phone);
+            showToast('✅ Datos del cliente aplicados', 'success');
+        }
+        $('#previewModal').modal('hide');
+        // Simular clic en confirmar compra
+        $('#confirm-sale').click();
+    });
+
+    // ===== BUSCADOR EN MANIFIESTO =====
+    $('#manifest-search-input').on('keyup', function() {
+        const val = $(this).val().toLowerCase().trim();
+        $('#manifest-table-body .manifest-row-item').each(function() {
+            const text = $(this).text().toLowerCase();
+            $(this).toggle(text.includes(val));
+        });
+    });
+
+    // ===== CONFIRMAR COMPRA =====
+    $('#confirm-sale').click(() => {
+        if (selectedSeats.length === 0) {
+            showToast('Seleccione al menos un asiento.', 'warning');
+            return;
+        }
+        let valid = true;
+        const seatsData = [];
+        $('#passenger-table-body tr').each(function() {
+            const num = $(this).data('number');
+            const deck = $(this).data('deck');
+            const rut = $(this).find('.p-rut').val().trim();
+            const name = $(this).find('.p-name').val().trim();
+            const phone = $(this).find('.p-phone').val().trim();
+            if (!name) {
+                showToast(`Ingrese el nombre para el Asiento ${num}.`, 'warning');
+                $(this).find('.p-name').focus();
+                valid = false;
+                return false;
+            }
+            if (rut && !validarRutChileno(rut)) {
+                showToast(`RUT inválido para asiento ${num}. Formato: 12345678-9`, 'error');
+                $(this).find('.p-rut').focus();
+                valid = false;
+                return false;
+            }
+            seatsData.push({ deck: deck, number: num, passenger_rut: rut, passenger_name: name, passenger_email: "", passenger_phone: phone });
+        });
+        if (!valid) return;
+        const paymentMethod = $('#payment-method').val();
+        const discountCode = $('#discount-code').val().trim();
+        const form = $('<form method="post" action="{% url 'pos_checkout' trip.id %}"></form>');
+        form.append(`<input type="hidden" name="csrfmiddlewaretoken" value="${getCookie('csrftoken')}">`);
+        form.append(`<input type="hidden" name="seats" value='${JSON.stringify(seatsData)}'>`);
+        form.append(`<input type="hidden" name="payment_method" value="${paymentMethod}">`);
+        form.append(`<input type="hidden" name="buyer_name" value="${seatsData[0].passenger_name}">`);
+        if (discountCode) {
+            form.append(`<input type="hidden" name="discount_code" value="${discountCode}">`);
+        }
+        $('body').append(form);
+        form.submit();
+    });
+
+    // ===== INICIALIZAR =====
+    $(document).ready(function() {
+        renderDeck('deck-1-container', 1, gridLower);
+        renderDeck('deck-2-container', 2, gridUpper);
+        updateSummary();
+        if (selectedSeats.some(s => s.expires_at)) startGlobalTimer();
+        document.querySelectorAll('#deckSelectorTabs button, #posModulesTab button').forEach(el => {
+            el.addEventListener('click', function(e) {
+                e.preventDefault();
+                (new bootstrap.Tab(this)).show();
+            });
+        });
+    });
+</script>
+{% endblock %}

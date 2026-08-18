@@ -241,15 +241,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
         if (!currentDeleteTrip) return;
         fetch('/coordinador/delete-trip-by-date/', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-CSRFToken': getCookie('csrftoken')
-    },
-    body: new URLSearchParams({
-        'trip_id': currentDeleteTrip.id
-    })
-})
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: new URLSearchParams({
+                'trip_id': currentDeleteTrip.id
+            })
+        })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -263,29 +263,44 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(err => alert('Error al eliminar: ' + err));
     });
 
-    // Envío del formulario de creación recurrente (sin recargar la página, usando fetch)
+    // Envío del formulario de creación recurrente (control robusto de errores asíncronos)
     document.getElementById('recurringForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const formData = new FormData(this);
+        
         fetch('/coordinador/generate-trips/', {
-    method: 'POST',
-    body: formData,
-    headers: {
-        'X-CSRFToken': getCookie('csrftoken'),
-        'X-Requested-With': 'XMLHttpRequest'   // ← Esta línea es la clave
-    }
-})
-        .then(response => response.json())
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(async response => {
+            const contentType = response.headers.get("content-type");
+            
+            // Si el servidor nos responde con HTML en vez de JSON (ej: un error 500 o redirección del login)
+            if (!contentType || !contentType.includes("application/json")) {
+                const errorHtml = await response.text();
+                console.error("Respuesta inesperada del servidor (no es JSON):", errorHtml);
+                throw new Error(`El servidor respondió con contenido HTML (Código ${response.status}). Revisa los registros de Django o la consola.`);
+            }
+            
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 alert(`✅ ${data.message}`);
                 calendar.refetchEvents(); // actualizar calendario
-                this.reset(); // opcional: limpiar formulario
+                this.reset(); // limpiar el formulario
             } else {
                 alert(`❌ Error: ${data.error}`);
             }
         })
-        .catch(err => alert('Error al generar viajes: ' + err));
+        .catch(err => {
+            alert('Error al generar viajes: ' + err.message);
+            console.error(err);
+        });
     });
 
     function getCookie(name) {

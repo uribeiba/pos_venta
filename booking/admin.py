@@ -1,43 +1,53 @@
-from __future__ import annotations
-from django.db.models import Count, Q
-from django import forms
-from django.contrib import admin, messages
-from django.db import transaction
-from django.shortcuts import get_object_or_404, render
+# booking/admin.py
+import logging
+from django.contrib import admin
+from django.db.models import Count
 from django.urls import path, reverse
 from django.utils.html import format_html
 from django.views.decorators.clickjacking import xframe_options_exempt
+from django.shortcuts import render, get_object_or_404
+from django import forms
+from django.contrib import messages
+from django.db import transaction
 from django.http import JsonResponse
-from datetime import date, datetime
 import json
+from datetime import date, datetime
 
+# Configurar logger
+logger = logging.getLogger(__name__)
+
+# ===== IMPORTACIONES DE MODELOS (TODOS) =====
 from .models import (
-    BusDocument, City, Company, Bus, DriverDocument, Route, Trip, Seat, SeatHold, Ticket,
-    Terminal, BusLayout, CashRegister, DailyReport)
-from .models import UserProfile
+    City,
+    Company,
+    Bus,
+    BusLayout,
+    Route,
+    Seat,
+    SeatHold,
+    Ticket,
+    Trip,
+    Terminal,
+    CashRegister,
+    DailyReport,
+    UserProfile,
+    Driver,
+    Assistant,
+    DriverDocument,
+    BusDocument,
+    Season,
+    Promotion,
+    Parcel,
+    Maintenance,
+    FuelRecord,
+    Customer,
+    CompanyContract,
+    ContractEmployee,
+)
 
-from django.contrib.auth import get_user_model
-from booking.models import Driver, Assistant
-
-# ---- Form opcional del asistente (si existe) ----
-try:
-    from .forms import BusWizardForm
-except Exception:
-    BusWizardForm = None
-
-User = get_user_model()
-
-
-@admin.register(UserProfile)
-class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'role', 'terminal', 'is_active', 'commission_rate', 'max_discount', 'created_at')
-    list_filter = ('role', 'is_active', 'terminal')
-    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email')
-
-
-# =========================
-# Helpers
-# =========================
+# ============================================================
+# HELPERS PARA MAPAS DE ASIENTOS
+# ============================================================
 def _build_grid(bus: Bus, deck: int):
     cols = int(bus.cols or 0)
     if cols <= 0:
@@ -158,7 +168,7 @@ def _build_trip_grid(trip: Trip):
     return lower, upper, cols
 
 
-# ---------- POS ----------
+# ---------- VISTAS POS (para el admin) ----------
 def pos_home(request):
     try:
         sel_date = request.GET.get("date") or ""
@@ -223,54 +233,64 @@ def pos_trip(request, trip_id: int):
     return render(request, "booking/seatmap.html", ctx)
 
 
-def _safe_register(model, admin_class):
-    try:
-        admin.site.unregister(model)
-    except Exception:
-        pass
-    admin.site.register(model, admin_class)
+# ============================================================
+# ACCIÓN MASIVA PARA BUS
+# ============================================================
+@admin.action(description="Regenerar asientos desde layout")
+def regenerate_seats_action(modeladmin, request, queryset):
+    total = 0
+    errors = 0
+    for bus in queryset:
+        try:
+            bus.ensure_layouts()
+            total += bus.regenerate_seats()
+        except Exception as e:
+            errors += 1
+            modeladmin.message_user(request, f"{bus}: {e}", level=messages.ERROR)
+    modeladmin.message_user(
+        request,
+        f"Se recrearon {total} asientos en {queryset.count()} bus(es).",
+        level=messages.SUCCESS if errors == 0 else messages.WARNING,
+    )
 
 
-# =========================
-# Admins básicos
-# =========================
+# ============================================================
+# ADMINS BÁSICOS (REGISTRO TEMPRANO)
+# ============================================================
+@admin.register(City)
 class CityAdmin(admin.ModelAdmin):
     list_display = ("name", "slug")
     search_fields = ("name", "slug")
 
 
+@admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
     list_display = ("name", "logo")
     search_fields = ("name",)
 
 
+@admin.register(Terminal)
 class TerminalAdmin(admin.ModelAdmin):
     list_display = ("name", "city", "address")
     search_fields = ("name", "city__name", "address")
     list_filter = ("city",)
 
 
+@admin.register(Route)
 class RouteAdmin(admin.ModelAdmin):
-    base_list_display = ["origin", "destination", "duration_minutes", "base_price"]
-    base_list_filter = ["origin", "destination"]
+    list_display = ["origin", "destination", "duration_minutes", "base_price"]
+    list_filter = ["origin", "destination"]
     search_fields = ("origin__name", "destination__name")
 
-    def __init__(self, model, admin_site):
-        super().__init__(model, admin_site)
-        if hasattr(model, "service"):
-            self.list_display = tuple(self.base_list_display + ["service"])
-            self.list_filter = tuple(self.base_list_filter + ["service"])
-        else:
-            self.list_display = tuple(self.base_list_display)
-            self.list_filter = tuple(self.base_list_filter)
 
-
+@admin.register(Seat)
 class SeatAdmin(admin.ModelAdmin):
     list_display = ("bus", "deck", "row", "position", "number", "is_window", "is_occupied")
     search_fields = ("bus__plate", "number")
     list_filter = ("bus", "deck", "is_window", "is_occupied")
 
 
+@admin.register(SeatHold)
 class SeatHoldAdmin(admin.ModelAdmin):
     list_display = ("trip", "seat", "user", "active", "expires_at", "created_at")
     list_filter = ("active",)
@@ -281,11 +301,13 @@ class SeatHoldAdmin(admin.ModelAdmin):
         "seat__number",
     )
 
+
 @admin.register(Driver)
 class DriverAdmin(admin.ModelAdmin):
     list_display = ("full_name", "rut", "phone", "email", "is_active")
     search_fields = ("full_name", "rut")
     list_filter = ("is_active",)
+
 
 @admin.register(Assistant)
 class AssistantAdmin(admin.ModelAdmin):
@@ -293,15 +315,159 @@ class AssistantAdmin(admin.ModelAdmin):
     search_fields = ("full_name", "rut")
     list_filter = ("is_active",)
 
-# =========================
-# TicketAdmin
-# =========================
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ('full_name', 'national_id', 'phone', 'email', 'created_at')
+    search_fields = ('full_name', 'national_id', 'phone')
+    ordering = ('full_name',)
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'role', 'terminal', 'is_active', 'commission_rate', 'max_discount', 'created_at')
+    list_filter = ('role', 'is_active', 'terminal')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email')
+
+
+@admin.register(DriverDocument)
+class DriverDocumentAdmin(admin.ModelAdmin):
+    list_display = ('driver', 'doc_type', 'expiry_date', 'document_number')
+    list_filter = ('doc_type', 'expiry_date')
+    search_fields = ('driver__full_name', 'driver__rut')
+
+
+@admin.register(BusDocument)
+class BusDocumentAdmin(admin.ModelAdmin):
+    list_display = ('bus', 'doc_type', 'expiry_date', 'document_number')
+    list_filter = ('doc_type', 'expiry_date')
+    search_fields = ('bus__plate',)
+
+
+@admin.register(Season)
+class SeasonAdmin(admin.ModelAdmin):
+    list_display = ('name', 'start_date', 'end_date', 'multiplier', 'is_active')
+    list_filter = ('is_active',)
+    search_fields = ('name',)
+
+
+@admin.register(Promotion)
+class PromotionAdmin(admin.ModelAdmin):
+    list_display = [
+        'code', 'name', 'discount_display', 'validity_display',
+        'usage_display', 'is_active'
+    ]
+    list_filter = ['discount_type', 'is_active', 'valid_from', 'valid_to']
+    search_fields = ['code', 'name']
+    readonly_fields = ['used_count', 'created_at', 'updated_at']
+
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('code', 'name', 'is_active')
+        }),
+        ('Descuento', {
+            'fields': ('discount_type', 'discount_value', 'max_discount_amount', 'min_purchase_amount')
+        }),
+        ('Vigencia', {
+            'fields': ('valid_from', 'valid_to')
+        }),
+        ('Límites de Uso', {
+            'fields': ('max_uses', 'used_count')
+        }),
+        ('Metadatos', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    def discount_display(self, obj):
+        if obj.discount_type == 'percentage':
+            value = f"{obj.discount_value}%"
+            if obj.max_discount_amount:
+                value += f" (máx ${obj.max_discount_amount:,.0f})"
+        else:
+            value = f"${obj.discount_value:,.0f}"
+
+        if obj.min_purchase_amount > 0:
+            value += f" (min ${obj.min_purchase_amount:,.0f})"
+
+        return value
+    discount_display.short_description = 'Descuento'
+
+    def validity_display(self, obj):
+        from django.utils import timezone
+        now = timezone.now().date()
+
+        if not obj.is_active:
+            return format_html('<span style="color: #64748b;">❌ Inactivo</span>')
+
+        if obj.valid_from and obj.valid_from > now:
+            return format_html(
+                '<span style="color: #f59e0b;">⏳ Inicia: {}</span>',
+                obj.valid_from.strftime('%d/%m/%Y')
+            )
+
+        if obj.valid_to and obj.valid_to < now:
+            return format_html(
+                '<span style="color: #e30613;">⚠️ Expirado: {}</span>',
+                obj.valid_to.strftime('%d/%m/%Y')
+            )
+
+        return format_html(
+            '<span style="color: #10b981;">✅ Vigente hasta: {}</span>',
+            obj.valid_to.strftime('%d/%m/%Y') if obj.valid_to else 'Indefinido'
+        )
+    validity_display.short_description = 'Vigencia'
+
+    def usage_display(self, obj):
+        if obj.max_uses > 0:
+            remaining = obj.max_uses - obj.used_count
+            color = '#e30613' if remaining <= 0 else '#10b981'
+            return format_html(
+                '<span style="color: {};">{} / {} usos</span>',
+                color, obj.used_count, obj.max_uses
+            )
+        return f"{obj.used_count} usos (ilimitado)"
+    usage_display.short_description = 'Uso'
+
+    actions = ['activate_promotions', 'deactivate_promotions']
+
+    @admin.action(description="Activar promociones seleccionadas")
+    def activate_promotions(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated} promoción(es) activada(s).")
+
+    @admin.action(description="Desactivar promociones seleccionadas")
+    def deactivate_promotions(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated} promoción(es) desactivada(s).")
+
+
+@admin.register(Parcel)
+class ParcelAdmin(admin.ModelAdmin):
+    list_display = ('tracking_number', 'trip', 'sender_name', 'recipient_name', 'weight', 'price', 'status', 'created_at')
+    list_filter = ('status', 'payment_method', 'trip')
+    search_fields = ('tracking_number', 'sender_name', 'recipient_name', 'recipient_rut')
+    readonly_fields = ('tracking_number', 'created_at')
+
+
+@admin.register(FuelRecord)
+class FuelRecordAdmin(admin.ModelAdmin):
+    list_display = ('bus', 'date', 'liters', 'cost', 'mileage', 'created_by')
+    list_filter = ('bus', 'date')
+    search_fields = ('bus__plate',)
+
+
+# ============================================================
+# ADMIN DE TICKETS
+# ============================================================
 TICKET_FIELDS = {f.name for f in Ticket._meta.get_fields()}
 HAS_BUYER_NAME = "buyer_name" in TICKET_FIELDS
 HAS_PASSENGER_NAME = "passenger_name" in TICKET_FIELDS
 HAS_PAID = "paid" in TICKET_FIELDS
 
 
+@admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
     def display_name(self, obj: Ticket):
         return getattr(obj, "buyer_name", None) or getattr(obj, "passenger_name", "")
@@ -334,76 +500,10 @@ class TicketAdmin(admin.ModelAdmin):
         search_fields += ("passenger_name",)
 
 
-# =========================
-# TripAdmin
-# =========================
-class TripAdmin(admin.ModelAdmin):
-    list_display = ("route", "bus", "departure", "arrival", "driver1", "driver2", "assistant", "seats_total", "seatmap_link")
-    search_fields = ("route__origin__name", "route__destination__name", "bus__plate")
-    list_filter = ("route__origin", "route__destination", "bus")
-    autocomplete_fields = ("bus",)
-
-    def seatmap_link(self, obj):
-        url = reverse("admin:booking_trip_seatmap", args=[obj.pk])
-        return format_html('<a class="button" href="{}" target="_blank">Mapa</a>', url)
-    seatmap_link.short_description = "Mapa"
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom = [
-            path(
-                "<int:trip_id>/seatmap/",
-                self.admin_site.admin_view(self.seatmap_view),
-                name="booking_trip_seatmap",
-            ),
-        ]
-        return custom + urls
-
-    def seatmap_view(self, request, trip_id: int):
-        trip = get_object_or_404(Trip, pk=trip_id)
-        grid_lower, grid_upper, cols = _build_trip_grid(trip)
-        change_url = reverse("admin:booking_trip_change", args=[trip.pk])
-        ctx = dict(
-            self.admin_site.each_context(request),
-            title=f"Mapa del viaje — {trip.route} {trip.departure:%Y-%m-%d %H:%M}",
-            trip=trip,
-            cols=cols,
-            grid_lower=grid_lower,
-            grid_upper=grid_upper,
-            change_url=change_url,
-        )
-        return render(request, "booking/seatmap.html", ctx)
-
-
-# =========================
-# Acción masiva para Bus
-# =========================
-@admin.action(description="Regenerar asientos desde layout")
-def regenerate_seats_action(modeladmin, request, queryset):
-    total = 0
-    errors = 0
-    for bus in queryset:
-        try:
-            bus.ensure_layouts()
-            total += bus.regenerate_seats()
-        except Exception as e:
-            errors += 1
-            modeladmin.message_user(request, f"{bus}: {e}", level=messages.ERROR)
-    modeladmin.message_user(
-        request,
-        f"Se recrearon {total} asientos en {queryset.count()} bus(es).",
-        level=messages.SUCCESS if errors == 0 else messages.WARNING,
-    )
-
-
-# =========================
-# BusAdmin (completo y corregido) - VERSIÓN MEJORADA
-# =========================
+# ============================================================
+# ADMIN DE BUS - DEFINICIÓN (se registra antes que Trip y Maintenance)
+# ============================================================
 class BusAdmin(admin.ModelAdmin):
-    if BusWizardForm:
-        form = BusWizardForm
-
-    # Opcional: usar template personalizado para añadir botón catálogo (si existe)
     change_form_template = "admin/booking_bus_change_form.html"
 
     list_display = (
@@ -419,13 +519,6 @@ class BusAdmin(admin.ModelAdmin):
         ("Estructura / Dimensiones", {"fields": ("floors", "rows_lower", "rows_upper", "cols")}),
         ("Mapa reutilizable (opcional)", {"fields": ("layout_template",)}),
         ("Numeración automática (opcional)", {"fields": ("prefix_lower", "prefix_upper")}),
-        ("Asistente (opcional)", {
-            "fields": tuple(
-                f for f in ("template", "rows_lower_w", "rows_upper_w", "blocks_lower", "blocks_upper")
-                if not BusWizardForm or f in getattr(BusWizardForm().fields, "keys", lambda: [])()
-            ),
-            "description": "Elige plantilla y/o bloquea celdas por coordenada (fila:col;fila:col).",
-        }),
         ("Layout (avanzado)", {
             "fields": ("layout_lower", "layout_upper", "numbers_lower", "numbers_upper"),
             "classes": ("collapse",),
@@ -448,7 +541,6 @@ class BusAdmin(admin.ModelAdmin):
             "booking/layout-catalog.js",
         )
 
-    # -------- Botones --------
     def seatmap_link(self, obj: Bus):
         if not obj.pk:
             return "-"
@@ -463,7 +555,6 @@ class BusAdmin(admin.ModelAdmin):
         return format_html('<a class="button" href="{}">Guardar como plantilla</a>', url)
     save_as_layout_link.short_description = "Guardar como plantilla"
 
-    # -------- Guardado --------
     def save_model(self, request, obj: Bus, form, change):
         if obj.layout_template:
             template = obj.layout_template
@@ -484,19 +575,24 @@ class BusAdmin(admin.ModelAdmin):
             try:
                 obj.ensure_layouts()
                 created = obj.regenerate_seats()
-                self.message_user(request, f"Se generaron {created} asientos para {obj}.", messages.SUCCESS)
+                self.message_user(
+                    request,
+                    f"✅ Se generaron {created} asientos para {obj}.",
+                    messages.SUCCESS
+                )
             except Exception as e:
-                self.message_user(request, f"Error generando asientos: {e}", messages.ERROR)
+                error_msg = f"❌ Error generando asientos: {e}"
+                self.message_user(request, error_msg, messages.ERROR)
+                logger.error(f"Error regenerando asientos para bus {obj.pk}: {e}", exc_info=True)
 
-        transaction.on_commit(_regen)
+        if request.method == 'POST' and not request.META.get('HTTP_X_REQUESTED_WITH'):
+            transaction.on_commit(_regen)
+        else:
+            _regen()
 
-    # -------- Formfield con preview (mejorado) y catálogo visual --------
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Personaliza el campo layout_template con preview."""
         if db_field.name == "layout_template":
-            from django import forms
-            from .models import BusLayout
-            import json
-
             layouts = {l.id: l for l in BusLayout.objects.all()}
 
             class TemplateSelect(forms.Select):
@@ -521,7 +617,6 @@ class BusAdmin(admin.ModelAdmin):
 
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-    # -------- URLs personalizadas (incluye catálogo y editor) --------
     def get_urls(self):
         urls = super().get_urls()
         custom = [
@@ -540,19 +635,16 @@ class BusAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.template_data_view),
                 name="booking_bus_template_data",
             ),
-            # Editor visual
             path(
                 "<int:bus_id>/editor/",
                 self.admin_site.admin_view(self.editor_view),
                 name="booking_bus_editor",
             ),
-            # Guardado AJAX del editor (versión mejorada para ambos pisos)
             path(
                 "<int:bus_id>/save-layout/",
                 self.admin_site.admin_view(self.save_layout_view),
                 name="booking_bus_save_layout",
             ),
-            # Catálogo visual de plantillas (modal)
             path(
                 "layout-catalog-content/",
                 self.admin_site.admin_view(self.layout_catalog_content),
@@ -561,7 +653,6 @@ class BusAdmin(admin.ModelAdmin):
         ]
         return custom + urls
 
-    # -------- Vistas --------
     @xframe_options_exempt
     def seatmap_view(self, request, bus_id: int):
         bus = get_object_or_404(Bus, pk=bus_id)
@@ -597,7 +688,6 @@ class BusAdmin(admin.ModelAdmin):
         return render(request, "admin/seatmap_editor.html", context)
 
     def save_layout_view(self, request, bus_id: int):
-        """Endpoint mejorado que acepta layout_lower y layout_upper (editor PRO)"""
         if request.method != "POST":
             return JsonResponse({"error": "Método no permitido"}, status=405)
 
@@ -605,13 +695,11 @@ class BusAdmin(admin.ModelAdmin):
         try:
             data = json.loads(request.body)
 
-            # Soporta tanto el formato antiguo ('layout') como el nuevo ('layout_lower', 'layout_upper')
             if 'layout_lower' in data:
                 new_layout_lower = data.get('layout_lower', [])
                 new_layout_upper = data.get('layout_upper', [])
                 bus.layout_lower = new_layout_lower
                 bus.layout_upper = new_layout_upper
-                # Opcional: actualizar dimensiones si se envían
                 if 'rows_lower' in data:
                     bus.rows_lower = data['rows_lower']
                 if 'rows_upper' in data:
@@ -619,14 +707,12 @@ class BusAdmin(admin.ModelAdmin):
                 if 'cols' in data:
                     bus.cols = data['cols']
             else:
-                # Formato antiguo (solo un piso)
                 new_layout = data.get('layout', [])
                 if not isinstance(new_layout, list):
                     raise ValueError("El layout debe ser una lista")
                 bus.layout_lower = new_layout
 
             bus.save()
-            # Regenerar asientos después de guardar el layout
             bus.ensure_layouts()
             bus.regenerate_seats()
             return JsonResponse({"status": "ok", "message": "Layout guardado y asientos regenerados"})
@@ -687,9 +773,7 @@ class BusAdmin(admin.ModelAdmin):
         return JsonResponse(data)
 
     def layout_catalog_content(self, request):
-        """Vista que devuelve el HTML del catálogo de plantillas (modal)"""
         layouts = BusLayout.objects.all()
-        # Para cada layout, generar una preview reducida (primeras 30 celdas)
         for l in layouts:
             preview = []
             flat = (l.layout_lower or [])[:30]
@@ -698,13 +782,14 @@ class BusAdmin(admin.ModelAdmin):
             l.preview_cells = preview
         return render(request, "admin/layout_catalog_modal.html", {"layouts": layouts})
 
-    # -------- Acciones --------
     def regenerate_seats_action(self, request, queryset):
-        return globals()["regenerate_seats_action"](self, request, queryset)
+        """Regenera asientos desde layout."""
+        return regenerate_seats_action(self, request, queryset)
     regenerate_seats_action.short_description = "Regenerar asientos desde layout"
 
     @admin.action(description="Forzar regeneración completa de asientos")
     def force_regenerate_seats(self, request, queryset):
+        """Fuerza regeneración completa incluyendo layout_template."""
         total = 0
         errors = 0
         for bus in queryset:
@@ -735,9 +820,74 @@ class BusAdmin(admin.ModelAdmin):
             self.message_user(request, f"Se regeneraron {total} asientos con {errors} error(es).", messages.WARNING)
 
 
-# =========================
-# BusLayoutAdmin (ya incluye duplicado)
-# =========================
+# ============================================================
+# REGISTRO DE BUSAdmin (CRÍTICO - Antes de Trip y Maintenance)
+# ============================================================
+admin.site.register(Bus, BusAdmin)
+
+
+# ============================================================
+# ADMIN DE VIAJES (Después de BusAdmin)
+# ============================================================
+@admin.register(Trip)
+class TripAdmin(admin.ModelAdmin):
+    list_display = ("route", "bus", "departure", "arrival", "driver1", "driver2", "assistant", "seats_total", "cutoff_minutes", "seatmap_link")
+    search_fields = ("route__origin__name", "route__destination__name", "bus__plate")
+    list_filter = ("route__origin", "route__destination", "bus", "cutoff_minutes")
+    autocomplete_fields = ("bus",)
+
+    fieldsets = (
+        (None, {
+            'fields': ('route', 'bus', 'departure', 'arrival', 'seats_total', 'cutoff_minutes', 'driver1', 'driver2', 'assistant')
+        }),
+    )
+
+    def seatmap_link(self, obj):
+        url = reverse("admin:booking_trip_seatmap", args=[obj.pk])
+        return format_html('<a class="button" href="{}" target="_blank">Mapa</a>', url)
+    seatmap_link.short_description = "Mapa"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:trip_id>/seatmap/",
+                self.admin_site.admin_view(self.seatmap_view),
+                name="booking_trip_seatmap",
+            ),
+        ]
+        return custom + urls
+
+    def seatmap_view(self, request, trip_id: int):
+        trip = get_object_or_404(Trip, pk=trip_id)
+        grid_lower, grid_upper, cols = _build_trip_grid(trip)
+        change_url = reverse("admin:booking_trip_change", args=[trip.pk])
+        ctx = dict(
+            self.admin_site.each_context(request),
+            title=f"Mapa del viaje — {trip.route} {trip.departure:%Y-%m-%d %H:%M}",
+            trip=trip,
+            cols=cols,
+            grid_lower=grid_lower,
+            grid_upper=grid_upper,
+            change_url=change_url,
+        )
+        return render(request, "booking/seatmap.html", ctx)
+
+
+# ============================================================
+# ADMIN DE MANTENIMIENTO (Después de BusAdmin)
+# ============================================================
+@admin.register(Maintenance)
+class MaintenanceAdmin(admin.ModelAdmin):
+    list_display = ('bus', 'date', 'maintenance_type', 'mileage', 'cost', 'next_maintenance_km')
+    list_filter = ('maintenance_type', 'date', 'bus')
+    search_fields = ('bus__plate', 'description', 'workshop')
+    autocomplete_fields = ('bus',)
+
+
+# ============================================================
+# ADMIN DE PLANTILLAS (BusLayout)
+# ============================================================
 class BusLayoutAdminForm(forms.ModelForm):
     class Meta:
         model = BusLayout
@@ -897,9 +1047,10 @@ class BusLayoutAdmin(admin.ModelAdmin):
         self.message_user(request, f"Se duplicaron {created} mapa(s).")
 
 
-# =========================
-# Modelos de Caja y Reportes
-# =========================
+# ============================================================
+# ADMIN DE CAJA Y REPORTES
+# ============================================================
+@admin.register(CashRegister)
 class CashRegisterAdmin(admin.ModelAdmin):
     list_display = ("user", "opening_date", "closing_date", "total_sales", "total_tickets", "status")
     list_filter = ("status", "opening_date", "user")
@@ -910,6 +1061,7 @@ class CashRegisterAdmin(admin.ModelAdmin):
         return super().get_queryset(request).select_related('user')
 
 
+@admin.register(DailyReport)
 class DailyReportAdmin(admin.ModelAdmin):
     list_display = ("date", "total_tickets", "total_revenue", "total_cash_registers", "created_at")
     list_filter = ("date",)
@@ -918,41 +1070,48 @@ class DailyReportAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
-    
-    
-    
-@admin.register(DriverDocument)
-class DriverDocumentAdmin(admin.ModelAdmin):
-    list_display = ('driver', 'doc_type', 'expiry_date', 'document_number')
-    list_filter = ('doc_type', 'expiry_date')
-    search_fields = ('driver__full_name', 'driver__rut')
-
-@admin.register(BusDocument)
-class BusDocumentAdmin(admin.ModelAdmin):
-    list_display = ('bus', 'doc_type', 'expiry_date', 'document_number')
-    list_filter = ('doc_type', 'expiry_date')
-    search_fields = ('bus__plate',)
 
 
-# =========================
-# Registro seguro de modelos
-# =========================
-try:
-    admin.site.register(CashRegister, CashRegisterAdmin)
-except admin.sites.AlreadyRegistered:
-    pass
+# ============================================================
+# ADMIN DE CONVENIOS
+# ============================================================
+@admin.register(CompanyContract)
+class CompanyContractAdmin(admin.ModelAdmin):
+    list_display = ('company', 'contract_number', 'credit_limit', 'used_credit', 'available_credit', 'is_active')
+    list_filter = ('is_active', 'company')
+    search_fields = ('company__name', 'contract_number')
+    readonly_fields = ('used_credit', 'created_at', 'updated_at')
+    fieldsets = (
+        ('Datos del Contrato', {
+            'fields': ('company', 'contract_number', 'is_active')
+        }),
+        ('Crédito', {
+            'fields': ('credit_limit', 'used_credit', 'discount_percentage')
+        }),
+        ('Vigencia', {
+            'fields': ('valid_from', 'valid_to')
+        }),
+        ('Contacto', {
+            'fields': ('contact_name', 'contact_phone', 'contact_email')
+        }),
+        ('Observaciones', {
+            'fields': ('notes',)
+        }),
+        ('Metadatos', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
 
-try:
-    admin.site.register(DailyReport, DailyReportAdmin)
-except admin.sites.AlreadyRegistered:
-    pass
+    def available_credit(self, obj):
+        return obj.available_credit
+    available_credit.short_description = 'Crédito disponible'
 
-_safe_register(City, CityAdmin)
-_safe_register(Company, CompanyAdmin)
-_safe_register(Route, RouteAdmin)
-_safe_register(Seat, SeatAdmin)
-_safe_register(SeatHold, SeatHoldAdmin)
-_safe_register(Ticket, TicketAdmin)
-_safe_register(Trip, TripAdmin)
-_safe_register(Bus, BusAdmin)
-_safe_register(Terminal, TerminalAdmin)
+
+@admin.register(ContractEmployee)
+class ContractEmployeeAdmin(admin.ModelAdmin):
+    list_display = ('customer', 'contract', 'employee_id', 'is_active')
+    list_filter = ('is_active', 'contract')
+    search_fields = ('customer__full_name', 'customer__national_id', 'employee_id')
+    autocomplete_fields = ('customer',)
+    raw_id_fields = ('customer',)

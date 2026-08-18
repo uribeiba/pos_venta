@@ -9,43 +9,147 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
+        /* ===== BASE ===== */
         body { background: #f1f5f9; }
-        
-        /* Modificado para empujar el botón de salir al fondo de forma limpia */
-        .sidebar { 
-            background: #0f172a; 
-            min-height: 100vh; 
+
+        /* ===== SIDEBAR MEJORADO ===== */
+        .sidebar {
+            background: #0f172a;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            color: #e2e8f0;
         }
-        
-        .sidebar a, .sidebar button.btn-logout-side { 
-            color: #cbd5e1; 
-            text-decoration: none; 
-            padding: 12px 20px; 
-            display: block; 
-            transition: 0.2s; 
+
+        /* ===== PERFIL DE USUARIO (más visible) ===== */
+        .user-profile {
+            background: #1e293b;
+            padding: 16px 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-profile .avatar {
+            width: 40px;
+            height: 40px;
+            background: #3b82f6;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+        .user-profile .info {
+            flex: 1;
+        }
+        .user-profile .info .name {
+            color: white;
+            font-weight: 700;
+            font-size: 1rem;
+            line-height: 1.2;
+        }
+        .user-profile .info .role {
+            color: #94a3b8;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ===== NAVEGACIÓN ===== */
+        .sidebar a, .sidebar button.btn-logout-side {
+            color: #cbd5e1;
+            text-decoration: none;
+            padding: 12px 20px;
+            display: block;
+            transition: 0.2s;
             width: 100%;
             text-align: left;
             background: none;
             border: none;
+            font-weight: 500;
         }
-        
-        .sidebar a:hover, .sidebar button.btn-logout-side:hover { 
-            background: #1e293b; 
-            color: white; 
+        .sidebar a:hover, .sidebar button.btn-logout-side:hover {
+            background: #1e293b;
+            color: white;
         }
-        
-        .sidebar a.active { 
-            background: #3b82f6; 
-            color: white; 
+        .sidebar a.active {
+            background: #3b82f6;
+            color: white;
         }
-        
+
         .sidebar ul { list-style: none; padding: 0; margin: 0; }
         .sidebar li { margin: 0; }
+
+        /* ===== HEADERS DE NAVEGACIÓN (colapsables) ===== */
+        .nav-header {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748b;
+            padding: 12px 20px 4px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .nav-header:hover {
+            color: #94a3b8;
+        }
+        .nav-header i.fa-chevron-down {
+            font-size: 0.65rem;
+            transition: transform 0.2s;
+        }
+        .nav-header[aria-expanded="true"] i.fa-chevron-down {
+            transform: rotate(180deg);
+        }
+
+        /* ===== SUBMENÚ ===== */
+        .submenu {
+            padding-left: 0;
+            list-style: none;
+            margin: 0;
+        }
+        .submenu .nav-item {
+            padding: 8px 20px 8px 44px;
+            font-size: 0.9rem;
+            border-left: 3px solid transparent;
+            color: #cbd5e1;
+            display: block;
+            text-decoration: none;
+            transition: 0.2s;
+        }
+        .submenu .nav-item:hover {
+            background: #1e293b;
+            color: white;
+            border-left-color: #3b82f6;
+        }
+        .submenu .nav-item i {
+            width: 20px;
+            margin-right: 10px;
+            color: #64748b;
+        }
+        .submenu .nav-item:hover i {
+            color: #3b82f6;
+        }
+
+        /* ===== CONTENIDO ===== */
         .content { padding: 20px; }
-        .nav-header { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #64748b; padding: 16px 20px 8px; }
+
+        /* ===== BOTÓN DE LOGOUT ===== */
+        .btn-logout-side {
+            border-top: 1px solid #1e293b;
+            margin-top: auto;
+            color: #f87171 !important;
+        }
+        .btn-logout-side:hover {
+            background: #1e293b !important;
+            color: #fca5a5 !important;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -54,67 +158,129 @@
     <div class="row">
         <div class="col-md-2 sidebar p-0">
             <div class="w-100">
+                <!-- ===== LOGO ===== -->
                 <div class="text-center py-4">
                     <h4 class="text-white">Cejer</h4>
                     <small class="text-muted">Coordinador</small>
                 </div>
+
+                <!-- ===== PERFIL DE USUARIO (mejorado) ===== -->
+                <div class="user-profile">
+                    <div class="avatar">
+                        {{ user.username|first|upper }}
+                    </div>
+                    <div class="info">
+                        <div class="name">{{ user.get_full_name|default:user.username }}</div>
+                        <div class="role">
+                            <i class="fas fa-user-tag me-1"></i>
+                            {{ user.profile.get_role_display|default:"Coordinador" }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== NAVEGACIÓN CON COLLAPSE (AHORA COLAPSADO POR DEFECTO) ===== -->
                 <nav>
                     <ul>
-                        <li class="nav-header">Flota</li>
-                        <li><a href="{% url 'coordinator:buses_dashboard' %}"><i class="fas fa-bus"></i> Buses</a></li>
-                        <li><a href="{% url 'coordinator:bus_list' %}"><i class="fas fa-pencil-ruler"></i> Editor de asientos</a></li>
-                        <li><a href="{% url 'coordinator:trips_dashboard' %}"><i class="fas fa-calendar-alt"></i> Viajes</a></li>
-                        <li><a href="{% url 'coordinator:generate_trips' %}"><i class="fas fa-calendar-week"></i> Viajes recurrentes</a></li>
+                        <!-- Inicio (Dashboard) -->
+                        <li><a href="{% url 'coordinator:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" style="padding:12px 20px;"><i class="fas fa-home me-2"></i> Inicio</a></li>
 
-                        <li class="nav-header">Configuración</li>
-                        <li><a href="{% url 'coordinator:cities_dashboard' %}"><i class="fas fa-city"></i> Ciudades</a></li>
-                        <li><a href="{% url 'coordinator:terminals_dashboard' %}"><i class="fas fa-map-marker-alt"></i> Terminales</a></li>
-                        <li><a href="{% url 'coordinator:routes_dashboard' %}"><i class="fas fa-road"></i> Rutas</a></li>
-                        <li><a href="{% url 'coordinator:agencies_dashboard' %}"><i class="fas fa-store"></i> Agencias</a></li>
+                        <!-- Grupo: Flota (colapsado por defecto) -->
+                        <li>
+                            <div class="nav-header" data-bs-toggle="collapse" data-bs-target="#flotaMenu" aria-expanded="false">
+                                <span><i class="fas fa-truck me-2"></i> Flota</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                            <ul class="submenu collapse" id="flotaMenu">
+                                <li><a href="{% url 'coordinator:buses_dashboard' %}" class="nav-item"><i class="fas fa-bus"></i> Buses</a></li>
+                                <li><a href="{% url 'coordinator:bus_list' %}" class="nav-item"><i class="fas fa-pencil-ruler"></i> Editor de asientos</a></li>
+                                <li><a href="{% url 'coordinator:trips_dashboard' %}" class="nav-item"><i class="fas fa-calendar-alt"></i> Viajes</a></li>
+                                <li><a href="{% url 'coordinator:generate_trips' %}" class="nav-item"><i class="fas fa-calendar-week"></i> Viajes recurrentes</a></li>
+                                <li><a href="{% url 'coordinator:parcel_list' %}" class="nav-item"><i class="fas fa-box"></i> Encomiendas</a></li>
+                                <li><a href="{% url 'coordinator:maintenance_list' %}" class="nav-item"><i class="fas fa-wrench"></i> Mantenimiento</a></li>
+                            </ul>
+                        </li>
 
-                        <li class="nav-header">Personal</li>
-                        <li><a href="{% url 'coordinator:drivers_dashboard' %}"><i class="fas fa-id-card"></i> Choferes</a></li>
-                        <li><a href="{% url 'coordinator:assistants_dashboard' %}"><i class="fas fa-user-friends"></i> Auxiliares</a></li>
-                        <li><a href="{% url 'coordinator:expiring_documents' %}"><i class="fas fa-calendar-warning"></i> Documentos por vencer</a></li>
+                        <!-- Grupo: Configuración (colapsado por defecto) -->
+                        <li>
+                            <div class="nav-header" data-bs-toggle="collapse" data-bs-target="#configMenu" aria-expanded="false">
+                                <span><i class="fas fa-cog me-2"></i> Configuración</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                            <ul class="submenu collapse" id="configMenu">
+                                <li><a href="{% url 'coordinator:cities_dashboard' %}" class="nav-item"><i class="fas fa-city"></i> Ciudades</a></li>
+                                <li><a href="{% url 'coordinator:terminals_dashboard' %}" class="nav-item"><i class="fas fa-map-marker-alt"></i> Terminales</a></li>
+                                <li><a href="{% url 'coordinator:routes_dashboard' %}" class="nav-item"><i class="fas fa-road"></i> Rutas</a></li>
+                                <li><a href="{% url 'coordinator:agencies_dashboard' %}" class="nav-item"><i class="fas fa-store"></i> Agencias</a></li>
+                            </ul>
+                        </li>
 
-                        <li class="nav-header">Sistema</li>
-                        <li><a href="{% url 'pos_caja' %}" target="_blank"><i class="fas fa-cash-register"></i> POS (Ventas)</a></li>
-                        <li><a href="{% url 'admin:index' %}" target="_blank"><i class="fas fa-lock"></i> Admin</a></li>
+                        <!-- Grupo: Personal (colapsado por defecto) -->
+<li>
+    <div class="nav-header" data-bs-toggle="collapse" data-bs-target="#personalMenu" aria-expanded="false">
+        <span><i class="fas fa-users me-2"></i> Personal</span>
+        <i class="fas fa-chevron-down"></i>
+    </div>
+    <ul class="submenu collapse" id="personalMenu">
+        <li><a href="{% url 'coordinator:drivers_dashboard' %}" class="nav-item"><i class="fas fa-id-card"></i> Choferes</a></li>
+        <li><a href="{% url 'coordinator:assistants_dashboard' %}" class="nav-item"><i class="fas fa-user-friends"></i> Auxiliares</a></li>
+        <li><a href="{% url 'coordinator:expiring_documents' %}" class="nav-item"><i class="fas fa-calendar-alt"></i> Documentos por vencer</a></li>
+    </ul>
+</li>
+                        <!-- Grupo: Ley 21.719 (colapsado por defecto) -->
+                        <li>
+                            <div class="nav-header" data-bs-toggle="collapse" data-bs-target="#seguridadMenu" aria-expanded="false">
+                                <span><i class="fas fa-shield-alt me-2"></i> Ley 21.719</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                            <ul class="submenu collapse" id="seguridadMenu">
+                                <li><a href="{% url 'coordinator:seguridad_dashboard' %}" class="nav-item"><i class="fas fa-chart-pie"></i> Panel de seguridad</a></li>
+                                <li><a href="{% url 'coordinator:seguridad_auditoria' %}" class="nav-item"><i class="fas fa-history"></i> Auditoría</a></li>
+                                <li><a href="{% url 'coordinator:seguridad_respaldos' %}" class="nav-item"><i class="fas fa-database"></i> Respaldos</a></li>
+                                <li><a href="{% url 'coordinator:seguridad_incidentes' %}" class="nav-item"><i class="fas fa-exclamation-circle"></i> Incidentes</a></li>
+                            </ul>
+                        </li>
+
                     </ul>
                 </nav>
             </div>
 
-            <div class="w-100 border-top border-secondary mt-4 bg-dark">
-                <form method="post" action="{% url 'admin:logout' %}" class="m-0">
-                    {% csrf_token %}
-                    <button type="submit" class="btn-logout-side text-danger fw-bold">
-                        <i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión
-                    </button>
-                </form>
-            </div>
+            <!-- ===== CERRAR SESIÓN (CORREGIDO) ===== -->
+            <form method="post" action="{% url 'logout' %}" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="btn-logout-side">
+                    <i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión
+                </button>
+            </form>
         </div>
 
         <div class="col-md-10 content">
+            <!-- ===== FILTRO DE MENSAJES MEJORADO ===== -->
             {% if messages %}
                 {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
+                    {% if 'acceso denegado' not in message|lower and 'permisos' not in message|lower and 'caja' not in message|lower and 'abrir' not in message|lower %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endif %}
                 {% endfor %}
             {% endif %}
-            
+
             {% block content %}{% endblock %}
         </div>
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    document.querySelectorAll('.sidebar a').forEach(link => {
+    // Marcar enlace activo
+    document.querySelectorAll('.sidebar a.nav-item, .sidebar > ul > li > a').forEach(link => {
         if (link.href === window.location.href) {
             link.classList.add('active');
         }
     });
+
+    // Mantener estado de collapse abierto si hay un enlace activo dentro (esto asegura que si un usuario expande manualmente, se mantenga)
+    // Pero ahora NO abrimos automáticamente porque queremos que inicie colapsado.
 </script>
 {% block extra_js %}{% endblock %}
 </body>

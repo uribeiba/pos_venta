@@ -1,0 +1,255 @@
+{% extends 'coordinator/base.html' %}
+
+{% block title %}Check-in de Pasajero{% endblock %}
+
+{% block content %}
+
+<div class="container py-4">
+
+    <div class="mx-auto" style="max-width: 720px;">
+
+        <div class="card shadow-sm border-0">
+
+            <div class="card-body p-4">
+
+                <div class="text-center mb-4">
+
+                    {% if ticket.checked_in %}
+
+                        <div class="mb-3">
+                            <i class="fas fa-check-circle text-success"
+                               style="font-size: 4rem;"></i>
+                        </div>
+
+                        <h2 class="fw-bold text-success">
+                            Pasajero embarcado
+                        </h2>
+
+                    {% elif trip_departed %}
+
+                        <div class="mb-3">
+                            <i class="fas fa-times-circle text-danger"
+                               style="font-size: 4rem;"></i>
+                        </div>
+
+                        <h2 class="fw-bold text-danger">
+                            Viaje ya iniciado
+                        </h2>
+
+                    {% else %}
+
+                        <div class="mb-3">
+                            <i class="fas fa-ticket-alt text-primary"
+                               style="font-size: 4rem;"></i>
+                        </div>
+
+                        <h2 class="fw-bold">
+                            Pasaje válido
+                        </h2>
+
+                    {% endif %}
+
+                </div>
+
+
+                <div class="table-responsive">
+
+                    <table class="table">
+
+                        <tbody>
+
+                            <tr>
+                                <th>N° Ticket</th>
+                                <td>{{ ticket.number }}</td>
+                            </tr>
+
+                            <tr>
+                                <th>Pasajero</th>
+                                <td>{{ ticket.buyer_name }}</td>
+                            </tr>
+
+                            <tr>
+                                <th>Documento</th>
+                                <td>
+                                    {{ ticket.national_id|default:"—" }}
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th>Ruta</th>
+                                <td>
+                                    {{ trip.route.origin.name }}
+                                    →
+                                    {{ trip.route.destination.name }}
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th>Salida</th>
+                                <td>
+                                    {{ trip.departure|date:"d/m/Y H:i" }}
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th>Asiento</th>
+                                <td>
+                                    {{ ticket.seat.number }}
+                                    (Piso {{ ticket.seat.deck }})
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th>Estado</th>
+
+                                <td>
+
+                                    {% if ticket.checked_in %}
+
+                                        <span class="badge bg-success">
+                                            Embarcado
+                                        </span>
+
+                                    {% else %}
+
+                                        <span class="badge bg-warning text-dark">
+                                            Pendiente de embarque
+                                        </span>
+
+                                    {% endif %}
+
+                                </td>
+
+                            </tr>
+
+                            {% if ticket.checked_in_at %}
+
+                            <tr>
+
+                                <th>Hora embarque</th>
+
+                                <td>
+                                    {{ ticket.checked_in_at|date:"d/m/Y H:i:s" }}
+                                </td>
+
+                            </tr>
+
+                            {% endif %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+                {% if too_early and not ticket.checked_in %}
+
+                <div class="alert alert-warning mt-3">
+
+                    <i class="fas fa-clock me-2"></i>
+
+                    Este viaje sale en más de 30 minutos.
+
+                </div>
+
+                {% endif %}
+
+
+                {% if not ticket.checked_in and not trip_departed %}
+
+                <form method="post"
+                      class="mt-4"
+                      id="checkinForm">
+
+                    {% csrf_token %}
+
+                    <button type="submit"
+                            class="btn btn-success btn-lg w-100"
+                            id="checkinBtn">
+
+                        <i class="fas fa-user-check me-2"></i>
+
+                        Confirmar embarque
+
+                    </button>
+
+                </form>
+
+                {% endif %}
+
+
+                {% if ticket.checked_in %}
+
+                <div class="alert alert-success mt-4">
+
+                    <i class="fas fa-check-circle me-2"></i>
+
+                    Este pasaje ya fue utilizado para embarque.
+
+                </div>
+
+                {% endif %}
+
+
+                <div class="text-center mt-4">
+
+                    <a href="{% url 'coordinator:trip_detail' trip.id %}"
+                       class="btn btn-outline-secondary">
+
+                        <i class="fas fa-arrow-left me-2"></i>
+
+                        Volver al viaje
+
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+
+        const form =
+            document.getElementById(
+                "checkinForm"
+            );
+
+        const button =
+            document.getElementById(
+                "checkinBtn"
+            );
+
+        if (!form || !button) {
+            return;
+        }
+
+        form.addEventListener(
+            "submit",
+            function () {
+
+                button.disabled = true;
+
+                button.innerHTML =
+                    '<i class="fas fa-spinner fa-spin me-2"></i>' +
+                    'Confirmando...';
+
+            }
+        );
+
+    }
+);
+
+</script>
+
+{% endblock %}

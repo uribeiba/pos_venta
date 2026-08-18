@@ -1,0 +1,176 @@
+{% extends 'booking/base_pos.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Venta Confirmada{% endblock %}
+
+{% block extra_css %}
+<style>
+    .confirmation-card {
+        background: white;
+        border-radius: 16px;
+        padding: 40px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        max-width: 800px;
+        margin: 20px auto;
+    }
+    .confirmation-card .success-icon {
+        font-size: 64px;
+        color: #10b981;
+        text-align: center;
+        margin-bottom: 16px;
+    }
+    .confirmation-card h2 {
+        text-align: center;
+        color: #0f172a;
+        margin-bottom: 8px;
+    }
+    .confirmation-card .subtitle {
+        text-align: center;
+        color: #94a3b8;
+        margin-bottom: 24px;
+    }
+    .ticket-list {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 16px;
+        margin: 16px 0;
+    }
+    .ticket-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .ticket-item:last-child {
+        border-bottom: none;
+    }
+    .ticket-item .seat-number {
+        font-weight: 700;
+        color: #0f172a;
+        font-size: 18px;
+        background: #e2e8f0;
+        padding: 4px 16px;
+        border-radius: 8px;
+    }
+    .ticket-item .passenger-name {
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .ticket-item .ticket-price {
+        font-weight: 700;
+        color: #10b981;
+    }
+    .summary-box {
+        background: #f1f5f9;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin: 16px 0;
+    }
+    .summary-box .summary-line {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+    }
+    .summary-box .summary-line.total {
+        border-top: 2px solid #e2e8f0;
+        padding-top: 12px;
+        margin-top: 4px;
+        font-weight: 700;
+        font-size: 18px;
+    }
+    .btn-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 24px;
+        flex-wrap: wrap;
+    }
+    .btn-actions .btn {
+        border-radius: 50px;
+        padding: 10px 32px;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="confirmation-card">
+        <div class="success-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        
+        <h2>✅ ¡Venta Exitosa!</h2>
+        <p class="subtitle">Los boletos han sido emitidos correctamente.</p>
+
+        <div class="trip-info mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <strong>{{ trip.route.origin.name }}</strong>
+                    <i class="fas fa-arrow-right mx-2"></i>
+                    <strong>{{ trip.route.destination.name }}</strong>
+                </div>
+                <div>
+                    <span class="badge bg-light text-dark">
+                        <i class="far fa-calendar-alt me-1"></i>
+                        {{ trip.departure|date:"d/m/Y H:i" }}
+                    </span>
+                    <span class="badge bg-light text-dark ms-2">
+                        <i class="fas fa-bus me-1"></i>
+                        {{ trip.bus.plate }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <h6 class="fw-bold mb-2"><i class="fas fa-ticket-alt me-2"></i> Boletos emitidos</h6>
+        <div class="ticket-list">
+            {% for ticket in tickets %}
+            <div class="ticket-item">
+                <div>
+                    <span class="seat-number">{{ ticket.seat.number }}</span>
+                    <span class="passenger-name ms-2">{{ ticket.buyer_name }}</span>
+                    <span class="text-muted small ms-2">Piso {{ ticket.seat.deck }}</span>
+                </div>
+                <div class="ticket-price">${{ ticket.price|floatformat:0|intcomma }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="summary-box">
+            <div class="summary-line">
+                <span>Subtotal</span>
+                <span>${{ original_total|floatformat:0|intcomma }}</span>
+            </div>
+            {% if discount_amount > 0 %}
+            <div class="summary-line" style="color: #10b981;">
+                <span>Descuento</span>
+                <span>-${{ discount_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            <div class="summary-line total">
+                <span>Total pagado</span>
+                <span>${{ total_amount|floatformat:0|intcomma }}</span>
+            </div>
+            <div class="summary-line" style="font-size:14px; color:#94a3b8;">
+                <span>Método de pago</span>
+                <span>{{ payment_method|title }}</span>
+            </div>
+        </div>
+
+        <div class="btn-actions">
+            <a href="{% url 'pos_home' %}" class="btn btn-primary">
+                <i class="fas fa-home me-2"></i> Nueva venta
+            </a>
+            <button onclick="window.print()" class="btn btn-outline-secondary">
+                <i class="fas fa-print me-2"></i> Imprimir
+            </button>
+            <a href="{% url 'pos_trip' trip.id %}" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left me-2"></i> Volver al viaje
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -29,4 +29,19 @@ class RecurringTripForm(forms.Form):
         end = data.get('end_date')
         if start and end and start > end:
             raise forms.ValidationError("La fecha fin debe ser posterior a la fecha inicio")
+        
+        # ✅ Validar que el bus esté activo
+        bus = data.get('bus')
+        if bus and not bus.is_active:
+            raise forms.ValidationError("El bus seleccionado no está activo.")
+        
+        # ✅ Validar que la ruta esté activa
+        route = data.get('route')
+        if route and not route.is_active:
+            raise forms.ValidationError("La ruta seleccionada no está activa.")
+        
+        # ✅ Validar que origen y destino sean diferentes
+        if route and route.origin == route.destination:
+            raise forms.ValidationError("El origen y destino de la ruta no pueden ser iguales.")
+        
         return data

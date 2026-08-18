@@ -1,0 +1,604 @@
+{% extends 'client_portal/base_public.html' %}
+{% load humanize %}
+{% load static %}
+
+{% block title %}Resultados de búsqueda - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --brand-red: #e30613;
+        --brand-red-hover: #b8050f;
+        --brand-green: #4ca824;
+        --brand-dark: #1a1a1a;
+        --brand-bg-light: #f4f6f9;
+        --brand-muted: #6c757d;
+        --brand-white: #ffffff;
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+        --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.06);
+        --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.1);
+        --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: var(--brand-bg-light);
+        color: var(--brand-dark);
+    }
+
+    /* Navbar simplificado para resultados */
+    .navbar-results {
+        background: var(--brand-white) !important;
+        box-shadow: var(--shadow-md);
+        padding: 8px 0;
+        position: sticky;
+        top: 0;
+        z-index: 1030;
+    }
+    
+    .navbar-results .nav-link {
+        color: var(--brand-dark) !important;
+        font-weight: 600;
+    }
+    
+    .navbar-results .nav-link:hover {
+        color: var(--brand-red) !important;
+    }
+    
+    .btn-login-results {
+        background: transparent;
+        border: 2px solid var(--brand-dark);
+        color: var(--brand-dark);
+        font-weight: 700;
+        border-radius: 50px;
+        padding: 8px 24px;
+        transition: var(--transition-smooth);
+    }
+    
+    .btn-login-results:hover {
+        background: var(--brand-dark);
+        color: var(--brand-white);
+    }
+    
+    .navbar-results .navbar-brand img {
+        height: 60px;
+        width: auto;
+        object-fit: contain;
+    }
+
+    /* Barra de búsqueda compacta */
+    .search-compact-bar {
+        background: white;
+        padding: 15px 0;
+        border-bottom: 1px solid #e2e8f0;
+        position: sticky;
+        top: 76px;
+        z-index: 1020;
+    }
+    
+    .search-compact-form {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    
+    .search-compact-form .form-group {
+        flex: 1;
+        min-width: 140px;
+    }
+    
+    .search-compact-form label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #6c757d;
+        margin-bottom: 4px;
+        display: block;
+        text-transform: uppercase;
+    }
+    
+    .search-compact-form input {
+        height: 42px;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0 12px;
+        width: 100%;
+        font-size: 0.9rem;
+    }
+    
+    .search-compact-form button {
+        background: var(--brand-red);
+        color: white;
+        border: none;
+        height: 42px;
+        padding: 0 24px;
+        border-radius: 10px;
+        font-weight: 700;
+        transition: var(--transition-smooth);
+    }
+    
+    .search-compact-form button:hover {
+        background: var(--brand-red-hover);
+        transform: translateY(-1px);
+    }
+
+    /* Sidebar de filtros */
+    .filter-sidebar {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: var(--shadow-sm);
+        position: sticky;
+        top: 170px;
+    }
+    
+    .filter-title {
+        font-size: 1rem;
+        font-weight: 800;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--brand-green);
+    }
+    
+    .filter-group {
+        margin-bottom: 24px;
+    }
+    
+    .filter-group label.filter-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #888;
+        margin-bottom: 12px;
+        display: block;
+        text-transform: uppercase;
+    }
+    
+    /* Tarjeta de viaje estilo Turbus */
+    .trip-card {
+        background: white;
+        border-radius: 16px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow-sm);
+        transition: var(--transition-smooth);
+        overflow: hidden;
+    }
+    
+    .trip-card:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
+    }
+    
+    .trip-card-inner {
+        padding: 20px;
+    }
+    
+    .trip-time {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: var(--brand-dark);
+        line-height: 1.2;
+    }
+    
+    .trip-date {
+        font-size: 0.7rem;
+        color: #888;
+    }
+    
+    .company-badge {
+        width: 45px;
+        height: 45px;
+        background: #f0f0f0;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1rem;
+        color: var(--brand-red);
+    }
+    
+    .route-destinations {
+        font-weight: 700;
+        color: var(--brand-dark);
+    }
+    
+    .route-terminals {
+        font-size: 0.7rem;
+        color: #888;
+    }
+    
+    .seat-badge {
+        background: #e8f5e9;
+        color: var(--brand-green);
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .service-badge {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .service-cama {
+        background: #1e3a5f;
+        color: white;
+    }
+    
+    .service-semi {
+        background: #e0e0e0;
+        color: #333;
+    }
+    
+    .price-amount {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--brand-red);
+    }
+    
+    .price-label {
+        font-size: 0.7rem;
+        color: #888;
+    }
+    
+    .btn-select-trip {
+        background: var(--brand-green);
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 40px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        transition: var(--transition-smooth);
+        width: 100%;
+        display: inline-block;
+        text-align: center;
+        text-decoration: none;
+    }
+    
+    .btn-select-trip:hover {
+        background: #3d8a1c;
+        transform: scale(1.02);
+        color: white;
+    }
+    
+    .breadcrumb-results {
+        background: transparent;
+        padding: 15px 0;
+        margin-bottom: 0;
+    }
+    
+    .breadcrumb-item a {
+        color: var(--brand-green);
+        text-decoration: none;
+    }
+    
+    .results-count {
+        font-size: 0.85rem;
+        color: #888;
+        margin-bottom: 20px;
+    }
+    
+    /* Stepper wrapper - Centrado correctamente */
+    .stepper-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 10px 0 20px 0;
+    }
+    
+    /* Asegurar que el stepper ocupe todo el ancho */
+    .stepper-container .stepper-modern {
+        width: 100%;
+    }
+    
+    /* Animaciones */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .trip-card {
+        animation: fadeIn 0.3s ease-out;
+    }
+    
+    @media (max-width: 768px) {
+        .search-compact-form {
+            flex-direction: column;
+        }
+        .trip-time {
+            font-size: 1.2rem;
+        }
+        .price-amount {
+            font-size: 1.3rem;
+        }
+        .btn-select-trip {
+            margin-top: 12px;
+        }
+        .filter-sidebar {
+            position: relative;
+            top: 0;
+            margin-bottom: 20px;
+        }
+        .stepper-container {
+            padding: 5px 15px 15px 15px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Navbar simplificado -->
+<nav class="navbar navbar-expand-lg navbar-results">
+    <div class="container">
+        <a class="navbar-brand" href="{% url 'client_portal:home' %}">
+            <img src="{% static 'img/logo.png' %}" alt="Cejer">
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResults">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarResults">
+            <ul class="navbar-nav ms-auto align-items-center gap-2">
+                <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}">Inicio</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}#destinos">Destinos</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}#faq">Ayuda</a></li>
+                <li class="nav-item ms-lg-3"><a class="btn btn-login-results" href="#"><i class="far fa-user me-2"></i>Iniciar Sesión</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- Barra de búsqueda compacta -->
+<div class="search-compact-bar">
+    <div class="container">
+        <form method="GET" action="{% url 'client_portal:search_trips' %}" class="search-compact-form">
+            <div class="form-group">
+                <label>ORIGEN</label>
+                <input type="text" name="origin" value="{{ origin }}" placeholder="Ciudad de origen">
+            </div>
+            <div class="form-group">
+                <label>DESTINO</label>
+                <input type="text" name="destination" value="{{ destination }}" placeholder="Ciudad de destino">
+            </div>
+            <div class="form-group">
+                <label>FECHA IDA</label>
+                <input type="date" name="date" value="{{ date }}">
+            </div>
+            <div class="form-group">
+                <label>FECHA VUELTA</label>
+                <input type="date" name="return_date" value="{{ return_date }}">
+            </div>
+            <button type="submit"><i class="fas fa-search me-2"></i>Buscar</button>
+        </form>
+    </div>
+</div>
+
+<!-- Stepper integrado - Contenedor centrado -->
+<div class="container">
+    <div class="stepper-container">
+        {% include "includes/stepper.html" with paso_actual=1 %}
+    </div>
+</div>
+
+<!-- Breadcrumb y resultados -->
+<div class="container mt-2">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb breadcrumb-results">
+            <li class="breadcrumb-item"><a href="{% url 'client_portal:home' %}">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Resultados de búsqueda</li>
+        </ol>
+    </nav>
+    
+    <div class="row g-4">
+        <!-- Sidebar de filtros -->
+        <div class="col-lg-3">
+            <div class="filter-sidebar">
+                <h5 class="filter-title"><i class="fas fa-filter me-2"></i>Filtrar por</h5>
+                
+                <div class="filter-group">
+                    <label class="filter-label">HORARIO</label>
+                    <div class="form-check">
+                        <input class="form-check-input filter-time" type="checkbox" value="madrugada" id="madrugada">
+                        <label class="form-check-label small" for="madrugada">🌅 Madrugada (00:00 - 06:00)</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input filter-time" type="checkbox" value="manana" id="manana">
+                        <label class="form-check-label small" for="manana">☀️ Mañana (06:00 - 12:00)</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input filter-time" type="checkbox" value="tarde" id="tarde">
+                        <label class="form-check-label small" for="tarde">🌤️ Tarde (12:00 - 18:00)</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input filter-time" type="checkbox" value="noche" id="noche">
+                        <label class="form-check-label small" for="noche">🌙 Noche (18:00 - 00:00)</label>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <label class="filter-label">TIPO DE ASIENTO</label>
+                    <div class="form-check">
+                        <input class="form-check-input filter-service" type="checkbox" value="cama" id="cama">
+                        <label class="form-check-label small" for="cama">🛏️ Salón Cama</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input filter-service" type="checkbox" value="semi" id="semi">
+                        <label class="form-check-label small" for="semi">💺 Semi Cama</label>
+                    </div>
+                </div>
+                
+                <button class="btn btn-outline-secondary btn-sm w-100 mt-3" id="clearFilters">
+                    <i class="fas fa-eraser me-1"></i> Limpiar filtros
+                </button>
+            </div>
+        </div>
+        
+        <!-- Lista de resultados -->
+        <div class="col-lg-9">
+            <div class="d-flex justify-content-between align-items-center results-count">
+                <span><i class="fas fa-bus me-2"></i><span id="visibleCount">{{ trips|length }}</span> servicios encontrados</span>
+                <select class="form-select form-select-sm w-auto" id="sortBy">
+                    <option value="time">Ordenar por: Hora de salida</option>
+                    <option value="price_asc">Ordenar por: Menor precio</option>
+                    <option value="price_desc">Ordenar por: Mayor precio</option>
+                </select>
+            </div>
+            
+            <div id="tripsList">
+                {% for trip in trips %}
+                <div class="trip-card" data-trip-time="{{ trip.departure|time:'H:i' }}" data-trip-price="{{ trip.price|floatformat:0 }}" data-trip-service="{{ trip.service_type|default:'semi' }}">
+                    <div class="trip-card-inner">
+                        <div class="row align-items-center">
+                            <!-- Hora de salida -->
+                            <div class="col-md-2 text-center text-md-start mb-3 mb-md-0">
+                                <div class="trip-time">{{ trip.departure|time:"H:i" }}</div>
+                                <div class="trip-date">{{ trip.departure|date:"d M Y" }}</div>
+                            </div>
+                            
+                            <!-- Empresa y ruta -->
+                            <div class="col-md-4 mb-3 mb-md-0">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="company-badge">
+                                        {{ trip.bus.company.name|slice:":1"|default:"C" }}
+                                    </div>
+                                    <div>
+                                        <div class="route-destinations">{{ origin }} → {{ destination }}</div>
+                                        <div class="route-terminals">
+                                            {{ trip.route.origin.terminal_name|default:"Terminal" }} → {{ trip.route.destination.terminal_name|default:"Terminal" }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Disponibilidad y servicio -->
+                            <div class="col-md-3 mb-3 mb-md-0">
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="seat-badge">
+                                        <i class="fas fa-chair"></i> {{ trip.free_seats }} asientos
+                                    </span>
+                                    {% if trip.service_type == 'cama' %}
+                                    <span class="service-badge service-cama">
+                                        <i class="fas fa-bed"></i> Salón Cama
+                                    </span>
+                                    {% else %}
+                                    <span class="service-badge service-semi">
+                                        <i class="fas fa-chair"></i> Semi Cama
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Precio y acción -->
+                            <div class="col-md-3 text-md-end">
+                                <div>
+                                    <span class="price-amount">${{ trip.price|floatformat:0|intcomma }}</span>
+                                    <span class="price-label">por persona</span>
+                                </div>
+                                <a href="/client/seatmap/{{ trip.id }}/{% if return_date %}?return_date={{ return_date }}{% endif %}" class="btn-select-trip mt-2">
+                                    <i class="fas fa-check-circle me-2"></i>Seleccionar Asientos
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="alert alert-info text-center py-5">
+                    <i class="fas fa-search fa-3x mb-3 d-block" style="color: var(--brand-green);"></i>
+                    <h5 class="fw-bold">No hay viajes disponibles</h5>
+                    <p class="text-muted">No encontramos servicios para {{ origin }} → {{ destination }} en la fecha {{ date }}.</p>
+                    <p class="text-muted small">Intenta con otra fecha o destino.</p>
+                    <a href="{% url 'client_portal:home' %}" class="btn btn-outline-primary mt-3">
+                        <i class="fas fa-arrow-left me-2"></i>Volver al buscador
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script>
+$(document).ready(function() {
+    // Función para actualizar el contador visible
+    function updateVisibleCount() {
+        const visible = $('.trip-card:visible').length;
+        $('#visibleCount').text(visible);
+    }
+    
+    // Filtros por horario
+    function filterTrips() {
+        const selectedTimes = $('.filter-time:checked').map(function() { return $(this).val(); }).get();
+        const selectedServices = $('.filter-service:checked').map(function() { return $(this).val(); }).get();
+        
+        $('.trip-card').each(function() {
+            let show = true;
+            const timeStr = $(this).data('trip-time');
+            const hour = parseInt(timeStr.split(':')[0]);
+            const service = $(this).data('trip-service');
+            
+            // Filtrar por horario
+            if (selectedTimes.length > 0) {
+                let timeMatch = false;
+                if (selectedTimes.includes('madrugada') && hour >= 0 && hour < 6) timeMatch = true;
+                if (selectedTimes.includes('manana') && hour >= 6 && hour < 12) timeMatch = true;
+                if (selectedTimes.includes('tarde') && hour >= 12 && hour < 18) timeMatch = true;
+                if (selectedTimes.includes('noche') && hour >= 18 && hour < 24) timeMatch = true;
+                if (!timeMatch) show = false;
+            }
+            
+            // Filtrar por servicio
+            if (show && selectedServices.length > 0) {
+                if (!selectedServices.includes(service)) show = false;
+            }
+            
+            $(this).toggle(show);
+        });
+        
+        updateVisibleCount();
+    }
+    
+    // Event listeners para filtros
+    $('.filter-time, .filter-service').on('change', filterTrips);
+    
+    // Limpiar filtros
+    $('#clearFilters').click(function() {
+        $('.filter-time, .filter-service').prop('checked', false);
+        filterTrips();
+    });
+    
+    // Ordenar resultados
+    $('#sortBy').change(function() {
+        const sortValue = $(this).val();
+        const cards = $('.trip-card').get();
+        
+        if (sortValue === 'time') {
+            cards.sort((a, b) => {
+                return $(a).data('trip-time').localeCompare($(b).data('trip-time'));
+            });
+        } else if (sortValue === 'price_asc') {
+            cards.sort((a, b) => parseInt($(a).data('trip-price')) - parseInt($(b).data('trip-price')));
+        } else if (sortValue === 'price_desc') {
+            cards.sort((a, b) => parseInt($(b).data('trip-price')) - parseInt($(a).data('trip-price')));
+        }
+        
+        const container = $('#tripsList');
+        $.each(cards, function(index, card) {
+            container.append(card);
+        });
+    });
+    
+    // Inicializar contador
+    updateVisibleCount();
+});
+</script>
+{% endblock %}

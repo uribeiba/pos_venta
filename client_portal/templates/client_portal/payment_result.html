@@ -1,0 +1,117 @@
+{% extends 'client_portal/base.html' %}
+{% load humanize %}
+
+{% block title %}Resultado del pago - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+.payment-result-wrap{max-width:720px;margin:42px auto;padding:0 14px}
+.payment-result-card{background:#fff;border-radius:20px;padding:36px;box-shadow:0 10px 35px rgba(15,23,42,.09);text-align:center}
+.result-icon{width:82px;height:82px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:2.8rem}
+.result-rejected .result-icon{background:#fef2f2;color:#dc2626}
+.result-cancelled .result-icon{background:#fff7ed;color:#ea580c}
+.result-expired .result-icon{background:#f1f5f9;color:#475569}
+.result-error .result-icon{background:#fefce8;color:#ca8a04}
+.result-title{font-size:1.8rem;font-weight:850;color:#0f172a;margin-bottom:8px}
+.result-message{color:#64748b;max-width:560px;margin:0 auto 24px;line-height:1.55}
+.order-box{border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;text-align:left;margin-top:20px}
+.order-row{display:flex;justify-content:space-between;gap:20px;padding:11px 15px;border-bottom:1px solid #f1f5f9;font-size:.93rem}
+.order-row:last-child{border-bottom:0}
+.order-row span:first-child{color:#64748b}
+.order-row strong{text-align:right;color:#0f172a}
+.hold-box{margin-top:20px;border-radius:14px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.hold-time{font-size:1.25rem;font-weight:900;margin-top:5px}
+.actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:26px}
+.btn-result{border:0;border-radius:999px;padding:12px 22px;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+.btn-retry{background:#f5821f;color:#fff}
+.btn-retry:hover{background:#e06e10;color:#fff}
+.btn-seatmap{background:#0f172a;color:#fff}
+.btn-seatmap:hover{background:#1e293b;color:#fff}
+.btn-home{background:#f1f5f9;color:#334155}
+.btn-home:hover{background:#e2e8f0;color:#0f172a}
+.safety-note{font-size:.78rem;color:#94a3b8;margin-top:20px}
+@media(max-width:600px){.payment-result-card{padding:26px 18px}.order-row{flex-direction:column;gap:3px}.order-row strong{text-align:left}.actions{flex-direction:column}.btn-result{justify-content:center;width:100%}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="payment-result-wrap">
+<div class="payment-result-card {{ result_css_class }}">
+
+<div class="result-icon"><i class="fas {{ result_icon }}"></i></div>
+<h1 class="result-title">{{ result_title }}</h1>
+<p class="result-message">{{ result_message }}</p>
+
+<div class="order-box">
+<div class="order-row"><span>Código de reserva</span><strong>{{ order.code }}</strong></div>
+<div class="order-row"><span>Viaje</span><strong>{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</strong></div>
+<div class="order-row"><span>Fecha / hora</span><strong>{{ trip.departure|date:"d/m/Y H:i" }} hrs</strong></div>
+<div class="order-row"><span>Asientos</span><strong>{{ seat_count }}</strong></div>
+<div class="order-row"><span>Monto</span><strong>${{ order.total_amount|floatformat:0|intcomma }}</strong></div>
+{% if payment %}
+<div class="order-row"><span>Estado del pago</span><strong>{{ payment.get_status_display }}</strong></div>
+{% if payment.response_code is not None %}<div class="order-row"><span>Código de respuesta</span><strong>{{ payment.response_code }}</strong></div>{% endif %}
+{% endif %}
+</div>
+
+{% if can_retry %}
+<div class="hold-box">
+<i class="fas fa-clock me-1"></i>
+Tu asiento todavía está reservado.
+<div class="hold-time">{{ remaining_minutes|stringformat:"02d" }}:{{ remaining_secs|stringformat:"02d" }}</div>
+<div style="font-size:.8rem;margin-top:3px">Puedes intentar pagar nuevamente antes de que termine este tiempo.</div>
+</div>
+{% elif result_type == "expired" %}
+<div class="hold-box" style="background:#f8fafc;border-color:#cbd5e1;color:#475569">
+<i class="fas fa-chair me-1"></i>
+Los asientos de esta reserva ya no están bloqueados.
+</div>
+{% endif %}
+
+<div class="actions">
+    {% if can_retry %}
+    <form method="post"
+          action="{% url 'client_portal:webpay_retry' order.code %}"
+          id="retryPaymentForm">
+        {% csrf_token %}
+    
+        <button type="submit"
+                class="btn-result btn-retry"
+                id="retryPaymentBtn">
+            <i class="fas fa-redo"></i>
+            Intentar pagar nuevamente
+        </button>
+    </form>
+    {% endif %}
+
+{% if result_type == "expired" or not can_retry %}
+<a href="{% url 'client_portal:seatmap' trip.id %}" class="btn-result btn-seatmap"><i class="fas fa-chair"></i>Seleccionar asientos</a>
+{% endif %}
+
+<a href="{% url 'client_portal:home' %}" class="btn-result btn-home"><i class="fas fa-home"></i>Volver al inicio</a>
+</div>
+
+{% if result_type == "rejected" or result_type == "cancelled" %}
+<p class="safety-note">No se emitió ningún pasaje para esta operación.</p>
+{% endif %}
+
+</div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('retryPaymentForm');
+        const button = document.getElementById('retryPaymentBtn');
+    
+        if (!form || !button) {
+            return;
+        }
+    
+        form.addEventListener('submit', function () {
+            button.disabled = true;
+            button.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> Conectando con Webpay...';
+        });
+    });
+    </script>
+{% endblock %}

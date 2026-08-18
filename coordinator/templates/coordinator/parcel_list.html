@@ -1,0 +1,76 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Encomiendas{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h3><i class="fas fa-box me-2"></i> Encomiendas registradas</h3>
+        <div>
+            <form method="get" class="row g-2">
+                <div class="col-auto">
+                    <select name="status" class="form-select form-select-sm">
+                        <option value="">Todos los estados</option>
+                        <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pendiente</option>
+                        <option value="delivered" {% if status_filter == 'delivered' %}selected{% endif %}>Entregada</option>
+                        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelada</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <select name="trip" class="form-select form-select-sm">
+                        <option value="">Todos los viajes</option>
+                        {% for t in trips %}
+                        <option value="{{ t.id }}" {% if trip_filter|add:"0" == t.id %}selected{% endif %}>{{ t }} ({{ t.departure|date:"d/m/Y" }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>Nº seguimiento</th><th>Viaje</th><th>Remitente</th><th>Destinatario</th><th>Peso</th><th>Tarifa</th><th>Estado</th><th>Acciones</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in parcels %}
+                        <tr>
+                            <td>{{ p.tracking_number }}</td>
+                            <td>{{ p.trip }} ({{ p.trip.departure|date:"d/m/Y H:i" }})</td>
+                            <td>{{ p.sender_name }}<br><small>{{ p.sender_phone }}</small></td>
+                            <td>{{ p.recipient_name }}<br><small>{{ p.recipient_phone }}</small></td>
+                            <td>{{ p.weight }} kg</td>
+                            <td>$ {{ p.price|intcomma }}</td>
+                            <td>
+                                {% if p.status == 'pending' %}
+                                    <span class="badge bg-warning">Pendiente</span>
+                                {% elif p.status == 'delivered' %}
+                                    <span class="badge bg-success">Entregada</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Cancelada</span>
+                                {% endif %}
+                             </td>
+                            <td>
+                                {% if p.status == 'pending' %}
+                                    <a href="{% url 'coordinator:parcel_deliver' p.id %}" class="btn btn-sm btn-success" onclick="return confirm('¿Marcar como entregada?')">Entregar</a>
+                                {% endif %}
+                                <a href="{% url 'booking:parcel_receipt' p.id %}" class="btn btn-sm btn-info" target="_blank">Comprobante</a>
+                             </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="8" class="text-center">No hay encomiendas registradas.{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

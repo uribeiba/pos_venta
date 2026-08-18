@@ -1,0 +1,617 @@
+{% extends 'client_portal/base.html' %}
+{% load static %}
+
+{% block title %}Selecciona tus asientos - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: #f4f4f4;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Cabecera del viaje */
+    .trip-header-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        border-left: 4px solid #f5821f;
+    }
+    
+    .trip-header-card h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    
+    .trip-header-card .trip-meta {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        color: #666;
+        font-size: 0.85rem;
+    }
+    
+    .trip-header-card .trip-meta i {
+        margin-right: 6px;
+        color: #f5821f;
+    }
+    
+    /* Layout principal */
+    .seat-layout {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .bus-container {
+        flex: 1;
+        min-width: 300px;
+        background: white;
+        border-radius: 20px;
+        padding: 24px 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    /* Pestañas de pisos */
+    .deck-tabs {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    
+    .deck-tab-btn {
+        background: #f1f5f9;
+        border: none;
+        padding: 10px 28px;
+        border-radius: 40px;
+        font-weight: 600;
+        color: #64748b;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .deck-tab-btn.active {
+        background: #f5821f;
+        color: white;
+    }
+    
+    /* Estructura del bus */
+    .bus-wrapper {
+        max-width: 320px;
+        margin: 0 auto;
+        background: #fff;
+        border: 2px solid #e2e8f0;
+        border-radius: 32px;
+        padding: 20px 12px 25px 12px;
+        position: relative;
+    }
+    
+    .bus-wrapper::before {
+        content: "PISO";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-90deg);
+        font-size: 3rem;
+        font-weight: 900;
+        color: rgba(0, 0, 0, 0.03);
+        letter-spacing: 4px;
+        pointer-events: none;
+    }
+    
+    .bus-cabin {
+        display: flex;
+        justify-content: flex-start;
+        padding-left: 15px;
+        margin-bottom: 10px;
+    }
+    
+    .cabin-divider {
+        border: none;
+        border-top: 1px dashed #cbd5e1;
+        margin: 10px 0 20px;
+    }
+    
+    /* Grilla de asientos */
+    .seat-grid {
+        display: grid;
+        justify-content: center;
+        gap: 8px 4px;
+    }
+    
+    .seat-cell {
+        width: 42px;
+        height: 42px;
+        position: relative;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+    
+    .seat-cell:hover:not(.status-occupied) {
+        transform: scale(1.08);
+    }
+    
+    .seat-cell img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    
+    .seat-number {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 10px;
+        font-weight: 800;
+        color: white;
+        text-shadow: 1px 1px 1px rgba(0,0,0,0.7);
+        pointer-events: none;
+    }
+    
+    .non-seat {
+        width: 42px;
+        height: 42px;
+        visibility: hidden;
+    }
+    
+    /* Estados de asientos */
+    .status-free img { filter: none; }
+    .status-my-hold img { filter: hue-rotate(190deg) saturate(2) brightness(0.95); }
+    .status-occupied img, .status-sold img { 
+        filter: grayscale(0.3) brightness(0.85); 
+        cursor: not-allowed;
+    }
+    
+    /* Leyenda */
+    .legend {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid #e2e8f0;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.75rem;
+    }
+    
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+    }
+    
+    .legend-color.free { background: #4299e1; }
+    .legend-color.my-hold { background: #f5821f; }
+    .legend-color.occupied { background: #48bb78; }
+    
+    /* Panel de compra */
+    .cart-panel {
+        width: 280px;
+        background: white;
+        border-radius: 20px;
+        padding: 20px;
+        position: sticky;
+        top: 20px;
+        height: fit-content;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    .cart-panel h4 {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #f5821f;
+    }
+    
+    .selected-seat-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    
+    .total-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 2px solid #e2e8f0;
+        font-size: 1.2rem;
+        font-weight: 700;
+    }
+    
+    .btn-continuar {
+        background: #f5821f;
+        color: white;
+        border: none;
+        width: 100%;
+        padding: 12px;
+        border-radius: 40px;
+        font-weight: 700;
+        margin-top: 20px;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-continuar:hover:not(:disabled) {
+        background: #e06e10;
+        transform: translateY(-2px);
+    }
+    
+    .btn-continuar:disabled {
+        background: #cbd5e1;
+        cursor: not-allowed;
+    }
+    
+    .timer {
+        font-size: 0.7rem;
+        color: #e67e22;
+        text-align: center;
+        margin-top: 12px;
+    }
+    
+    /* Mensaje de piso no disponible */
+    .no-deck-message {
+        text-align: center;
+        padding: 40px;
+        color: #94a3b8;
+    }
+    
+    @media (max-width: 768px) {
+        .seat-layout {
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .cart-panel {
+            width: 100%;
+            max-width: 340px;
+            position: static;
+        }
+        
+        .bus-wrapper {
+            max-width: 280px;
+        }
+        
+        .seat-cell, .non-seat {
+            width: 36px;
+            height: 36px;
+        }
+        
+        .trip-header-card h2 {
+            font-size: 1.2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Stepper -->
+    {% include "includes/stepper.html" with paso_actual=3 %}
+    
+    <!-- Cabecera del viaje -->
+    <div class="trip-header-card">
+        <h2>
+            <i class="fas fa-map-marker-alt" style="color: #f5821f;"></i> 
+            {{ trip.route.origin.name }} → {{ trip.route.destination.name }}
+        </h2>
+        <div class="trip-meta">
+            <span><i class="far fa-calendar-alt"></i> {{ trip.departure|date:"l d M, H:i" }} hrs</span>
+            <span><i class="fas fa-bus"></i> {{ trip.bus.plate }}</span>
+            <span><i class="fas fa-tag"></i> {{ trip.bus.company.name|default:"Cejer" }}</span>
+        </div>
+    </div>
+    
+    <!-- Layout principal: Bus a la izquierda, carrito a la derecha -->
+    <div class="seat-layout">
+        <!-- Contenedor del bus -->
+        <div class="bus-container">
+            <!-- Pestañas de pisos (solo si hay 2 pisos) -->
+            {% if trip.bus.floors == 2 %}
+            <div class="deck-tabs">
+                <button class="deck-tab-btn active" data-deck="1">Piso 1</button>
+                <button class="deck-tab-btn" data-deck="2">Piso 2</button>
+            </div>
+            {% endif %}
+            
+            <!-- Piso 1 -->
+            <div id="deck-1" class="bus-deck" data-deck="1">
+                <div class="bus-wrapper">
+                    <div class="bus-cabin">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="2" x2="12" y2="22"></line>
+                            <line x1="4" y1="12" x2="20" y2="12"></line>
+                        </svg>
+                    </div>
+                    <hr class="cabin-divider">
+                    <div id="deck-1-container" class="seat-grid"></div>
+                </div>
+            </div>
+            
+            <!-- Piso 2 (si existe) -->
+            {% if trip.bus.floors == 2 %}
+            <div id="deck-2" class="bus-deck" data-deck="2" style="display: none;">
+                <div class="bus-wrapper">
+                    <div class="bus-cabin" style="visibility: hidden;"></div>
+                    <hr class="cabin-divider">
+                    <div id="deck-2-container" class="seat-grid"></div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Leyenda -->
+            <div class="legend">
+                <div class="legend-item"><div class="legend-color free"></div><span>Libre</span></div>
+                <div class="legend-item"><div class="legend-color my-hold"></div><span>Mi selección</span></div>
+                <div class="legend-item"><div class="legend-color occupied"></div><span>Ocupado</span></div>
+            </div>
+        </div>
+        
+        <!-- Panel de compra -->
+        <div class="cart-panel">
+            <h4><i class="fas fa-shopping-cart"></i> Tu compra</h4>
+            <div id="selected-seats-list" class="selected-seats-list">
+                <p class="text-muted small text-center">Ningún asiento seleccionado</p>
+            </div>
+            <div class="total-row">
+                <span>Total:</span>
+                <span id="total-price" class="fw-bold" style="color: #f5821f;">$0</span>
+            </div>
+            <div id="timer-message" class="timer"></div>
+            <button id="continueBtn" class="btn-continuar" disabled>
+                Continuar <i class="fas fa-arrow-right ms-2"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function getCookie(name) {
+        let value = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    value = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return value;
+    }
+
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+                xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+            }
+        }
+    });
+
+    const tripId = {{ trip.id }};
+    const unitPrice = parseFloat("{{ trip.route.base_price|default:'0' }}");
+    const cols = parseInt("{{ cols|default:5 }}") || 5;
+    let gridLower = {{ grid_lower|safe }};
+    let gridUpper = {{ grid_upper|safe }};
+    let selectedSeats = [];
+    let timerInterval = null;
+    let holdsExpireAt = null;
+
+    function formatTimeRemaining(expiresAtISO) {
+        const diff = new Date(expiresAtISO) - new Date();
+        if (diff <= 0) return "00:00";
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function updateTimerDisplay() {
+        if (holdsExpireAt) {
+            const remaining = formatTimeRemaining(holdsExpireAt);
+            $('#timer-message').text(`⏱️ Reserva expira en ${remaining}`);
+            if (remaining === "00:00") {
+                clearInterval(timerInterval);
+                alert('Tiempo expirado. Los asientos han sido liberados.');
+                location.reload();
+            }
+        }
+    }
+
+    function updateSelectionPanel() {
+        if (selectedSeats.length === 0) {
+            $('#selected-seats-list').html('<p class="text-muted small text-center">Ningún asiento seleccionado</p>');
+            $('#continueBtn').prop('disabled', true);
+            $('#total-price').text('$0');
+            return;
+        }
+        let html = '';
+        let total = 0;
+        selectedSeats.forEach(seat => {
+            html += `<div class="selected-seat-item">
+                        <span><i class="fas fa-chair"></i> Asiento ${seat.number}</span>
+                        <span>$${seat.price.toLocaleString()}</span>
+                    </div>`;
+            total += seat.price;
+        });
+        $('#selected-seats-list').html(html);
+        $('#total-price').text('$' + total.toLocaleString());
+        $('#continueBtn').prop('disabled', false);
+    }
+
+    function getSeatImage(service) {
+        const s = String(service).toLowerCase();
+        if (s === 'cama') return "{% static 'img/cama.png' %}";
+        if (s === 'ejecutivo') return "{% static 'img/ejecutivo.png' %}";
+        return "{% static 'img/semi.png' %}";
+    }
+
+    function renderDeck(containerId, deckNumber, grid) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (!grid || !grid.length) {
+            container.innerHTML = '<div class="no-deck-message">No hay asientos disponibles en este piso</div>';
+            return;
+        }
+        container.innerHTML = '';
+        container.style.gridTemplateColumns = `repeat(${cols}, minmax(38px, 1fr))`;
+        
+        let activeRowFound = false;
+
+        for (let r = 0; r < grid.length; r++) {
+            const row = grid[r];
+            let isRowEmpty = true;
+            for (let c = 0; c < cols; c++) {
+                if (row[c] && row[c].label && String(row[c].label).trim() !== '') {
+                    isRowEmpty = false;
+                    break;
+                }
+            }
+
+            if (!activeRowFound && isRowEmpty) continue;
+            activeRowFound = true;
+
+            for (let c = 0; c < cols; c++) {
+                const cell = row[c];
+                if (!cell || cell.type !== 'L') {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'non-seat';
+                    container.appendChild(emptyDiv);
+                    continue;
+                }
+                
+                let status = cell.status || 'free';
+                const label = cell.label ? String(cell.label).trim() : '';
+                const service = cell.service || 'semi';
+                
+                if (!label) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'non-seat';
+                    container.appendChild(emptyDiv);
+                    continue;
+                }
+                
+                const isSelected = selectedSeats.some(s => s.number === label);
+                if (isSelected) status = 'my-hold';
+                
+                const div = document.createElement('div');
+                div.className = `seat-cell status-${status}`;
+                div.dataset.number = label;
+                div.dataset.deck = deckNumber;
+                
+                const img = document.createElement('img');
+                img.src = getSeatImage(service);
+                div.appendChild(img);
+                
+                const numberSpan = document.createElement('span');
+                numberSpan.className = 'seat-number';
+                numberSpan.textContent = label;
+                div.appendChild(numberSpan);
+                
+                if (status === 'free' || status === 'my-hold') {
+                    div.onclick = () => toggleSeat(div, deckNumber, label, unitPrice);
+                } else {
+                    div.style.cursor = 'not-allowed';
+                }
+                container.appendChild(div);
+            }
+        }
+    }
+
+    function toggleSeat(seatElement, deck, number, price) {
+        const isSelected = selectedSeats.some(s => s.number === number);
+        const matchingElements = document.querySelectorAll(`.seat-cell[data-number="${number}"]`);
+        
+        if (isSelected) {
+            $.ajax({
+                url: `/client/api/hold/${tripId}/`,
+                type: 'POST',
+                data: JSON.stringify({ seat_number: number, deck: deck, release: true }),
+                contentType: 'application/json',
+                success: function(res) {
+                    if (res.success) {
+                        selectedSeats = selectedSeats.filter(s => s.number !== number);
+                        matchingElements.forEach(el => {
+                            el.classList.remove('status-my-hold');
+                            el.classList.add('status-free');
+                        });
+                        updateSelectionPanel();
+                        if (selectedSeats.length === 0 && timerInterval) {
+                            clearInterval(timerInterval);
+                            holdsExpireAt = null;
+                            $('#timer-message').text('');
+                        }
+                    }
+                }
+            });
+        } else {
+            $.ajax({
+                url: `/client/api/hold/${tripId}/`,
+                type: 'POST',
+                data: JSON.stringify({ seat_number: number, deck: deck }),
+                contentType: 'application/json',
+                success: function(res) {
+                    if (res.success) {
+                        selectedSeats.push({ deck, number, price });
+                        matchingElements.forEach(el => {
+                            el.classList.remove('status-free');
+                            el.classList.add('status-my-hold');
+                        });
+                        updateSelectionPanel();
+                        if (!timerInterval && res.expires_at) {
+                            holdsExpireAt = res.expires_at;
+                            timerInterval = setInterval(updateTimerDisplay, 1000);
+                            updateTimerDisplay();
+                        }
+                    } else {
+                        alert(res.error || 'No se pudo reservar el asiento');
+                    }
+                },
+                error: function(xhr) {
+                    const err = xhr.responseJSON ? xhr.responseJSON.error : 'Error al seleccionar asiento';
+                    alert(err);
+                }
+            });
+        }
+    }
+
+    // Cambio entre pisos
+    $('.deck-tab-btn').click(function() {
+        const deck = $(this).data('deck');
+        $('.deck-tab-btn').removeClass('active');
+        $(this).addClass('active');
+        $('.bus-deck').hide();
+        $(`#deck-${deck}`).show();
+    });
+
+    $('#continueBtn').click(function() {
+        if (selectedSeats.length === 0) return;
+        sessionStorage.setItem('selectedSeats', JSON.stringify(selectedSeats));
+        sessionStorage.setItem('tripId', tripId);
+        window.location.href = `/client/checkout/${tripId}/`;
+    });
+
+    $(document).ready(function() {
+        renderDeck('deck-1-container', 1, gridLower);
+        if (document.getElementById('deck-2-container')) {
+            renderDeck('deck-2-container', 2, gridUpper);
+        }
+        updateSelectionPanel();
+    });
+</script>
+{% endblock %}

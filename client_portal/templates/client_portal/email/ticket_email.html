@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tu Pasaje Cejer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: #1a1a1a;
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .header .sub {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .ticket-card {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #f5821f;
+            margin-bottom: 20px;
+        }
+        .ticket-card .ticket-number {
+            font-size: 18px;
+            font-weight: 700;
+            color: #f5821f;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .row:last-child {
+            border-bottom: none;
+        }
+        .label {
+            color: #64748b;
+            font-size: 14px;
+        }
+        .value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .qr-container {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            border: 2px dashed #e2e8f0;
+        }
+        .qr-container img {
+            max-width: 150px;
+        }
+        .qr-container .qr-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 8px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 12px;
+        }
+        .btn-view {
+            display: inline-block;
+            background: #f5821f;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 40px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .btn-view:hover {
+            background: #e06e10;
+        }
+        .success-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 4px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        @media (max-width: 480px) {
+            .container {
+                margin: 10px;
+            }
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🚌 {{ company_name }}</h1>
+            <div class="sub">Tu comprobante de pasaje</div>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0; font-size: 18px; color: #1a1a1a;">🎫 Pasaje Confirmado</h2>
+                <span class="success-badge">✓ CONFIRMADO</span>
+            </div>
+            
+            <div class="ticket-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <span class="ticket-number">#{{ ticket.number }}</span>
+                    <span style="font-size: 14px; color: #64748b;">Asiento {{ ticket.seat.number }}</span>
+                </div>
+                
+                <div class="row">
+                    <span class="label">🚌 Viaje</span>
+                    <span class="value">{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</span>
+                </div>
+                <div class="row">
+                    <span class="label">📅 Fecha</span>
+                    <span class="value">{{ trip.departure|date:"D, d M Y" }}</span>
+                </div>
+                <div class="row">
+                    <span class="label">⏰ Hora</span>
+                    <span class="value">{{ trip.departure|date:"H:i" }} hrs</span>
+                </div>
+                <div class="row">
+                    <span class="label">👤 Pasajero</span>
+                    <span class="value">{{ ticket.buyer_name }}</span>
+                </div>
+                <div class="row">
+                    <span class="label">🪪 Documento</span>
+                    <span class="value">{{ ticket.national_id }}</span>
+                </div>
+                <div class="row">
+                    <span class="label">💰 Precio</span>
+                    <span class="value" style="color: #f5821f;">${{ ticket.price|floatformat:0|intcomma }}</span>
+                </div>
+            </div>
+            
+            <!-- QR Code -->
+            <div class="qr-container">
+                <img src="data:image/png;base64,{{ qr_code }}" alt="Código QR del pasaje">
+                <div class="qr-label">Escanea este código para validar tu pasaje</div>
+            </div>
+            
+            <div style="text-align: center;">
+                <p style="color: #64748b; font-size: 14px; margin: 0;">
+                    <i class="fas fa-info-circle"></i> Presenta este comprobante al abordar
+                </p>
+                <p style="color: #64748b; font-size: 12px; margin: 4px 0;">
+                    Terminal de salida: {{ trip.route.origin_terminal.name|default:"Terminal Cejer" }}
+                </p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p style="margin: 0;">{{ company_name }} - Todos los derechos reservados</p>
+            <p style="margin: 4px 0; font-size: 11px;">
+                Este correo fue enviado automáticamente. Por favor no responder.
+            </p>
+            <p style="margin: 4px 0; font-size: 11px;">
+                © {{ year }} {{ company_name }}
+            </p>
+        </div>
+    </div>
+</body>
+</html>

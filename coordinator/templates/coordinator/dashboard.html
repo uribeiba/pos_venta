@@ -1,0 +1,151 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - Coordinador{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        background: white;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        transition: transform 0.2s;
+        height: 100%;
+        border-left: 5px solid #3b82f6;
+    }
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    .stat-card .number {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .stat-card .label {
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-top: 4px;
+    }
+    .stat-card .icon {
+        float: right;
+        font-size: 2rem;
+        opacity: 0.3;
+    }
+    .stat-card.green { border-left-color: #10b981; }
+    .stat-card.purple { border-left-color: #8b5cf6; }
+    .stat-card.orange { border-left-color: #f59e0b; }
+
+    .table-viajes thead th {
+        background: #f1f5f9;
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #475569;
+    }
+    .table-viajes td {
+        vertical-align: middle;
+        padding: 10px 12px;
+    }
+    .badge-estado {
+        padding: 4px 12px;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h3 class="mb-4"><i class="fas fa-chart-pie me-2"></i> Panel de Control</h3>
+
+    <!-- Tarjetas de resumen -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="icon"><i class="fas fa-bus"></i></div>
+                <div class="number">{{ viajes_hoy }}</div>
+                <div class="label">Viajes de hoy</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card green">
+                <div class="icon"><i class="fas fa-truck"></i></div>
+                <div class="number">{{ buses_activos }}</div>
+                <div class="label">Buses activos (7 días)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card purple">
+                <div class="icon"><i class="fas fa-user"></i></div>
+                <div class="number">{{ pasajeros_hoy }}</div>
+                <div class="label">Pasajeros estimados hoy</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card orange">
+                <div class="icon"><i class="fas fa-percent"></i></div>
+                <div class="number">{{ ocupacion_promedio|default:0 }}%</div>
+                <div class="label">Ocupación promedio</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Viajes próximos -->
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0"><i class="fas fa-clock me-2"></i> Viajes próximos (próximas 24h)</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if viajes_proximos %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-viajes mb-0">
+                        <thead>
+                            <tr>
+                                <th>Hora</th>
+                                <th>Ruta</th>
+                                <th>Bus</th>
+                                <th>Chofer</th>
+                                <th>Asientos</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for viaje in viajes_proximos %}
+                            <tr>
+                                <td><strong>{{ viaje.hora }}</strong></td>
+                                <td>{{ viaje.ruta }}</td>
+                                <td>{{ viaje.bus }}</td>
+                                <td>{{ viaje.chofer }}</td>
+                                <td>
+                                    <span class="text-success fw-semibold">{{ viaje.asientos_libres }}</span> libres /
+                                    <span class="text-secondary">{{ viaje.asientos_ocupados }}</span> ocupados
+                                </td>
+                                <td>
+                                    <span class="badge-estado bg-{{ viaje.estado_color }} text-white">
+                                        {{ viaje.estado }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-info-circle fa-2x mb-2"></i>
+                    <p>No hay viajes programados en las próximas 24 horas.</p>
+                </div>
+            {% endif %}
+        </div>
+        <div class="card-footer bg-white border-0 text-end">
+            <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-sm btn-outline-primary">
+                Ver todos los viajes <i class="fas fa-arrow-right ms-1"></i>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

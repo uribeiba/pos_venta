@@ -1,0 +1,176 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Gestión de Respaldos - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .backup-card {
+        border-left: 4px solid #3b82f6;
+        transition: 0.2s;
+    }
+    .backup-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .backup-card .size {
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .backup-card .date {
+        color: #64748b;
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:dashboard' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="#">Seguridad</a></li>
+            <li class="breadcrumb-item active">Respaldos</li>
+        </ol>
+    </nav>
+
+    <div class="row g-4">
+        <!-- Panel de acciones -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3 border-0">
+                    <h5 class="mb-0"><i class="fas fa-database me-2 text-primary"></i> Acciones</h5>
+                </div>
+                <div class="card-body">
+                    <button id="btnBackup" class="btn btn-primary w-100 mb-3" onclick="createBackup()">
+                        <i class="fas fa-plus-circle me-2"></i> Crear respaldo ahora
+                    </button>
+                    <div id="backupStatus" class="alert alert-info d-none">
+                        <i class="fas fa-spinner fa-spin me-2"></i> Generando respaldo...
+                    </div>
+                    <hr>
+                    <h6 class="text-muted small text-uppercase">Programar respaldo automático</h6>
+                    <div class="mb-2">
+                        <label class="form-label small">Frecuencia</label>
+                        <select class="form-select form-select-sm" id="scheduleFrequency">
+                            <option value="daily">Diario</option>
+                            <option value="weekly">Semanal</option>
+                            <option value="monthly">Mensual</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Hora (UTC)</label>
+                        <input type="time" class="form-control form-control-sm" id="scheduleTime" value="03:00">
+                    </div>
+                    <button class="btn btn-outline-secondary w-100" onclick="saveSchedule()">
+                        <i class="fas fa-clock me-2"></i> Guardar programación
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de respaldos -->
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-file-archive me-2 text-primary"></i> Respaldos disponibles</h5>
+                    <span class="badge bg-secondary">{{ backups|length }} archivos</span>
+                </div>
+                <div class="card-body">
+                    {% if backups %}
+                        {% for backup in backups %}
+                        <div class="backup-card card mb-2 border-0 shadow-sm">
+                            <div class="card-body py-2 d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-file-archive me-2 text-secondary"></i>
+                                    <strong>{{ backup.name }}</strong>
+                                    <div class="date">
+                                        <i class="far fa-calendar-alt me-1"></i> {{ backup.modified|date:"d/m/Y H:i" }}
+                                        <span class="mx-2">|</span>
+                                        <i class="fas fa-hdd me-1"></i> <span class="size">{{ backup.size|filesizeformat }}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <a href="{% url 'coordinator:seguridad_descargar_respaldo' backup.name %}" class="btn btn-sm btn-outline-primary me-1">
+                                        <i class="fas fa-download"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('{{ backup.name }}')">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-info-circle fa-2x mb-2 d-block"></i>
+                            No hay respaldos disponibles. Crea el primero.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function createBackup() {
+        document.getElementById('backupStatus').classList.remove('d-none');
+        document.getElementById('btnBackup').disabled = true;
+        fetch('{% url "coordinator:seguridad_crear_respaldo" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('backupStatus').classList.add('d-none');
+            document.getElementById('btnBackup').disabled = false;
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(() => {
+            document.getElementById('backupStatus').classList.add('d-none');
+            document.getElementById('btnBackup').disabled = false;
+            alert('Error al generar respaldo');
+        });
+    }
+
+    function deleteBackup(filename) {
+        if (!confirm('¿Eliminar este respaldo?')) return;
+        fetch(`/coordinator/seguridad/respaldos/eliminar/${filename}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert('Error: ' + data.error);
+        });
+    }
+
+    function saveSchedule() {
+        const freq = document.getElementById('scheduleFrequency').value;
+        const time = document.getElementById('scheduleTime').value;
+        fetch('{% url "coordinator:seguridad_guardar_programacion" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ frequency: freq, time: time })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) alert('Programación guardada');
+            else alert('Error: ' + data.error);
+        });
+    }
+</script>
+{% endblock %}

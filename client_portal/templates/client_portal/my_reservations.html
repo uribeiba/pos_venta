@@ -1,0 +1,446 @@
+{% extends 'client_portal/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Mis Reservas - Cejer{% endblock %}
+
+{% block extra_css %}
+{{ block.super }}
+<style>
+    .reservations-container {
+        padding: 20px 0;
+    }
+    
+    .reservations-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    
+    .reservations-header h1 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    
+    .reservations-header .subtitle {
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    
+    .stat-box {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid #f1f5f9;
+    }
+    
+    .stat-box .number {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #f5821f;
+    }
+    
+    .stat-box .label {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+    
+    /* Filtros */
+    .filter-bar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+        background: white;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border: 1px solid #f1f5f9;
+        align-items: center;
+    }
+    
+    .filter-bar .btn-filter {
+        padding: 6px 16px;
+        border-radius: 40px;
+        border: 2px solid #e2e8f0;
+        background: transparent;
+        font-weight: 600;
+        font-size: 0.8rem;
+        color: #64748b;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .filter-bar .btn-filter:hover {
+        border-color: #f5821f;
+        color: #f5821f;
+    }
+    
+    .filter-bar .btn-filter.active {
+        border-color: #f5821f;
+        background: #fff7f0;
+        color: #f5821f;
+    }
+    
+    .filter-bar .search-input {
+        flex: 1;
+        min-width: 200px;
+        padding: 8px 14px;
+        border: 2px solid #e2e8f0;
+        border-radius: 40px;
+        font-size: 0.85rem;
+        transition: all 0.3s ease;
+    }
+    
+    .filter-bar .search-input:focus {
+        border-color: #f5821f;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(245, 130, 31, 0.15);
+    }
+    
+    /* Tarjeta de reserva */
+    .reservation-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid #f1f5f9;
+        transition: all 0.3s ease;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    
+    .reservation-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        border-color: #f5821f;
+        transform: translateY(-2px);
+    }
+    
+    .reservation-card .reservation-info {
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    .reservation-card .reservation-info .route {
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: #1a1a1a;
+    }
+    
+    .reservation-card .reservation-info .route .arrow {
+        color: #f5821f;
+        margin: 0 6px;
+    }
+    
+    .reservation-card .reservation-info .details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        font-size: 0.85rem;
+        color: #64748b;
+        margin-top: 4px;
+    }
+    
+    .reservation-card .reservation-info .details .ticket-number {
+        font-weight: 600;
+        color: #f5821f;
+    }
+    
+    .reservation-card .reservation-status {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        min-width: 100px;
+    }
+    
+    .reservation-card .reservation-status .badge-status {
+        padding: 4px 14px;
+        border-radius: 40px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    
+    .badge-status.upcoming {
+        background: #dcfce7;
+        color: #16a34a;
+    }
+    
+    .badge-status.past {
+        background: #f1f5f9;
+        color: #64748b;
+    }
+    
+    .badge-status.today {
+        background: #fef3c7;
+        color: #d97706;
+    }
+    
+    .badge-status.cancelled {
+        background: #fee2e2;
+        color: #dc2626;
+    }
+    
+    .reservation-card .reservation-status .price {
+        font-weight: 700;
+        color: #f5821f;
+        font-size: 1.1rem;
+    }
+    
+    .btn-view-detail {
+        background: #f5821f;
+        color: white;
+        border: none;
+        border-radius: 40px;
+        padding: 6px 16px;
+        font-weight: 600;
+        font-size: 0.8rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .btn-view-detail:hover {
+        background: #e06e10;
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    /* Paginación */
+    .pagination-container {
+        display: flex;
+        justify-content: center;
+        margin-top: 24px;
+        gap: 6px;
+    }
+    
+    .pagination-container .page-link {
+        padding: 6px 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        color: #64748b;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        font-size: 0.85rem;
+    }
+    
+    .pagination-container .page-link:hover {
+        border-color: #f5821f;
+        color: #f5821f;
+    }
+    
+    .pagination-container .page-link.active {
+        background: #f5821f;
+        color: white;
+        border-color: #f5821f;
+    }
+    
+    .pagination-container .page-link.disabled {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+    
+    /* Empty state */
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 16px;
+        border: 1px solid #f1f5f9;
+    }
+    
+    .empty-state .icon {
+        font-size: 3rem;
+        color: #94a3b8;
+        margin-bottom: 16px;
+    }
+    
+    .empty-state h3 {
+        color: #1a1a1a;
+        margin-bottom: 8px;
+    }
+    
+    .empty-state p {
+        color: #64748b;
+        max-width: 400px;
+        margin: 0 auto 16px;
+    }
+    
+    .empty-state .btn-primary {
+        background: #f5821f;
+        color: white;
+        border: none;
+        border-radius: 40px;
+        padding: 10px 30px;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .empty-state .btn-primary:hover {
+        background: #e06e10;
+    }
+    
+    @media (max-width: 768px) {
+        .reservation-card {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .reservation-card .reservation-status {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 12px;
+        }
+        
+        .filter-bar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .filter-bar .search-input {
+            min-width: unset;
+        }
+        
+        .stats-row {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="reservations-container">
+        <!-- Header -->
+        <div class="reservations-header">
+            <div>
+                <h1>🎫 Mis Reservas</h1>
+                <span class="subtitle">Historial de tus compras y viajes</span>
+            </div>
+        </div>
+        
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="number">{{ total_reservations }}</div>
+                <div class="label">Total reservas</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{{ upcoming_reservations }}</div>
+                <div class="label">Viajes próximos</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{{ page_obj.paginator.count }}</div>
+                <div class="label">Mostrando</div>
+            </div>
+        </div>
+        
+        <!-- Filtros -->
+        <div class="filter-bar">
+            <a href="?status=all{% if search_query %}&search={{ search_query }}{% endif %}" class="btn-filter {% if status_filter == 'all' %}active{% endif %}">Todos</a>
+            <a href="?status=upcoming{% if search_query %}&search={{ search_query }}{% endif %}" class="btn-filter {% if status_filter == 'upcoming' %}active{% endif %}">Próximos</a>
+            <a href="?status=today{% if search_query %}&search={{ search_query }}{% endif %}" class="btn-filter {% if status_filter == 'today' %}active{% endif %}">Hoy</a>
+            <a href="?status=past{% if search_query %}&search={{ search_query }}{% endif %}" class="btn-filter {% if status_filter == 'past' %}active{% endif %}">Pasados</a>
+            
+            <form method="GET" style="flex: 1; display: flex; gap: 8px; min-width: 200px;">
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                <input type="text" name="search" class="search-input" placeholder="Buscar por ticket, ruta..." value="{{ search_query }}">
+                <button type="submit" class="btn btn-sm btn-orange" style="border-radius: 40px; padding: 8px 16px;">
+                    <i class="fas fa-search"></i>
+                </button>
+            </form>
+        </div>
+        
+        <!-- Lista de reservas -->
+        {% if page_obj %}
+            {% for ticket in page_obj %}
+            <div class="reservation-card">
+                <div class="reservation-info">
+                    <div class="route">
+                        {{ ticket.trip.route.origin.name }}
+                        <span class="arrow">→</span>
+                        {{ ticket.trip.route.destination.name }}
+                    </div>
+                    <div class="details">
+                        <span><i class="far fa-calendar-alt"></i> {{ ticket.trip.departure|date:"D, d M Y" }}</span>
+                        <span><i class="far fa-clock"></i> {{ ticket.trip.departure|date:"H:i" }}</span>
+                        <span><i class="fas fa-chair"></i> Asiento {{ ticket.seat.number }}</span>
+                        <span class="ticket-number">#{{ ticket.number }}</span>
+                    </div>
+                </div>
+                <div class="reservation-status">
+                    {% if ticket.trip.departure > now %}
+                        {% if ticket.trip.departure.date == now.date %}
+                            <span class="badge-status today">Hoy</span>
+                        {% else %}
+                            <span class="badge-status upcoming">Próximo</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="badge-status past">Pasado</span>
+                    {% endif %}
+                    <span class="price">${{ ticket.price|floatformat:0|intcomma }}</span>
+                    <a href="{% url 'client_portal:reservation_detail' ticket.id %}" class="btn-view-detail">
+                        Ver detalle <i class="fas fa-arrow-right ms-1"></i>
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+            
+            <!-- Paginación -->
+            {% if page_obj.has_other_pages %}
+            <div class="pagination-container">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}" class="page-link">‹</a>
+                {% else %}
+                    <span class="page-link disabled">‹</span>
+                {% endif %}
+                
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                        <span class="page-link active">{{ num }}</span>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                        <a href="?page={{ num }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}" class="page-link">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}" class="page-link">›</a>
+                {% else %}
+                    <span class="page-link disabled">›</span>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+        {% else %}
+            <div class="empty-state">
+                <div class="icon">🎫</div>
+                <h3>No tienes reservas</h3>
+                <p>Aún no has realizado ninguna compra. ¡Viaja con Cejer y disfruta de la mejor experiencia!</p>
+                <a href="{% url 'client_portal:home' %}" class="btn-primary">
+                    <i class="fas fa-search me-2"></i> Buscar viajes
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

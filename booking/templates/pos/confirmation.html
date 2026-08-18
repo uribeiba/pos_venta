@@ -1,0 +1,345 @@
+{% extends "booking/pos_base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}✅ Venta Confirmada - Cejer{% endblock %}
+
+{% block content %}
+<style>
+    .confirmation-container {
+        max-width: 750px;
+        margin: 30px auto;
+        background: white;
+        border-radius: 20px;
+        padding: 35px 40px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    .success-icon {
+        text-align: center;
+        font-size: 4rem;
+        color: #10b981;
+        margin-bottom: 8px;
+    }
+
+    .confirmation-title {
+        font-size: 2rem;
+        font-weight: 800;
+        text-align: center;
+        color: #0f172a;
+        margin-bottom: 4px;
+    }
+
+    .confirmation-subtitle {
+        text-align: center;
+        color: #64748b;
+        font-size: 1rem;
+        margin-bottom: 28px;
+    }
+
+    .trip-summary {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px 32px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .trip-summary .item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        color: #475569;
+    }
+
+    .trip-summary .item i {
+        color: #f5821f;
+        width: 18px;
+    }
+
+    .trip-summary .item strong {
+        color: #0f172a;
+    }
+
+    .ticket-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 20px 0;
+    }
+
+    .ticket-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 14px 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: 0.15s;
+        border-left: 4px solid #f5821f;
+    }
+
+    .ticket-card:hover {
+        background: #fafafa;
+        border-color: #cbd5e1;
+    }
+
+    .ticket-card .ticket-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        font-size: 0.9rem;
+    }
+
+    .ticket-card .ticket-number {
+        font-weight: 700;
+        color: #f5821f;
+        font-size: 1rem;
+    }
+
+    .ticket-card .ticket-info .label {
+        color: #94a3b8;
+    }
+
+    .ticket-card .ticket-price {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #0f172a;
+    }
+
+    .summary-box {
+        background: #fff7f0;
+        border-radius: 12px;
+        padding: 16px 20px;
+        border: 1px solid #fed7aa;
+        margin: 20px 0;
+    }
+
+    .summary-box .row-summary {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 0.95rem;
+    }
+
+    .summary-box .row-summary .label {
+        color: #64748b;
+    }
+
+    .summary-box .row-summary.discount {
+        color: #10b981;
+        font-weight: 600;
+    }
+
+    .summary-box .row-summary.total {
+        border-top: 2px solid #e2e8f0;
+        padding-top: 12px;
+        margin-top: 6px;
+        font-weight: 800;
+        font-size: 1.3rem;
+    }
+
+    .summary-box .row-summary.total .value {
+        color: #f5821f;
+    }
+
+    .actions-confirmation {
+        display: flex;
+        gap: 12px;
+        margin-top: 28px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .btn-confirm {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 28px;
+        border-radius: 40px;
+        font-weight: 700;
+        font-size: 1rem;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-confirm-primary {
+        background: #f5821f;
+        color: white;
+        box-shadow: 0 4px 16px rgba(245, 130, 31, 0.25);
+    }
+
+    .btn-confirm-primary:hover {
+        background: #e06e10;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(245, 130, 31, 0.35);
+        color: white;
+    }
+
+    .btn-confirm-secondary {
+        background: #f1f5f9;
+        color: #0f172a;
+        border: 1px solid #e2e8f0;
+    }
+
+    .btn-confirm-secondary:hover {
+        background: #e2e8f0;
+    }
+
+    .btn-confirm-success {
+        background: #10b981;
+        color: white;
+        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.25);
+    }
+
+    .btn-confirm-success:hover {
+        background: #059669;
+        transform: translateY(-2px);
+        color: white;
+    }
+
+    .payment-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .payment-badge.cash {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .payment-badge.card {
+        background: #fce7f3;
+        color: #9d174d;
+    }
+
+    .payment-badge.credit {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    @media (max-width: 640px) {
+        .confirmation-container {
+            padding: 20px;
+            margin: 15px;
+        }
+
+        .ticket-card {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+        }
+
+        .ticket-card .ticket-price {
+            text-align: right;
+        }
+
+        .actions-confirmation {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .trip-summary {
+            flex-direction: column;
+            gap: 8px;
+        }
+    }
+</style>
+
+<div class="confirmation-container">
+    <div class="success-icon">
+        <i class="fas fa-check-circle"></i>
+    </div>
+
+    <h1 class="confirmation-title">¡Venta Exitosa!</h1>
+    <p class="confirmation-subtitle">Los boletos han sido emitidos correctamente.</p>
+
+    <!-- Resumen del viaje -->
+    <div class="trip-summary">
+        <span class="item"><i class="fas fa-route"></i> <strong>{{ trip.route.origin.name }}</strong> → <strong>{{ trip.route.destination.name }}</strong></span>
+        <span class="item"><i class="fas fa-clock"></i> <strong>{{ trip.departure|date:"d/m/Y H:i" }}</strong> hrs</span>
+        <span class="item"><i class="fas fa-bus"></i> Bus <strong>{{ trip.bus.plate|default:"S/P" }}</strong></span>
+        <span class="item"><i class="fas fa-ticket-alt"></i> <strong>{{ tickets_count }}</strong> boletos</span>
+    </div>
+
+    <!-- Lista de tickets -->
+    <div class="ticket-list">
+        {% for ticket in tickets %}
+        <div class="ticket-card">
+            <div class="ticket-info">
+                <span class="ticket-number">🎫 {{ ticket.number }}</span>
+                <span><span class="label">Asiento:</span> {{ ticket.seat.number }}</span>
+                <span><span class="label">Piso:</span> {{ ticket.seat.deck|default:"1" }}</span>
+                <span><span class="label">Pasajero:</span> {{ ticket.buyer_name }}</span>
+            </div>
+            <div class="ticket-price">${{ ticket.price|floatformat:0|intcomma }}</div>
+        </div>
+        {% empty %}
+        <div class="alert alert-warning">No se encontraron tickets.</div>
+        {% endfor %}
+    </div>
+
+    <!-- Resumen de totales -->
+    <div class="summary-box">
+        {% if discount_amount > 0 %}
+        <div class="row-summary">
+            <span class="label">Subtotal</span>
+            <span>${{ original_total|floatformat:0|intcomma }}</span>
+        </div>
+        <div class="row-summary discount">
+            <span class="label">Descuento</span>
+            <span>-${{ discount_amount|floatformat:0|intcomma }}</span>
+        </div>
+        {% endif %}
+        <div class="row-summary total">
+            <span class="label">Total pagado</span>
+            <span class="value">${{ total_amount|floatformat:0|intcomma }}</span>
+        </div>
+        <div class="row-summary" style="margin-top:8px;">
+            <span class="label">Método de pago</span>
+            <span>
+                {% if payment_method == 'cash' %}
+                    <span class="payment-badge cash">💵 Efectivo</span>
+                {% elif payment_method == 'card' %}
+                    <span class="payment-badge card">💳 Débito/Crédito</span>
+                {% elif payment_method == 'credit' %}
+                    <span class="payment-badge credit">🏷️ Crédito Convenio</span>
+                {% else %}
+                    {{ payment_method|capfirst }}
+                {% endif %}
+            </span>
+        </div>
+        <div class="row-summary">
+            <span class="label">Cliente</span>
+            <span><strong>{{ buyer_name|default:"Cliente General" }}</strong></span>
+        </div>
+    </div>
+
+    <!-- Acciones -->
+    <div class="actions-confirmation">
+        <a href="{% url 'pos_home' %}" class="btn-confirm btn-confirm-primary">
+            <i class="fas fa-home"></i> Nueva Venta
+        </a>
+        <a href="{% url 'pos_trip' trip.id %}" class="btn-confirm btn-confirm-secondary">
+            <i class="fas fa-arrow-left"></i> Seguir en este Viaje
+        </a>
+        <button onclick="window.print()" class="btn-confirm btn-confirm-success">
+            <i class="fas fa-print"></i> Imprimir Recibo
+        </button>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center; font-size: 0.75rem; color: #94a3b8;">
+        <i class="fas fa-shield-alt me-1"></i> Comprobante válido para abordar el bus.
+    </div>
+</div>
+{% endblock %}

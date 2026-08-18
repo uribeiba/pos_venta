@@ -1,0 +1,131 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Ley 21.719 - Seguridad{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        background: white;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        transition: transform 0.2s;
+        height: 100%;
+        border-left: 5px solid #3b82f6;
+    }
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    .stat-card .number {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .stat-card .label {
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-top: 4px;
+    }
+    .stat-card .icon {
+        float: right;
+        font-size: 2rem;
+        opacity: 0.3;
+    }
+    .stat-card.green { border-left-color: #10b981; }
+    .stat-card.orange { border-left-color: #f59e0b; }
+    .stat-card.red { border-left-color: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h3 class="mb-4"><i class="fas fa-shield-alt me-2"></i> Ley 21.719 - Protección de Datos</h3>
+    
+    <div class="row g-4 mb-5">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="icon"><i class="fas fa-clipboard-list"></i></div>
+                <div class="number">{{ total_logs }}</div>
+                <div class="label">Total de registros de auditoría</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card red">
+                <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="number">{{ login_failed }}</div>
+                <div class="label">Intentos de inicio fallidos</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card green">
+                <div class="icon"><i class="fas fa-user-check"></i></div>
+                <div class="number">{{ usuarios_activos }}</div>
+                <div class="label">Usuarios activos hoy</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card orange">
+                <div class="icon"><i class="fas fa-clock"></i></div>
+                <div class="number">{{ recent_logs|length }}</div>
+                <div class="label">Acciones recientes</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Últimas acciones</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Usuario</th>
+                                    <th>Acción</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in recent_logs %}
+                                <tr>
+                                    <td>{{ log.user.username|default:"Anónimo" }}</td>
+                                    <td>{{ log.get_action_display }}</td>
+                                    <td>{{ log.timestamp|date:"d/m/Y H:i" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="3" class="text-center text-muted">No hay registros</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Acciones rápidas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'coordinator:seguridad_auditoria' %}" class="btn btn-outline-primary">
+                            <i class="fas fa-search me-2"></i> Ver auditoría completa
+                        </a>
+                        <a href="{% url 'coordinator:seguridad_respaldos' %}" class="btn btn-outline-success">
+                            <i class="fas fa-database me-2"></i> Gestionar respaldos
+                        </a>
+                        <a href="{% url 'coordinator:seguridad_incidentes' %}" class="btn btn-outline-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i> Ver incidentes de seguridad
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

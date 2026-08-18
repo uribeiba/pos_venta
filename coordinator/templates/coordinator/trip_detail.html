@@ -1,0 +1,105 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Detalle Viaje #{{ trip.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .occupancy-bar { height: 25px; border-radius: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h3><i class="fas fa-bus me-2"></i> Viaje #{{ trip.id }}: {{ trip.route.origin.name }} → {{ trip.route.destination.name }}</h3>
+        <div>
+            <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white fw-semibold">Información del viaje</div>
+                <div class="card-body">
+                    <p><strong>Salida:</strong> {{ trip.departure|date:"d/m/Y H:i" }}</p>
+                    <p><strong>Llegada:</strong> {{ trip.arrival|date:"d/m/Y H:i"|default:"—" }}</p>
+                    <p><strong>Bus:</strong> {{ trip.bus.plate }} ({{ trip.bus.model|default:"—" }})</p>
+                    <p><strong>Conductores:</strong> {{ trip.driver1.full_name|default:"—" }} / {{ trip.driver2.full_name|default:"—" }}</p>
+                    <p><strong>Auxiliar:</strong> {{ trip.assistant.full_name|default:"—" }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white fw-semibold">Ocupación</div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <div class="progress occupancy-bar">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ occupancy_rate }}%">{{ occupancy_rate }}%</div>
+                        </div>
+                        <small>{{ tickets.count }} de {{ trip.seats_total }} asientos ocupados</small>
+                    </div>
+                    <p><strong>Piso 1:</strong> {{ lower_occupancy }}% &nbsp;|&nbsp; <strong>Piso 2:</strong> {{ upper_occupancy }}%</p>
+                    <p><strong>No Show (no embarcados):</strong> {{ no_show_count }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="mb-3">
+
+        <a href="{% url 'coordinator:checkin_qr_scan' %}"
+           class="btn btn-success">
+    
+            <i class="fas fa-qrcode me-2"></i>
+            Escanear pasaje QR
+    
+        </a>
+    
+    </div>
+
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white fw-semibold">Lista de pasajeros</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>Asiento</th><th>Pasajero</th><th>RUT</th><th>N° Ticket</th><th>Embarcado</th><th>Acción</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for t in tickets %}
+                        <tr>
+                            <td>{{ t.seat.number }} (Piso {{ t.seat.deck }})</td>
+                            <td>{{ t.buyer_name }}</td>
+                            <td>{{ t.national_id|default:"—" }}</td>
+                            <td>{{ t.number }}</td>
+                            <td>
+                                {% if t.checked_in %}
+                                    <span class="badge bg-success"><i class="fas fa-check-circle"></i> Sí ({{ t.checked_in_at|date:"H:i" }})</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not t.checked_in %}
+                                    <a href="{% url 'coordinator:checkin' t.number %}" class="btn btn-sm btn-primary">Marcar embarque</a>
+                                {% else %}
+                                    —
+                                {% endif %}
+                             </td>
+                         </tr>
+                        {% empty %}
+                         <tr><td colspan="6" class="text-center">No hay pasajeros registrados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,204 @@
+{% extends 'booking/base_pos.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Compra exitosa - POS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .confirmation-container {
+        max-width: 700px;
+        margin: 40px auto;
+        background: white;
+        border-radius: 16px;
+        padding: 40px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        text-align: center;
+    }
+    .success-icon {
+        font-size: 4rem;
+        color: #10b981;
+        margin-bottom: 20px;
+    }
+    .confirmation-title {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin-bottom: 8px;
+    }
+    .confirmation-subtitle {
+        color: #64748b;
+        font-size: 1rem;
+        margin-bottom: 30px;
+    }
+    .ticket-card {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        text-align: left;
+        border-left: 4px solid #f5821f;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .ticket-card .ticket-info {
+        flex: 1;
+    }
+    .ticket-card .ticket-number {
+        font-weight: 700;
+        color: #f5821f;
+        font-size: 1.1rem;
+    }
+    .ticket-card .ticket-detail {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        font-size: 0.9rem;
+        margin-top: 4px;
+    }
+    .ticket-card .ticket-detail .label {
+        color: #64748b;
+    }
+    .ticket-card .ticket-price {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #1a1a1a;
+    }
+    .summary-box {
+        background: #fff7f0;
+        border-radius: 12px;
+        padding: 16px;
+        margin: 20px 0;
+        text-align: left;
+    }
+    .summary-box .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        font-size: 0.95rem;
+        border-bottom: 1px solid #f1e9e0;
+    }
+    .summary-box .summary-row:last-child {
+        border-bottom: none;
+    }
+    .summary-box .summary-row.total {
+        border-top: 2px solid #e2e8f0;
+        margin-top: 8px;
+        padding-top: 12px;
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+    .summary-box .summary-row .value.discount {
+        color: #e30613;
+    }
+    .btn-continue {
+        background: #f5821f;
+        color: white;
+        border: none;
+        border-radius: 40px;
+        padding: 14px 40px;
+        font-weight: 700;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-top: 20px;
+        display: inline-block;
+        text-decoration: none;
+    }
+    .btn-continue:hover {
+        background: #e06e10;
+        transform: translateY(-2px);
+        color: white;
+    }
+    @media (max-width: 768px) {
+        .confirmation-container {
+            padding: 20px;
+            margin: 20px;
+        }
+        .ticket-card {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .ticket-card .ticket-price {
+            text-align: right;
+            margin-top: 8px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="confirmation-container">
+        <div class="success-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        
+        <h1 class="confirmation-title">¡Venta Exitosa!</h1>
+        <p class="confirmation-subtitle">Los boletos han sido emitidos correctamente.</p>
+        
+        <!-- Resumen -->
+        <div class="summary-box">
+            <div class="summary-row">
+                <span>🚌 Viaje</span>
+                <span><strong>{{ trip.route.origin.name }} → {{ trip.route.destination.name }}</strong></span>
+            </div>
+            <div class="summary-row">
+                <span>📅 Fecha</span>
+                <span>{{ trip.departure|date:"D, d M Y" }}</span>
+            </div>
+            <div class="summary-row">
+                <span>⏰ Hora</span>
+                <span>{{ trip.departure|date:"H:i" }} hrs</span>
+            </div>
+            <div class="summary-row">
+                <span>🎫 Boletos</span>
+                <span>{{ ticket_count }}</span>
+            </div>
+            {% if discount_amount > 0 %}
+            <div class="summary-row">
+                <span>💰 Subtotal</span>
+                <span>${{ original_total|floatformat:0|intcomma }}</span>
+            </div>
+            <div class="summary-row">
+                <span>🏷️ Descuento</span>
+                <span class="value discount">-${{ discount_amount|floatformat:0|intcomma }}</span>
+            </div>
+            {% endif %}
+            <div class="summary-row total">
+                <span>Total pagado</span>
+                <span style="color: #f5821f;">${{ total_amount|floatformat:0|intcomma }}</span>
+            </div>
+        </div>
+        
+        <!-- Lista de tickets -->
+        <h4 style="text-align: left; margin-top: 24px; color: #1a1a1a;">📋 Detalle de pasajes</h4>
+        {% for ticket in tickets %}
+        <div class="ticket-card">
+            <div class="ticket-info">
+                <div class="ticket-number">🎫 {{ ticket.number }}</div>
+                <div class="ticket-detail">
+                    <span><span class="label">Asiento:</span> {{ ticket.seat.number }} (Piso {{ ticket.seat.deck }})</span>
+                    <span><span class="label">Pasajero:</span> {{ ticket.buyer_name }}</span>
+                    <span><span class="label">Documento:</span> {{ ticket.national_id }}</span>
+                </div>
+            </div>
+            <div class="ticket-price">${{ ticket.price|floatformat:0|intcomma }}</div>
+        </div>
+        {% empty %}
+        <div class="alert alert-warning">No se encontraron tickets.</div>
+        {% endfor %}
+        
+        <a href="{% url 'pos_home' %}" class="btn-continue">
+            <i class="fas fa-home me-2"></i> Nueva venta
+        </a>
+        <div style="margin-top: 12px;">
+            <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+                <i class="fas fa-print me-1"></i> Imprimir
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

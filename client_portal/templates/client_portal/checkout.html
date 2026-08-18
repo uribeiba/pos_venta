@@ -1,0 +1,1788 @@
+{% extends 'client_portal/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Datos del Pasajero y Pago - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+    body { background: #f4f4f4; font-family: 'Inter', sans-serif; }
+    
+    .card { border: none; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); }
+    .card-header-custom { background: #1a1a1a; color: white; border-radius: 16px 16px 0 0; padding: 16px 20px; }
+    
+    .btn-pay { background-color: #f5821f; color: white; font-weight: 700; border: none; border-radius: 40px; padding: 14px 28px; transition: all 0.3s ease; }
+    .btn-pay:hover { background-color: #e06e10; transform: translateY(-1px); }
+    
+    .btn-cancel { background-color: #e2e8f0; color: #4a5568; font-weight: 600; border: none; border-radius: 40px; padding: 14px 28px; transition: all 0.3s ease; }
+    .btn-cancel:hover { background-color: #cbd5e1; }
+    
+    .btn-create-account { background: transparent; border: 2px solid #f5821f; color: #f5821f; font-weight: 700; border-radius: 40px; padding: 10px 24px; transition: all 0.3s ease; }
+    .btn-create-account:hover { background: #f5821f; color: white; }
+    
+    /* Timer styles */
+    .timer-container { background: #fff7f0; border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #f5821f; }
+    .timer-label { font-size: 0.75rem; color: #64748b; }
+    .timer-clock { font-size: 1.5rem; font-weight: 700; color: #f5821f; font-family: monospace; }
+    .timer-warning { font-size: 0.7rem; color: #e67e22; }
+    
+    /* Tabla de pasajeros */
+    .passenger-table { width: 100%; border-collapse: collapse; }
+    .passenger-table th { background: #f8fafc; padding: 12px; font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; background: #f8fafc; }
+    .passenger-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+    .passenger-table input, .passenger-table select { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; }
+    .passenger-table input:focus, .passenger-table select:focus { border-color: #f5821f; outline: none; box-shadow: 0 0 0 2px rgba(245,130,31,0.2); }
+    
+    /* Webpay logo */
+    .webpay-logo { display: flex; align-items: center; gap: 15px; padding: 16px; background: #f8fafc; border-radius: 12px; margin-bottom: 16px; }
+    .webpay-logo img { height: 40px; }
+    .webpay-logo .webpay-text { font-size: 0.8rem; color: #64748b; }
+    .webpay-logo .webpay-text strong { color: #f5821f; }
+    
+    .payment-method-card { border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; }
+    .payment-method-card.selected { border-color: #f5821f; background: #fff7f0; }
+    .payment-method-card input { margin-right: 12px; }
+    
+    /* Cupón styles */
+    .coupon-input-group {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .coupon-input-group .form-control {
+        flex: 1;
+    }
+    
+    .btn-apply-coupon {
+        background: linear-gradient(135deg, #f5821f 0%, #e06e10 100%);
+        color: white;
+        border: none;
+        border-radius: 40px;
+        padding: 8px 20px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-apply-coupon:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(245,130,31,0.3);
+    }
+    
+    .btn-remove-coupon {
+        background: transparent;
+        color: #e30613;
+        border: none;
+        font-size: 0.7rem;
+        padding: 0;
+        margin-left: 8px;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+    
+    .btn-remove-coupon:hover {
+        color: #b0050f;
+    }
+    
+    .terms-checkbox { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0; }
+    .terms-checkbox input { margin-top: 3px; width: 18px; height: 18px; accent-color: #f5821f; }
+    .terms-checkbox label { font-size: 0.85rem; color: #4a5568; }
+    .terms-link { color: #f5821f; text-decoration: none; font-weight: 600; }
+    .terms-link:hover { text-decoration: underline; }
+    
+    .action-buttons { display: flex; gap: 16px; margin-top: 24px; }
+    .action-buttons button { flex: 1; }
+    
+    /* Columna derecha fija con scroll */
+    .resumen-card { background: #f8fafc; border-radius: 16px; padding: 20px; position: sticky; top: 20px; margin-bottom: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
+    .resumen-item { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 0.9rem; }
+    .resumen-total { border-top: 2px solid #e2e8f0; margin-top: 12px; padding-top: 12px; font-size: 1.2rem; font-weight: 700; }
+    
+    .section-title { font-size: 1rem; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f5821f; display: inline-block; }
+    
+    /* Banner crear cuenta */
+    .create-account-banner { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 20px; margin-bottom: 24px; color: white; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .create-account-banner h5 { margin: 0; font-size: 1rem; }
+    .create-account-banner p { margin: 4px 0 0; font-size: 0.8rem; opacity: 0.9; }
+    
+    /* Columna izquierda con scroll */
+    .left-col-scroll { max-height: calc(100vh - 100px); overflow-y: auto; padding-right: 10px; }
+    
+    /* NUEVO: Estilos para indicador de guardado automático */
+    .auto-save-indicator {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #10b981;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 40px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideIn 0.3s ease;
+    }
+    
+    .auto-save-indicator.show {
+        display: flex;
+    }
+    
+    .auto-save-indicator i {
+        font-size: 0.875rem;
+    }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    /* NUEVO: Banner de datos recuperados */
+    .restore-banner {
+        background: #e0f2fe;
+        border-left: 4px solid #0284c7;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    
+    .restore-banner.show {
+        display: flex;
+    }
+    
+    .restore-banner .restore-message {
+        font-size: 0.85rem;
+        color: #0369a1;
+    }
+    
+    .restore-banner .restore-message i {
+        margin-right: 8px;
+    }
+    
+    .restore-banner .btn-restore {
+        background: #0284c7;
+        color: white;
+        border: none;
+        border-radius: 40px;
+        padding: 6px 16px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    
+    .restore-banner .btn-restore:hover {
+        background: #0369a1;
+    }
+    
+    .restore-banner .btn-clear-saved {
+        background: transparent;
+        color: #64748b;
+        border: 1px solid #cbd5e1;
+        border-radius: 40px;
+        padding: 6px 16px;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+    
+    .restore-banner .btn-clear-saved:hover {
+        background: #f1f5f9;
+    }
+    
+    /* NUEVO: Estilos para error de RUT */
+    .rut-field.rut-valid {
+        border-color: #10b981 !important;
+        box-shadow: 0 0 0 2px rgba(16,185,129,0.2) !important;
+    }
+    
+    .rut-field.rut-invalid {
+        border-color: #e30613 !important;
+        box-shadow: 0 0 0 2px rgba(227,6,19,0.2) !important;
+    }
+    
+    .rut-field.rut-pending {
+        border-color: #f59e0b !important;
+        box-shadow: 0 0 0 2px rgba(245,158,11,0.2) !important;
+    }
+    
+    .rut-error-message {
+        display: block;
+        font-size: 0.7rem;
+        margin-top: 4px;
+    }
+    
+    .rut-error-message.error {
+        color: #e30613;
+    }
+    
+    .rut-error-message.warning {
+        color: #f59e0b;
+    }
+    
+    .rut-error-message.success {
+        color: #10b981;
+    }
+    
+    /* NUEVO: Heartbeat Toast */
+    #heartbeatToast {
+        position: fixed;
+        bottom: 80px;
+        right: 20px;
+        background: #10b981;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 40px;
+        font-size: 0.75rem;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideIn 0.3s ease;
+    }
+    
+    #heartbeatToast.show {
+        display: flex !important;
+    }
+    
+    @media (max-width: 768px) {
+        .passenger-table th, .passenger-table td { padding: 8px; font-size: 0.7rem; }
+        .passenger-table input { font-size: 0.7rem; padding: 6px; }
+        .action-buttons { flex-direction: column; }
+        .resumen-card { position: relative; top: 0; margin-top: 20px; }
+        .left-col-scroll { max-height: none; overflow-y: visible; }
+        .timer-clock { font-size: 1.2rem; }
+        .create-account-banner { flex-direction: column; text-align: center; }
+        .auto-save-indicator { bottom: 10px; right: 10px; padding: 6px 12px; font-size: 0.7rem; }
+        .coupon-input-group { flex-direction: column; }
+        .btn-apply-coupon { width: 100%; }
+        #heartbeatToast { bottom: 70px; right: 10px; font-size: 0.65rem; padding: 6px 12px; }
+    }
+    
+    /* Scrollbar personalizado */
+    .left-col-scroll::-webkit-scrollbar { width: 6px; }
+    .left-col-scroll::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 10px; }
+    .left-col-scroll::-webkit-scrollbar-thumb { background: #f5821f; border-radius: 10px; }
+    
+    .resumen-card::-webkit-scrollbar { width: 4px; }
+    .resumen-card::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 10px; }
+    .resumen-card::-webkit-scrollbar-thumb { background: #f5821f; border-radius: 10px; }
+
+    /* ===== FASE 2B: Modal de verificación y creación de reserva ===== */
+    .checkout-process-modal .modal-content {
+        border: 0;
+        border-radius: 22px;
+        overflow: hidden;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, .22);
+    }
+    .checkout-process-modal .modal-body { padding: 32px; }
+    .checkout-process-icon {
+        width: 78px; height: 78px; border-radius: 50%;
+        margin: 0 auto 18px; display: flex; align-items: center;
+        justify-content: center; background: #fff7ed;
+        color: #f5821f; font-size: 32px;
+    }
+    .checkout-process-icon.success { background: #ecfdf5; color: #10b981; }
+    .checkout-process-icon.error { background: #fef2f2; color: #dc2626; }
+    .checkout-process-step {
+        display: flex; align-items: center; gap: 10px; padding: 8px 0;
+        color: #64748b; font-size: .88rem;
+    }
+    .checkout-process-step.active { color: #1f2937; font-weight: 700; }
+    .checkout-process-step.done { color: #10b981; }
+    .checkout-order-code {
+        display: none; margin-top: 16px; padding: 12px 16px;
+        border: 1px dashed #f5821f; border-radius: 12px;
+        background: #fff7ed; color: #9a4e0c; font-weight: 800;
+        word-break: break-all;
+    }
+    .buyer-rut-help { color: #64748b; font-size: .72rem; margin-top: 4px; }
+
+    /* ===== VALIDACIÓN EN TIEMPO REAL - RUT DEL COMPRADOR ===== */
+    #buyer_rut.rut-valid {
+        border-color: #10b981 !important;
+        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15) !important;
+        background-color: #f0fdf4;
+    }
+
+    #buyer_rut.rut-invalid {
+        border-color: #dc2626 !important;
+        box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12) !important;
+        background-color: #fef2f2;
+    }
+
+    #buyer_rut.rut-pending {
+        border-color: #f59e0b !important;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.12) !important;
+        background-color: #fffbeb;
+    }
+
+    #buyerRutFeedback.valid {
+        color: #059669;
+        font-weight: 600;
+    }
+
+    #buyerRutFeedback.invalid {
+        color: #dc2626;
+        font-weight: 600;
+    }
+
+    #buyerRutFeedback.pending {
+        color: #d97706;
+        font-weight: 600;
+    }
+
+    #submitBtn:disabled {
+        opacity: .55;
+        cursor: not-allowed;
+        transform: none !important;
+    }
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <!-- Stepper -->
+    {% include "includes/stepper.html" with paso_actual=4 %}
+    
+    <!-- Banner Crear Cuenta -->
+    <div class="create-account-banner">
+        <div>
+            <h5><i class="fas fa-user-plus me-2"></i>¿No tienes una cuenta?</h5>
+            <p>Crea una para agilizar el proceso de compra</p>
+        </div>
+        <button class="btn-create-account" id="createAccountBtn">
+            <i class="fas fa-user-plus me-2"></i>CREAR CUENTA
+        </button>
+    </div>
+    
+    <!-- NUEVO: Banner para restaurar datos guardados -->
+    <div id="restoreBanner" class="restore-banner">
+        <div class="restore-message">
+            <i class="fas fa-save"></i> Tenemos datos guardados de tu compra anterior. ¿Quieres restaurarlos?
+        </div>
+        <div>
+            <button id="btnRestoreData" class="btn-restore"><i class="fas fa-undo-alt me-1"></i>Restaurar</button>
+            <button id="btnClearSavedData" class="btn-clear-saved"><i class="fas fa-trash-alt me-1"></i>Descartar</button>
+        </div>
+    </div>
+    
+    <!-- Timer de reserva -->
+    <div class="timer-container">
+        <div>
+            <div class="timer-label"><i class="fas fa-hourglass-half me-1"></i> Tiempo para completar tu compra</div>
+            <div class="timer-warning">Los asientos se liberarán automáticamente al expirar el tiempo</div>
+        </div>
+        <div class="timer-clock" id="timerDisplay">07:00</div>
+    </div>
+    
+    <div class="row">
+        <!-- Columna izquierda - Formulario (con scroll) -->
+        <div class="col-lg-7 left-col-scroll">
+            <div class="card mb-4">
+                <div class="card-header-custom">
+                    <i class="fas fa-users me-2"></i> Información de los pasajeros
+                </div>
+                <div class="card-body p-4">
+                    <form id="paymentForm" method="POST" action="{% url 'client_portal:checkout' trip.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" id="seatsDataJson" name="seats_data_json">
+                        <input type="hidden" id="appliedCouponCode" name="applied_coupon_code">
+                        <input type="hidden" id="appliedCouponDiscount" name="applied_coupon_discount">
+                        <input type="hidden" id="appliedCouponType" name="applied_coupon_type">
+                        
+                        <!-- Tabla de pasajeros -->
+                        <div class="mb-4">
+                            <h6 class="section-title">IDA</h6>
+                            <div id="passengersTableContainer">
+                                <!-- Tabla generada dinámicamente -->
+                            </div>
+                        </div>
+                        
+                        <!-- Datos del comprador -->
+                        <div class="mb-4">
+                            <h6 class="section-title">Datos del Comprador</h6>
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold text-secondary">Nombres y Apellidos</label>
+                                    <input type="text" class="form-control" id="buyer_name" name="buyer_name" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-secondary">RUT del comprador</label>
+                                    <input type="text"
+                                           class="form-control"
+                                           id="buyer_rut"
+                                           name="buyer_rut"
+                                           placeholder="12.345.678-5"
+                                           required
+                                           autocomplete="off"
+                                           inputmode="text"
+                                           maxlength="12">
+                                    <div class="buyer-rut-help" id="buyerRutHelp">
+                                        Ingresa un RUT chileno válido. Se verificará también en el servidor.
+                                    </div>
+                                    <div id="buyerRutFeedback"
+                                         class="small mt-1"
+                                         aria-live="polite"></div>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold text-secondary">Paradero</label>
+                                    <input type="text" class="form-control" id="buyer_address" name="buyer_address" value="TERMINAL CEJER">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-secondary">Correo electrónico</label>
+                                    <input type="email" class="form-control" id="buyer_email" name="buyer_email" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-secondary">Confirmación de correo</label>
+                                    <input type="email" class="form-control" id="buyer_email_confirm" name="buyer_email_confirm" required>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold text-secondary">Teléfono</label>
+                                    <input type="tel" class="form-control" id="buyer_phone" name="buyer_phone" placeholder="9XXXXXXXX" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Cupón de descuento -->
+                        <div class="mb-4">
+                            <h6 class="section-title"><i class="fas fa-tag me-2"></i>¿Tienes un cupón?</h6>
+                            <div class="coupon-input-group">
+                                <input type="text" class="form-control" id="couponCode" placeholder="Ingresa tu código promocional" autocomplete="off">
+                                <button type="button" class="btn-apply-coupon" id="applyCouponBtn">
+                                    <i class="fas fa-check-circle me-1"></i>Aplicar
+                                </button>
+                            </div>
+                            <div id="couponMessage" style="font-size: 0.75rem; margin-top: 8px;"></div>
+                        </div>
+                        
+                        <!-- Método de pago -->
+                        <div class="mb-4">
+                            <h6 class="section-title">Opciones de pago</h6>
+                            
+                            <!-- Webpay Logo -->
+                            <div class="webpay-logo">
+                                <img src="{% static 'img/logo-payplus.png' %}" alt="Webpay Plus">
+                                <div class="webpay-text">
+                                    <strong>webpay plus</strong><br>
+                                    <small>VISA | MasterCard | MAGNA | Redcompra</small>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-method-card selected" id="webpayCard">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="payment_method" id="webpay" value="webpay" checked>
+                                    <label class="form-check-label fw-bold" for="webpay">
+                                        Webpay Plus (Débito / Crédito / Redcompra)
+                                    </label>
+                                </div>
+                                <div class="text-muted small mt-2 ms-4">
+                                    Su compra será procesada por Transbank (Webpay) en pesos chilenos
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Términos y condiciones -->
+                        <div class="terms-checkbox">
+                            <input type="checkbox" id="acceptTerms" required>
+                            <label for="acceptTerms">
+                                Acepto los <a href="{% url 'client_portal:terms' %}" target="_blank" class="terms-link">términos, condiciones y políticas de compra y de seguridad</a>
+                            </label>
+                        </div>
+                        
+                        <!-- Botones de acción -->
+                        <div class="action-buttons">
+                            <button type="button" class="btn-cancel" id="cancelBtn">
+                                <i class="fas fa-times me-2"></i>CANCELAR
+                            </button>
+                            <button type="submit" class="btn-pay" id="submitBtn">
+                                <i class="fas fa-lock me-2"></i>PAGAR
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Columna derecha - Resumen (FIJA) -->
+        <div class="col-lg-5">
+            <div class="resumen-card">
+                <h5 class="fw-bold mb-3"><i class="fas fa-receipt me-2" style="color: #f5821f;"></i>Detalles de la compra</h5>
+                
+                <div id="tripSummary">
+                    <!-- Datos del viaje se llenan dinámicamente -->
+                </div>
+                
+                <div id="seatsSummary">
+                    <!-- Asientos se llenan dinámicamente -->
+                </div>
+                
+                <!-- Descuento por cupón -->
+                <div id="couponDiscountContainer" style="display: none;">
+                    <div class="resumen-item" id="couponDiscountRow">
+                        <span>Descuento <span id="couponCodeDisplay"></span></span>
+                        <span id="couponAmountDisplay" style="color: #10b981;">-$0</span>
+                    </div>
+                </div>
+                
+                <div class="resumen-total">
+                    <div class="resumen-item">
+                        <span>Subtotal</span>
+                        <span id="subtotalAmount">$0</span>
+                    </div>
+                    <div class="resumen-item" style="border-top: none;">
+                        <span>Descuento</span>
+                        <span id="discountAmountDisplay" style="color: #10b981;">-$0</span>
+                    </div>
+                    <div class="resumen-item" style="border-top: 2px solid #e2e8f0; margin-top: 8px; padding-top: 8px;">
+                        <span class="fw-bold">Total a pagar</span>
+                        <span id="totalAmount" class="fw-bold" style="color: #f5821f; font-size: 1.3rem;">$0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Políticas rápidas -->
+            <div class="mt-3 text-center">
+                <small class="text-muted">
+                    <a href="{% url 'client_portal:terms' %}" class="text-muted" target="_blank">Ver políticas de equipaje</a>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- NUEVO: Indicador de guardado automático -->
+<div id="autoSaveIndicator" class="auto-save-indicator">
+    <i class="fas fa-save"></i>
+    <span>Guardado automático</span>
+</div>
+
+<!-- NUEVO: Toast de heartbeat - renovación automática -->
+<div id="heartbeatToast">
+    <i class="fas fa-heartbeat"></i>
+    <span>Reserva renovada automáticamente</span>
+</div>
+
+
+<!-- FASE 2B - Modal verificar / crear reserva -->
+<div class="modal fade checkout-process-modal" id="checkoutProcessModal"
+     tabindex="-1" aria-labelledby="checkoutProcessModalLabel" aria-hidden="true"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="checkout-process-icon" id="checkoutProcessIcon">
+                    <i class="fas fa-shield-alt" id="checkoutProcessIconGlyph"></i>
+                </div>
+                <h4 class="fw-bold mb-2" id="checkoutProcessModalLabel">Verificando tu reserva</h4>
+                <p class="text-muted mb-4" id="checkoutProcessMessage">
+                    Estamos comprobando disponibilidad, pasajeros y monto.
+                </p>
+                <div class="text-start" id="checkoutProcessSteps">
+                    <div class="checkout-process-step active" id="processStepAvailability">
+                        <i class="fas fa-spinner fa-spin"></i><span>Verificando disponibilidad de asientos</span>
+                    </div>
+                    <div class="checkout-process-step" id="processStepPassengers">
+                        <i class="far fa-circle"></i><span>Validando comprador y pasajeros</span>
+                    </div>
+                    <div class="checkout-process-step" id="processStepPrice">
+                        <i class="far fa-circle"></i><span>Recalculando precio y promoción</span>
+                    </div>
+                    <div class="checkout-process-step" id="processStepOrder">
+                        <i class="far fa-circle"></i><span>Creando reserva previa al pago</span>
+                    </div>
+                </div>
+                <div class="checkout-order-code" id="checkoutOrderCode"></div>
+                <button type="button" class="btn btn-pay w-100 mt-4 d-none"
+                        id="checkoutProcessCloseBtn" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+// Definir tripId como variable global ANTES de usarlo
+const tripId = {{ trip.id }};
+
+function seatFieldKey(seat) {
+    const deck = Number(seat.deck || 1);
+    const number = String(seat.number || '').replace(/[^A-Za-z0-9_-]/g, '_');
+    return `${deck}_${number}`;
+}
+
+// ==================== VARIABLES GLOBALES PARA HEARTBEAT ====================
+let heartbeatInterval = null;
+let timeLeft = 7 * 60;
+let timerInterval;
+
+$(document).ready(function() {
+    // ==================== NUEVO: VALIDACIÓN DE RUT CHILENO ====================
+    
+    // Limpiar RUT (solo números y K)
+    function cleanRut(rut) {
+        return rut.replace(/[^0-9kK]/g, '').toUpperCase();
+    }
+    
+    // Calcular dígito verificador
+    function calculateDv(rut) {
+        let suma = 0;
+        let multiplicador = 2;
+        
+        for (let i = rut.length - 1; i >= 0; i--) {
+            suma += parseInt(rut.charAt(i)) * multiplicador;
+            multiplicador = multiplicador === 7 ? 2 : multiplicador + 1;
+        }
+        
+        const resto = suma % 11;
+        const dv = 11 - resto;
+        
+        if (dv === 11) return '0';
+        if (dv === 10) return 'K';
+        return dv.toString();
+    }
+    
+    // Validar RUT completo
+    function validateRut(rut) {
+        const clean = cleanRut(rut);
+        
+        if (clean.length === 0) {
+            return { valid: false, message: '' };
+        }
+        
+        if (clean.length < 8 || clean.length > 9) {
+            return { valid: false, message: 'El RUT debe tener entre 7 y 8 dígitos (sin contar el verificador)' };
+        }
+        
+        const body = clean.slice(0, -1);
+        const providedDv = clean.slice(-1);
+        const expectedDv = calculateDv(body);
+        
+        if (providedDv !== expectedDv) {
+            return { valid: false, message: `Dígito verificador inválido. Debería ser ${expectedDv}` };
+        }
+        
+        return { valid: true, message: 'RUT válido' };
+    }
+    
+    // Formatear RUT con puntos y guión
+    function formatRut(rut) {
+        let clean = cleanRut(rut);
+        if (clean.length < 2) return clean;
+        
+        let body = clean.slice(0, -1);
+        const dv = clean.slice(-1);
+        
+        if (body.length > 8) body = body.slice(0, 8);
+        
+        let formattedBody = '';
+        for (let i = body.length - 1, j = 0; i >= 0; i--, j++) {
+            if (j > 0 && j % 3 === 0) {
+                formattedBody = '.' + formattedBody;
+            }
+            formattedBody = body[i] + formattedBody;
+        }
+        
+        return `${formattedBody}-${dv}`;
+    }
+    
+    // ==================== RUT DEL COMPRADOR EN TIEMPO REAL ====================
+
+    function setBuyerRutState(state, message) {
+        const $rut = $('#buyer_rut');
+        const $feedback = $('#buyerRutFeedback');
+        const $submit = $('#submitBtn');
+
+        $rut.removeClass('rut-valid rut-invalid rut-pending');
+        $feedback.removeClass('valid invalid pending').text('');
+
+        if (state === 'valid') {
+            $rut.addClass('rut-valid');
+            $feedback
+                .addClass('valid')
+                .html('<i class="fas fa-check-circle me-1"></i>RUT válido');
+            $rut.data('rut-valid', true);
+
+        } else if (state === 'invalid') {
+            $rut.addClass('rut-invalid');
+            $feedback
+                .addClass('invalid')
+                .html(
+                    '<i class="fas fa-times-circle me-1"></i>' +
+                    (message || 'RUT inválido. Revisa el dígito verificador.')
+                );
+            $rut.data('rut-valid', false);
+
+        } else if (state === 'pending') {
+            $rut.addClass('rut-pending');
+            $feedback
+                .addClass('pending')
+                .html(
+                    '<i class="fas fa-info-circle me-1"></i>' +
+                    (message || 'Completa el RUT.')
+                );
+            $rut.data('rut-valid', false);
+
+        } else {
+            $rut.data('rut-valid', false);
+        }
+
+        if ($submit.data('processing') !== true) {
+            $submit.prop('disabled', state !== 'valid');
+        }
+    }
+
+    function validateBuyerRutField(formatOnValid = false) {
+        const $rut = $('#buyer_rut');
+        const rawValue = ($rut.val() || '').trim();
+        const cleanValue = cleanRut(rawValue);
+
+        if (!cleanValue) {
+            setBuyerRutState('', '');
+            return false;
+        }
+
+        if (cleanValue.length < 8) {
+            setBuyerRutState(
+                'pending',
+                'RUT incompleto. Ingresa el número y su dígito verificador.'
+            );
+            return false;
+        }
+
+        const validation = validateRut(cleanValue);
+
+        if (!validation.valid) {
+            setBuyerRutState(
+                'invalid',
+                'RUT inválido. Revisa el dígito verificador.'
+            );
+            return false;
+        }
+
+        if (formatOnValid) {
+            $rut.val(formatRut(cleanValue));
+        }
+
+        setBuyerRutState('valid', validation.message);
+        return true;
+    }
+
+    $('#buyer_rut').on('input', function() {
+        validateBuyerRutField(false);
+    });
+
+    $('#buyer_rut').on('blur', function() {
+        validateBuyerRutField(true);
+    });
+
+    // Actualizar estilo del campo RUT
+    function updateRutStyle($input, isValid, message, type) {
+        $input.removeClass('rut-valid rut-invalid rut-pending');
+        
+        // Remover mensaje de error existente
+        const $existingError = $input.closest('td').find('.rut-error-message');
+        if ($existingError.length) $existingError.remove();
+        
+        if (isValid) {
+            $input.addClass('rut-valid');
+        } else if (type === 'pending') {
+            $input.addClass('rut-pending');
+            if (message) {
+                const $errorSpan = $('<span>', {
+                    class: 'rut-error-message warning',
+                    text: message
+                });
+                $input.closest('td').append($errorSpan);
+            }
+        } else if (!isValid && message) {
+            $input.addClass('rut-invalid');
+            const $errorSpan = $('<span>', {
+                class: 'rut-error-message error',
+                text: message
+            });
+            $input.closest('td').append($errorSpan);
+        } else {
+            $input.css('border-color', '#e2e8f0');
+            $input.css('box-shadow', 'none');
+        }
+    }
+    
+    // ==================== SISTEMA DE CUPONES DE DESCUENTO ====================
+    
+    let appliedCoupon = null;
+    let currentDiscount = 0;
+    let originalTotal = 0;
+    
+    // Función para aplicar cupón
+    function applyCoupon(couponCode) {
+        const $btn = $('#applyCouponBtn');
+        const originalText = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>Validando...');
+        $btn.prop('disabled', true);
+        
+        $('#couponMessage').removeClass('text-success text-danger').html('');
+        
+        $.ajax({
+            url: `/client/api/validate-coupon/`,
+            type: 'POST',
+            data: JSON.stringify({
+                coupon_code: couponCode,
+                trip_id: tripId,
+                total_amount: originalTotal
+            }),
+            contentType: 'application/json',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.valid) {
+                    appliedCoupon = response.coupon;
+                    currentDiscount = response.discount_amount;
+                    
+                    $('#couponMessage').addClass('text-success').html(`
+                        <i class="fas fa-check-circle me-1"></i> 
+                        Cupón aplicado: ${response.message}
+                        <button type="button" class="btn-remove-coupon" id="removeCouponBtn">
+                            <i class="fas fa-times me-1"></i>Quitar
+                        </button>
+                    `);
+                    
+                    $('#appliedCouponCode').val(couponCode);
+                    $('#appliedCouponDiscount').val(currentDiscount);
+                    $('#appliedCouponType').val(response.coupon_type);
+                    
+                    updateTotalWithDiscount();
+                    
+                    $('#couponCode').prop('disabled', true);
+                    $btn.html('<i class="fas fa-check me-1"></i>Aplicado');
+                    
+                } else {
+                    $('#couponMessage').addClass('text-danger').html(`
+                        <i class="fas fa-exclamation-circle me-1"></i> 
+                        ${response.message}
+                    `);
+                    $btn.html(originalText);
+                }
+            },
+            error: function(xhr) {
+                let errorMsg = 'Error al validar el cupón. Intenta nuevamente.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                $('#couponMessage').addClass('text-danger').html(`
+                    <i class="fas fa-exclamation-circle me-1"></i> 
+                    ${errorMsg}
+                `);
+                $btn.html(originalText);
+            },
+            complete: function() {
+                $btn.prop('disabled', false);
+            }
+        });
+    }
+    
+    // Función para quitar cupón
+    function removeCoupon() {
+        appliedCoupon = null;
+        currentDiscount = 0;
+        
+        $('#appliedCouponCode').val('');
+        $('#appliedCouponDiscount').val('');
+        $('#appliedCouponType').val('');
+        
+        $('#couponCode').prop('disabled', false).val('');
+        $('#applyCouponBtn').html('<i class="fas fa-check-circle me-1"></i>Aplicar');
+        $('#couponMessage').removeClass('text-success text-danger').html('');
+        
+        updateTotalWithDiscount();
+    }
+    
+    // Función para actualizar total con descuento
+    function updateTotalWithDiscount() {
+        const subtotal = originalTotal;
+        const finalTotal = subtotal - currentDiscount;
+        
+        $('#subtotalAmount').text('CLP $' + subtotal.toLocaleString());
+        $('#discountAmountDisplay').text('-$' + currentDiscount.toLocaleString());
+        $('#totalAmount').text('CLP $' + finalTotal.toLocaleString());
+        
+        if (currentDiscount > 0) {
+            $('#couponDiscountContainer').show();
+            $('#couponCodeDisplay').text(appliedCoupon ? `(${appliedCoupon.code})` : '');
+            let discountText = '';
+            if (appliedCoupon) {
+                if (appliedCoupon.discount_type === 'percentage') {
+                    discountText = `${appliedCoupon.discount_value}% OFF`;
+                } else {
+                    discountText = `$${appliedCoupon.discount_value.toLocaleString()} OFF`;
+                }
+            }
+            $('#couponAmountDisplay').html(`-$${currentDiscount.toLocaleString()} ${discountText ? `<small>(${discountText})</small>` : ''}`);
+        } else {
+            $('#couponDiscountContainer').hide();
+        }
+        
+        saveFormData();
+    }
+    
+    // Evento para aplicar cupón
+    $('#applyCouponBtn').click(function() {
+        const couponCode = $('#couponCode').val().trim().toUpperCase();
+        if (!couponCode) {
+            $('#couponMessage').addClass('text-danger').html(`
+                <i class="fas fa-exclamation-circle me-1"></i> 
+                Ingresa un código de cupón
+            `);
+            return;
+        }
+        applyCoupon(couponCode);
+    });
+    
+    // Aplicar cupón con Enter key
+    $('#couponCode').keypress(function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            $('#applyCouponBtn').click();
+        }
+    });
+    
+    // Evento delegado para quitar cupón
+    $(document).on('click', '#removeCouponBtn', function() {
+        removeCoupon();
+    });
+    
+    // ==================== NUEVO: SISTEMA DE GUARDADO AUTOMÁTICO ====================
+    
+    // Clave para localStorage
+    const STORAGE_KEY = `checkout_data_${tripId}`;
+    
+    // Función para guardar todos los datos del formulario
+    function saveFormData() {
+        const passengers = [];
+        
+        // Recorrer cada pasajero y guardar sus datos
+        seats.forEach((seat, index) => {
+            const key = seatFieldKey(seat);
+            const passengerData = {
+                seat_number: seat.number,
+                deck: seat.deck,
+                price: seat.price,
+                nationality: $(`select[name="passenger_nationality_${key}"]`).val() || 'CHI',
+                doc_type: $(`select[name="passenger_doc_type_${key}"]`).val() || 'RUT',
+                doc_number: $(`input[name="passenger_doc_number_${key}"]`).val() || '',
+                name: $(`input[name="passenger_name_${key}"]`).val() || '',
+                lastname: $(`input[name="passenger_lastname_${key}"]`).val() || ''
+            };
+            passengers.push(passengerData);
+        });
+        
+        // Datos del comprador
+        const buyerData = {
+            name: $('#buyer_name').val() || '',
+            rut: $('#buyer_rut').val() || '',
+            address: $('#buyer_address').val() || '',
+            email: $('#buyer_email').val() || '',
+            email_confirm: $('#buyer_email_confirm').val() || '',
+            phone: $('#buyer_phone').val() || ''
+        };
+        
+        // Datos de términos
+        const termsAccepted = $('#acceptTerms').is(':checked');
+        
+        // Datos del cupón
+        const couponData = appliedCoupon ? {
+            code: appliedCoupon.code,
+            discount: currentDiscount,
+            type: appliedCoupon.discount_type
+        } : null;
+        
+        // Guardar en localStorage
+        const dataToSave = {
+            passengers: passengers,
+            buyer: buyerData,
+            terms_accepted: termsAccepted,
+            coupon: couponData,
+            saved_at: new Date().toISOString(),
+            trip_id: tripId
+        };
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+        
+        // Mostrar indicador de guardado (y ocultarlo después de 2 segundos)
+        $('#autoSaveIndicator').addClass('show');
+        setTimeout(() => {
+            $('#autoSaveIndicator').removeClass('show');
+        }, 2000);
+    }
+    
+    // Función para restaurar datos desde localStorage
+    function restoreFormData() {
+        const savedData = localStorage.getItem(STORAGE_KEY);
+        if (!savedData) return false;
+        
+        try {
+            const data = JSON.parse(savedData);
+            
+            // Verificar que los datos son para este viaje
+            if (data.trip_id !== tripId) return false;
+            
+            // Restaurar datos de pasajeros
+            data.passengers.forEach((passenger, idx) => {
+                const key = seatFieldKey({
+                    number: passenger.seat_number,
+                    deck: passenger.deck
+                });
+
+                $(`select[name="passenger_nationality_${key}"]`).val(passenger.nationality);
+                $(`select[name="passenger_doc_type_${key}"]`).val(passenger.doc_type);
+                $(`input[name="passenger_doc_number_${key}"]`).val(passenger.doc_number);
+                $(`input[name="passenger_name_${key}"]`).val(passenger.name);
+                $(`input[name="passenger_lastname_${key}"]`).val(passenger.lastname);
+
+                const $documentField = $(`input[name="passenger_doc_number_${key}"]`);
+                $documentField.trigger('input');
+            });
+            
+            // Restaurar datos del comprador
+            $('#buyer_name').val(data.buyer.name);
+            $('#buyer_rut').val(data.buyer.rut || '');
+            $('#buyer_rut').trigger('input');
+            $('#buyer_address').val(data.buyer.address);
+            $('#buyer_email').val(data.buyer.email);
+            $('#buyer_email_confirm').val(data.buyer.email_confirm);
+            $('#buyer_phone').val(data.buyer.phone);
+            
+            // Restaurar términos
+            if (data.terms_accepted) {
+                $('#acceptTerms').prop('checked', true);
+            }
+            
+            // Restaurar cupón si existe
+            if (data.coupon && data.coupon.code) {
+                setTimeout(() => {
+                    applyCoupon(data.coupon.code);
+                }, 500);
+            }
+            
+            return true;
+        } catch (e) {
+            console.error('Error al restaurar datos:', e);
+            return false;
+        }
+    }
+    
+    // Función para limpiar datos guardados
+    function clearSavedData() {
+        localStorage.removeItem(STORAGE_KEY);
+        $('#restoreBanner').removeClass('show');
+    }
+    
+    // Función para verificar si hay datos guardados (y mostrar banner)
+    function checkForSavedData() {
+        const savedData = localStorage.getItem(STORAGE_KEY);
+        if (!savedData) return;
+        
+        try {
+            const data = JSON.parse(savedData);
+            // Solo mostrar si hay datos y no es demasiado viejo (más de 30 minutos)
+            const savedAt = new Date(data.saved_at);
+            const now = new Date();
+            const minutesDiff = (now - savedAt) / 1000 / 60;
+            
+            if (minutesDiff < 30 && data.trip_id === tripId) {
+                $('#restoreBanner').addClass('show');
+            } else if (minutesDiff >= 30) {
+                // Datos expirados, limpiar
+                clearSavedData();
+            }
+        } catch (e) {
+            console.error('Error al verificar datos guardados:', e);
+        }
+    }
+    
+    // ==================== CONFIGURAR EVENTOS DE GUARDADO AUTOMÁTICO ====================
+    
+    // Guardar cuando se modifica cualquier campo de pasajero (usando delegación de eventos)
+    $(document).on('change keyup', '#passengersTableContainer input, #passengersTableContainer select', function() {
+        saveFormData();
+    });
+    
+    // Guardar cuando se modifican campos del comprador
+    $('#buyer_name, #buyer_rut, #buyer_address, #buyer_email, #buyer_email_confirm, #buyer_phone').on('change keyup', function() {
+        saveFormData();
+    });
+    
+    // Guardar cuando se marca/desmarca términos
+    $('#acceptTerms').on('change', function() {
+        saveFormData();
+    });
+    
+    // Guardar cada 30 segundos adicional (por si acaso)
+    setInterval(saveFormData, 30000);
+    
+    // ==================== EVENTOS DEL BANNER DE RESTAURACIÓN ====================
+    
+    // Botón restaurar
+    $('#btnRestoreData').click(function() {
+        if (restoreFormData()) {
+            $('#restoreBanner').removeClass('show');
+            // Mostrar mensaje de éxito
+            const successMsg = $('<div>', {
+                class: 'alert alert-success alert-dismissible fade show',
+                role: 'alert',
+                html: '<i class="fas fa-check-circle me-2"></i>Tus datos han sido restaurados correctamente. <button type="button" class="btn-close" data-bs-dismiss="alert"></button>',
+                css: {
+                    position: 'fixed',
+                    top: '20px',
+                    right: '20px',
+                    zIndex: 9999,
+                    minWidth: '300px'
+                }
+            });
+            $('body').append(successMsg);
+            setTimeout(() => successMsg.fadeOut(() => successMsg.remove()), 3000);
+        } else {
+            alert('No se pudieron restaurar los datos o están corruptos.');
+        }
+    });
+    
+    // Botón descartar
+    $('#btnClearSavedData').click(function() {
+        clearSavedData();
+        $('#restoreBanner').removeClass('show');
+    });
+    
+    // ==================== CÓDIGO ORIGINAL (modificado para guardado) ====================
+    
+    // Recuperar asientos seleccionados
+    const selectedSeatsRaw = sessionStorage.getItem('selectedSeats');
+    if (!selectedSeatsRaw || JSON.parse(selectedSeatsRaw).length === 0) {
+        alert('No tienes asientos seleccionados. Serás redirigido.');
+        window.location.href = "{% url 'client_portal:home' %}";
+        return;
+    }
+    
+    const seats = JSON.parse(selectedSeatsRaw);
+    $('#seatsDataJson').val(JSON.stringify(seats));
+    
+    let totalAmount = 0;
+    
+    // Generar tabla de pasajeros
+    function generatePassengersTable() {
+        let html = `<table class="passenger-table">
+            <thead>
+                <tr>
+                    <th>Nº</th>
+                    <th>Nacionalidad</th>
+                    <th>Documento</th>
+                    <th>Nº Documento</th>
+                    <th>Nombre</th>
+                    <th>Apellido</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        
+        seats.forEach((seat, index) => {
+            totalAmount += parseFloat(seat.price);
+            const key = seatFieldKey(seat);
+
+            html += `<tr class="passenger-row-${key}" data-seat-number="${seat.number}" data-seat-deck="${seat.deck}">
+                <td class="text-center fw-bold">${seat.deck === 2 ? 'P2-' : 'P1-'}${seat.number}</td>
+                <td>
+                    <select name="passenger_nationality_${key}" class="form-select form-select-sm">
+                        <option value="CHI">CHI</option>
+                        <option value="ARG">ARG</option>
+                        <option value="BOL">BOL</option>
+                        <option value="PER">PER</option>
+                        <option value="COL">COL</option>
+                        <option value="BRA">BRA</option>
+                    </select>
+                </td>
+                <td>
+                    <select name="passenger_doc_type_${key}" class="form-select form-select-sm passenger-doc-type">
+                        <option value="RUT">RUT (CHL)</option>
+                        <option value="DNI">DNI</option>
+                        <option value="PAS">PASAPORTE</option>
+                    </select>
+                </td>
+                <td><input type="text" name="passenger_doc_number_${key}" class="rut-field passenger-document-field" placeholder="Nº Documento" required autocomplete="off"></td>
+                <td><input type="text" name="passenger_name_${key}" placeholder="Nombre" required></td>
+                <td><input type="text" name="passenger_lastname_${key}" placeholder="Apellido" required></td>
+             </tr>`;
+        });
+        
+        html += `</tbody>
+        </table>`;
+        $('#passengersTableContainer').html(html);
+    }
+    
+    generatePassengersTable();
+
+    // El pago parte bloqueado hasta validar el RUT del comprador.
+    $('#submitBtn').prop('disabled', true);
+    validateBuyerRutField(false);
+    
+    // Establecer total original después de generar la tabla
+    originalTotal = totalAmount;
+    $('#subtotalAmount').text('CLP $' + totalAmount.toLocaleString());
+    $('#totalAmount').text('CLP $' + totalAmount.toLocaleString());
+    
+    // ==================== NUEVO: EVENTOS DE VALIDACIÓN DE RUT ====================
+    
+    // Validación de documento en tiempo real
+    $(document).on('input', '.rut-field', function() {
+        const $this = $(this);
+        const $row = $this.closest('tr');
+        const docType = $row.find('.passenger-doc-type').val() || 'RUT';
+
+        if (docType !== 'RUT') {
+            const value = ($this.val() || '').trim();
+            $this.removeClass('rut-valid rut-invalid rut-pending');
+
+            if (value.length >= 3) {
+                $this.addClass('rut-valid');
+                $this.data('rut-valid', true);
+            } else {
+                $this.addClass('rut-pending');
+                $this.data('rut-valid', false);
+            }
+            return;
+        }
+
+        let value = $this.val();
+        const clean = cleanRut(value);
+
+        if (clean.length === 0) {
+            $this.val('');
+            updateRutStyle($this, false, '', '');
+            $this.data('rut-valid', false);
+            return;
+        }
+
+        let newValue = '';
+        if (clean.length > 1) {
+            let body = clean.slice(0, -1);
+            const dv = clean.slice(-1);
+            if (body.length > 8) body = body.slice(0, 8);
+
+            let formattedBody = '';
+            for (let i = body.length - 1, j = 0; i >= 0; i--, j++) {
+                if (j > 0 && j % 3 === 0) formattedBody = '.' + formattedBody;
+                formattedBody = body[i] + formattedBody;
+            }
+            newValue = formattedBody + '-' + dv;
+        } else {
+            newValue = clean;
+        }
+
+        if (newValue !== value) $this.val(newValue);
+
+        const cleanValue = cleanRut($this.val());
+
+        if (cleanValue.length >= 8) {
+            const validation = validateRut(cleanValue);
+            if (validation.valid) {
+                updateRutStyle($this, true, validation.message, 'success');
+                $this.data('rut-valid', true);
+            } else {
+                updateRutStyle($this, false, validation.message, 'error');
+                $this.data('rut-valid', false);
+            }
+        } else if (cleanValue.length > 0) {
+            updateRutStyle($this, false, 'RUT incompleto (mínimo 7-8 dígitos)', 'pending');
+            $this.data('rut-valid', false);
+        } else {
+            updateRutStyle($this, false, '', '');
+            $this.data('rut-valid', false);
+        }
+    });
+
+    $(document).on('change', '.passenger-doc-type', function() {
+        $(this).closest('tr').find('.passenger-document-field').trigger('input');
+    });
+
+    $(document).on('blur', '.rut-field', function() {
+        const $this = $(this);
+        const $row = $this.closest('tr');
+        const docType = $row.find('.passenger-doc-type').val() || 'RUT';
+
+        if (docType !== 'RUT') return;
+
+        const cleanValue = cleanRut($this.val());
+        if (cleanValue.length >= 8) {
+            const validation = validateRut(cleanValue);
+            if (validation.valid) {
+                const formatted = formatRut(cleanValue);
+                if (formatted !== $this.val()) $this.val(formatted);
+                updateRutStyle($this, true, validation.message, 'success');
+                $this.data('rut-valid', true);
+            } else {
+                updateRutStyle($this, false, validation.message, 'error');
+                $this.data('rut-valid', false);
+            }
+        } else if (cleanValue.length > 0) {
+            updateRutStyle($this, false, 'RUT incompleto (mínimo 7-8 dígitos)', 'warning');
+            $this.data('rut-valid', false);
+        }
+    });
+
+    // MODIFICADO: Verificar si hay datos guardados DESPUÉS de generar la tabla
+    checkForSavedData();
+    
+    // Resumen del viaje
+    const tripData = {
+        origin: "{{ trip.route.origin.name }}",
+        destination: "{{ trip.route.destination.name }}",
+        originTerminal: "{{ trip.route.origin.terminal_name|default:'Terminal' }}",
+        destinationTerminal: "{{ trip.route.destination.terminal_name|default:'Terminal' }}",
+        date: "{{ trip.departure|date:'D, d M, Y' }}",
+        time: "{{ trip.departure|date:'H:i' }}",
+        company: "{{ trip.bus.company.name|default:'Cejer' }}",
+        duration: "{{ trip.duration|default:'07:00' }}"
+    };
+    
+    $('#tripSummary').html(`
+        <div class="resumen-item">
+            <span><strong>Ida</strong></span>
+        </div>
+        <div class="resumen-item">
+            <span><strong>${tripData.company}</strong></span>
+            <span>${tripData.date}</span>
+        </div>
+        <div class="resumen-item">
+            <span>${tripData.origin}, Chile</span>
+            <span>${tripData.originTerminal}</span>
+        </div>
+        <div class="resumen-item">
+            <span>${tripData.destination}, Chile</span>
+            <span>${tripData.destinationTerminal}</span>
+        </div>
+        <div class="resumen-item">
+            <span>Duración</span>
+            <span>${tripData.duration} horas</span>
+        </div>
+        <hr>
+    `);
+    
+    // Resumen de asientos
+    let seatsHtml = '';
+    seats.forEach(seat => {
+        seatsHtml += `<div class="resumen-item">
+            <span>${seat.deck === 2 ? 'P2' : 'P1'} - Asiento ${seat.number}</span>
+            <span>CLP $${parseInt(seat.price).toLocaleString()}</span>
+        </div>`;
+    });
+    $('#seatsSummary').html(seatsHtml);
+    
+    // ==================== TIMER DE 7 MINUTOS ====================
+    timeLeft = 7 * 60;
+    
+    function updateTimerDisplay() {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        const displayString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        $('#timerDisplay').text(displayString);
+        
+        if (timeLeft <= 60) {
+            $('#timerDisplay').css('color', '#e30613');
+            $('.timer-container').css('border-left-color', '#e30613');
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+
+            alert('⏰ Tiempo agotado. Los asientos serán liberados.');
+
+            const releasePromises = seats.map(seat => {
+                return $.ajax({
+                    url: `/client/api/hold/${tripId}/`,
+                    type: 'POST',
+                    data: JSON.stringify({
+                        seat_number: seat.number,
+                        deck: seat.deck,
+                        release: true
+                    }),
+                    contentType: 'application/json',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    }
+                });
+            });
+
+            Promise.allSettled(releasePromises).finally(() => {
+                clearSavedData();
+                sessionStorage.removeItem('selectedSeats');
+                sessionStorage.removeItem('tripId');
+                window.location.href = "{% url 'client_portal:seatmap' trip.id %}";
+            });
+
+            return;
+        }
+    }
+    
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            updateTimerDisplay();
+        }, 1000);
+    }
+    
+    startTimer();
+    
+    // ==================== HEARTBEAT - RENOVACIÓN AUTOMÁTICA ====================
+    
+    function startHeartbeat() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+        
+        heartbeatInterval = setInterval(function() {
+            if (timeLeft <= 0) {
+                clearInterval(heartbeatInterval);
+                return;
+            }
+            
+            $.ajax({
+                url: `/client/api/hold/renew/${tripId}/`,
+                type: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showHeartbeatToast();
+                        const $timerContainer = $('.timer-container');
+                        $timerContainer.css('border-left-color', '#10b981');
+                        setTimeout(() => {
+                            $timerContainer.css('border-left-color', timeLeft <= 60 ? '#e30613' : '#f5821f');
+                        }, 2000);
+                    }
+                },
+                error: function(xhr) {
+                    if (xhr.status !== 404) {
+                        console.warn('⚠️ Error renovando hold:', xhr.status);
+                    }
+                }
+            });
+        }, 25000);
+    }
+    
+    function showHeartbeatToast() {
+        const $toast = $('#heartbeatToast');
+        if ($toast.length) {
+            $toast.addClass('show');
+            setTimeout(() => {
+                $toast.removeClass('show');
+            }, 2000);
+        }
+    }
+    
+    $(window).on('beforeunload', function() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+    });
+    
+    setTimeout(startHeartbeat, 5000);
+    
+    // ==================== FIN HEARTBEAT ====================
+    
+    // Validación de correos
+    function validateEmails() {
+        const email = $('#buyer_email').val();
+        const confirm = $('#buyer_email_confirm').val();
+        if (email !== confirm) {
+            alert('Los correos electrónicos no coinciden');
+            return false;
+        }
+        if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+            alert('Ingresa un correo electrónico válido');
+            return false;
+        }
+        return true;
+    }
+    
+    // Botón Crear Cuenta
+    $('#createAccountBtn').click(function() {
+        alert('Funcionalidad de creación de cuenta próximamente disponible');
+    });
+    
+    // ==================== BOTÓN CANCELAR - CORREGIDO ====================
+    $('#cancelBtn').click(function() {
+        if (confirm('¿Estás seguro que deseas cancelar la compra? Los asientos serán liberados.')) {
+            clearInterval(timerInterval);
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+            
+            const $btn = $(this);
+            const originalText = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin me-2"></i>Cancelando...');
+            $btn.prop('disabled', true);
+            
+            const releasePromises = seats.map(seat => {
+                return $.ajax({
+                    url: `/client/api/hold/${tripId}/`,
+                    type: 'POST',
+                    data: JSON.stringify({ 
+                        seat_number: seat.number, 
+                        deck: seat.deck, 
+                        release: true 
+                    }),
+                    contentType: 'application/json',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    }
+                });
+            });
+            
+            Promise.all(releasePromises)
+                .then(() => {
+                    clearSavedData();
+                    sessionStorage.removeItem('selectedSeats');
+                    window.location.href = "{% url 'client_portal:seatmap' trip.id %}";
+                })
+                .catch(() => {
+                    clearSavedData();
+                    sessionStorage.removeItem('selectedSeats');
+                    window.location.href = "{% url 'client_portal:seatmap' trip.id %}";
+                });
+        }
+    });
+    
+    // ==================== BOTÓN PAGAR - PROVISIONAL ====================
+    // Mientras no tengas Transbank, esta versión redirige a confirmación
+    // ==================== FASE 2B: RESERVA PREVIA AL PAGO ====================
+    function setCheckoutProcessStep(stepId, state) {
+        const $step = $('#' + stepId);
+        const $icon = $step.find('i');
+        $step.removeClass('active done');
+
+        if (state === 'active') {
+            $step.addClass('active');
+            $icon.attr('class', 'fas fa-spinner fa-spin');
+        } else if (state === 'done') {
+            $step.addClass('done');
+            $icon.attr('class', 'fas fa-check-circle');
+        } else {
+            $icon.attr('class', 'far fa-circle');
+        }
+    }
+
+    function resetCheckoutProcessModal() {
+        $('#checkoutProcessIcon').removeClass('success error');
+        $('#checkoutProcessIconGlyph').attr('class', 'fas fa-shield-alt');
+        $('#checkoutProcessModalLabel').text('Verificando tu reserva');
+        $('#checkoutProcessMessage').text('Estamos comprobando disponibilidad, pasajeros y monto.');
+        $('#checkoutOrderCode').hide().text('');
+        $('#checkoutProcessCloseBtn').addClass('d-none');
+
+        setCheckoutProcessStep('processStepAvailability', 'active');
+        setCheckoutProcessStep('processStepPassengers', 'pending');
+        setCheckoutProcessStep('processStepPrice', 'pending');
+        setCheckoutProcessStep('processStepOrder', 'pending');
+    }
+
+    function showCheckoutProcessError(message) {
+        $('#checkoutProcessIcon').removeClass('success').addClass('error');
+        $('#checkoutProcessIconGlyph').attr('class', 'fas fa-exclamation-triangle');
+        $('#checkoutProcessModalLabel').text('No pudimos crear la reserva');
+        $('#checkoutProcessMessage').text(message || 'Revisa los datos e intenta nuevamente.');
+        $('#checkoutProcessCloseBtn').removeClass('d-none').text('Volver al formulario');
+    }
+
+    $('#paymentForm').submit(function(e) {
+        e.preventDefault();
+
+        const $form = $(this);
+        const $submitBtn = $('#submitBtn');
+
+        if ($submitBtn.data('processing') === true) return false;
+
+        if (!$('#acceptTerms').is(':checked')) {
+            alert('Debes aceptar los términos y condiciones');
+            return false;
+        }
+
+        if (!validateEmails()) return false;
+
+        const buyerRut = ($('#buyer_rut').val() || '').trim();
+        if (!validateBuyerRutField(true)) {
+            $('#buyer_rut').focus();
+            return false;
+        }
+
+        let valid = true;
+
+        seats.forEach(function(seat) {
+            if (!valid) return;
+
+            const key = seatFieldKey(seat);
+            const $docType = $(`select[name="passenger_doc_type_${key}"]`);
+            const $doc = $(`input[name="passenger_doc_number_${key}"]`);
+            const $name = $(`input[name="passenger_name_${key}"]`);
+            const $lastname = $(`input[name="passenger_lastname_${key}"]`);
+
+            const docType = $docType.val() || 'RUT';
+            const documentValue = ($doc.val() || '').trim();
+            const seatLabel = `${seat.deck === 2 ? 'Piso 2' : 'Piso 1'} - Asiento ${seat.number}`;
+
+            if (!documentValue) {
+                alert(`El pasajero de ${seatLabel} debe tener un documento.`);
+                $doc.focus(); valid = false; return;
+            }
+
+            if (docType === 'RUT') {
+                const validation = validateRut(documentValue);
+                if (!validation.valid) {
+                    alert(`Pasajero ${seatLabel}: ${validation.message}`);
+                    $doc.focus(); valid = false; return;
+                }
+            } else if (documentValue.length < 3 || documentValue.length > 30) {
+                alert(`El documento del pasajero ${seatLabel} no tiene un formato válido.`);
+                $doc.focus(); valid = false; return;
+            }
+
+            if (!$name.val().trim()) {
+                alert(`Ingresa el nombre del pasajero ${seatLabel}`);
+                $name.focus(); valid = false; return;
+            }
+
+            if (!$lastname.val().trim()) {
+                alert(`Ingresa el apellido del pasajero ${seatLabel}`);
+                $lastname.focus(); valid = false;
+            }
+        });
+
+        if (!valid) return false;
+
+        $('#seatsDataJson').val(JSON.stringify(seats));
+
+        resetCheckoutProcessModal();
+        const processModal = bootstrap.Modal.getOrCreateInstance(
+            document.getElementById('checkoutProcessModal')
+        );
+        processModal.show();
+
+        $submitBtn
+            .data('processing', true)
+            .prop('disabled', true)
+            .html('<i class="fas fa-spinner fa-spin me-2"></i>Verificando...');
+
+        setTimeout(function() {
+            setCheckoutProcessStep('processStepAvailability', 'done');
+            setCheckoutProcessStep('processStepPassengers', 'active');
+        }, 250);
+
+        $.ajax({
+            url: $form.attr('action'),
+            type: 'POST',
+            data: $form.serialize(),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+
+            success: function(response) {
+                setCheckoutProcessStep('processStepAvailability', 'done');
+                setCheckoutProcessStep('processStepPassengers', 'done');
+                setCheckoutProcessStep('processStepPrice', 'done');
+                setCheckoutProcessStep('processStepOrder', 'done');
+
+                $('#checkoutProcessIcon').removeClass('error').addClass('success');
+                $('#checkoutProcessIconGlyph').attr('class', 'fas fa-check-circle');
+                $('#checkoutProcessModalLabel').text('Reserva creada correctamente');
+                $('#checkoutProcessMessage').text(
+                    'Tus asientos fueron verificados y la reserva previa al pago quedó registrada.'
+                );
+                $('#checkoutOrderCode')
+                    .text(`RESERVA ${response.order_code}`)
+                    .show();
+
+                sessionStorage.setItem('pending_order_code', response.order_code);
+
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                }
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+
+                // =========================================================
+                // FASE 2C - CONTINUAR AUTOMÁTICAMENTE A WEBPAY
+                // =========================================================
+
+                $('#checkoutProcessCloseBtn')
+                    .addClass('d-none');
+
+                $('#checkoutProcessMessage').html(
+                    'Reserva creada correctamente.<br>' +
+                    '<strong>Conectando con Webpay...</strong>'
+                );
+
+                $submitBtn
+                    .html('<i class="fas fa-spinner fa-spin me-2"></i>CONECTANDO CON WEBPAY...')
+                    .prop('disabled', true);
+
+                const webpayStartUrlTemplate =
+                    "{% url 'client_portal:webpay_start' 'ORDER_CODE_PLACEHOLDER' %}";
+
+                const webpayStartUrl =
+                    webpayStartUrlTemplate.replace(
+                        'ORDER_CODE_PLACEHOLDER',
+                        encodeURIComponent(response.order_code)
+                    );
+
+                setTimeout(function() {
+                    window.location.href = webpayStartUrl;
+                }, 1200);
+            },
+
+            error: function(xhr) {
+                const response = xhr.responseJSON || {};
+                const message =
+                    response.message ||
+                    response.error ||
+                    'No fue posible crear la reserva. Intenta nuevamente.';
+
+                showCheckoutProcessError(message);
+
+                $submitBtn
+                    .data('processing', false)
+                    .prop('disabled', false)
+                    .html('<i class="fas fa-lock me-2"></i>PAGAR');
+
+                if (xhr.status === 409 && response.redirect_url) {
+                    $('#checkoutProcessCloseBtn')
+                        .text('Volver a seleccionar asientos')
+                        .off('click.checkoutRedirect')
+                        .on('click.checkoutRedirect', function() {
+                            window.location.href = response.redirect_url;
+                        });
+                }
+            }
+        });
+
+        return false;
+    });
+});
+</script>
+{% endblock %}

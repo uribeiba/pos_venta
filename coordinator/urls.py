@@ -4,7 +4,11 @@ from . import views
 app_name = 'coordinator'
 
 urlpatterns = [
-    # ----- Buses -----
+    # ===== RUTA RAÍZ DEL COORDINADOR =====
+    path('', views.dashboard, name='dashboard'),  # ← CORREGIDO: antes tenía "pos_home"
+
+ 
+     # ----- Buses -----
     path('buses/', views.bus_list, name='bus_list'),
     path('buses/nuevo/', views.bus_editor, name='bus_new'),
     path('buses/editar/<int:bus_id>/', views.bus_editor, name='bus_editor'),
@@ -43,7 +47,7 @@ urlpatterns = [
     path('choferes/editar/<int:driver_id>/', views.driver_create_edit, name='driver_edit'),
     path('choferes/eliminar/<int:driver_id>/', views.driver_delete, name='driver_delete'),
 
-    # ----- Documentos de choferes (nuevo) -----
+    # ----- Documentos de choferes -----
     path('choferes/<int:driver_id>/documentos/', views.driver_documents, name='driver_documents'),
     path('choferes/<int:driver_id>/documentos/nuevo/', views.driver_document_create, name='driver_document_new'),
     path('documentos/chofer/editar/<int:doc_id>/', views.driver_document_edit, name='driver_document_edit'),
@@ -55,19 +59,17 @@ urlpatterns = [
     path('auxiliares/editar/<int:assistant_id>/', views.assistant_create_edit, name='assistant_edit'),
     path('auxiliares/eliminar/<int:assistant_id>/', views.assistant_delete, name='assistant_delete'),
 
-    # ----- Documentos de buses (nuevo) -----
+    # ----- Documentos de buses -----
     path('buses/<int:bus_id>/documentos/', views.bus_documents, name='bus_documents'),
     path('buses/<int:bus_id>/documentos/nuevo/', views.bus_document_create, name='bus_document_new'),
     path('documentos/bus/editar/<int:doc_id>/', views.bus_document_edit, name='bus_document_edit'),
     path('documentos/bus/eliminar/<int:doc_id>/', views.bus_document_delete, name='bus_document_delete'),
 
-    # ----- Documentos por vencer (ya existente, se conserva) -----
+    # ----- Documentos por vencer -----
     path('documentos-por-vencer/', views.expiring_documents, name='expiring_documents'),
-    
-    # Nueva interfaz unificada de choferes
+
+    # ----- Interfaz unificada (dashboards) -----
     path('choferes/nueva-interface/', views.drivers_dashboard, name='drivers_dashboard'),
-  
-    # Nueva interfaz unificada de auxiliares
     path('auxiliares/dashboard/', views.assistants_dashboard, name='assistants_dashboard'),
     path('terminales/dashboard/', views.terminals_dashboard, name='terminals_dashboard'),
     path('rutas/dashboard/', views.routes_dashboard, name='routes_dashboard'),
@@ -77,10 +79,42 @@ urlpatterns = [
     path('agencias/eliminar/<int:agency_id>/', views.agency_delete, name='agency_delete'),
     path('viajes/dashboard/', views.trips_dashboard, name='trips_dashboard'),
     path('viajes/eliminar/<int:trip_id>/', views.trip_delete, name='trip_delete'),
-    
+
+    # ----- Generación recurrente de viajes -----
     path('generate-trips/', views.generate_trips, name='generate_trips'),
     path('api/trips-calendar/', views.api_trips_calendar, name='api_trips_calendar'),
     path('delete-trip-by-date/', views.delete_trip_by_date, name='delete_trip_by_date'),
+
+    # ----- Detalles y reportes -----
+    path('viajes/detalle/<int:trip_id>/', views.trip_detail, name='trip_detail'),
+    path('buses/detalle/<int:bus_id>/', views.bus_detail, name='bus_detail'),
+    path('reportes/ocupacion/', views.occupancy_report, name='occupancy_report'),
+    path('checkin/scan/',views.checkin_qr_scan,name='checkin_qr_scan'),
+    path('checkin/<str:ticket_number>/', views.checkin_ticket, name='checkin'),
+
+    # ----- Encomiendas -----
+    path('encomiendas/', views.parcel_list, name='parcel_list'),
+    path('encomiendas/entregar/<int:parcel_id>/', views.parcel_deliver, name='parcel_deliver'),
+
+    # ----- Mantenimiento y combustible -----
+    path('mantenimiento/', views.maintenance_list, name='maintenance_list'),
+    path('mantenimiento/nuevo/', views.maintenance_create, name='maintenance_create'),
+    path('mantenimiento/nuevo/<int:bus_id>/', views.maintenance_create, name='maintenance_create_for_bus'),
+    path('mantenimiento/editar/<int:pk>/', views.maintenance_edit, name='maintenance_edit'),
+    path('mantenimiento/eliminar/<int:pk>/', views.maintenance_delete, name='maintenance_delete'),
+    path('combustible/', views.fuel_list, name='fuel_list'),
+    path('combustible/nuevo/', views.fuel_create, name='fuel_create'),
+    path('combustible/eliminar/<int:pk>/', views.fuel_delete, name='fuel_delete'),
     
+    # ===== SEGURIDAD - LEY 21.719 =====
+    path('seguridad/', views.seguridad_dashboard, name='seguridad_dashboard'),  # <--- Panel principal
+    path('seguridad/auditoria/', views.seguridad_auditoria, name='seguridad_auditoria'),
+    path('seguridad/respaldos/', views.seguridad_respaldos, name='seguridad_respaldos'),
+    path('seguridad/incidentes/', views.seguridad_incidentes, name='seguridad_incidentes'),
+    path('seguridad/respaldos/crear/', views.seguridad_crear_respaldo, name='seguridad_crear_respaldo'),
+    path('seguridad/respaldos/descargar/<str:filename>/', views.seguridad_descargar_respaldo, name='seguridad_descargar_respaldo'),
+    path('seguridad/respaldos/eliminar/<str:filename>/', views.seguridad_eliminar_respaldo, name='seguridad_eliminar_respaldo'),
+    path('seguridad/respaldos/programacion/', views.seguridad_guardar_programacion, name='seguridad_guardar_programacion'),
+    path('seguridad/incidentes/resolver/<int:incident_id>/', views.seguridad_resolver_incidente, name='seguridad_resolver_incidente'),
     
 ]

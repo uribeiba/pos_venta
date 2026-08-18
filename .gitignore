@@ -1,7 +1,61 @@
-env/
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite3
+
+# Python
 __pycache__/
 *.pyc
-db.sqlite3
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+venv/
+env/
+.env/
+
+# Django
 *.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# IDE
+.idea/
 .vscode/
+*.swp
+*.swo
 .DS_Store
+
+# Backups
+/backups/
+*.sql
+*.dump
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Coverage
+.coverage
+htmlcov/
+# Certificados y claves SSL locales
+*.pem
+*.key
+*.crt
+
+# Archivos fuente de diseño
+*.psd
+
+# Archivos fuente de diseño
+*.psd

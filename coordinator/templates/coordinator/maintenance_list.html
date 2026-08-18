@@ -1,0 +1,71 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Mantenimientos de Flota{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h3><i class="fas fa-wrench me-2"></i> Mantenimientos registrados</h3>
+        <a href="{% url 'coordinator:maintenance_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Nuevo mantenimiento</a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label>Bus</label>
+                    <select name="bus" class="form-select">
+                        <option value="">Todos</option>
+                        {% for b in buses %}
+                        <option value="{{ b.id }}" {% if bus_filter|add:"0" == b.id %}selected{% endif %}>{{ b.plate }} - {{ b.model|default:"-" }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>Tipo</label>
+                    <select name="type" class="form-select">
+                        <option value="">Todos</option>
+                        <option value="preventive" {% if type_filter == 'preventive' %}selected{% endif %}>Preventivo</option>
+                        <option value="corrective" {% if type_filter == 'corrective' %}selected{% endif %}>Correctivo</option>
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Bus</th><th>Fecha</th><th>Tipo</th><th>Kilometraje</th><th>Descripción</th><th>Costo</th><th>Próximo mantenimiento</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in maintenances %}
+                    <tr>
+                        <td><a href="{% url 'coordinator:bus_maintenance_history' m.bus.id %}">{{ m.bus.plate }}</a></td>
+                        <td>{{ m.date|date:"d/m/Y" }}</td>
+                        <td>{% if m.maintenance_type == 'preventive' %}<span class="badge bg-info">Preventivo</span>{% else %}<span class="badge bg-warning">Correctivo</span>{% endif %}</td>
+                        <td>{{ m.mileage|intcomma }} km</td>
+                        <td>{{ m.description|truncatechars:50 }}</td>
+                        <td>$ {{ m.cost|intcomma }}</td>
+                        <td>{{ m.next_maintenance_km|default:"—" }}</td>
+                        <td><a href="{% url 'coordinator:bus_maintenance_history' m.bus.id %}" class="btn btn-sm btn-outline-info">Historial</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8" class="text-center">No hay mantenimientos registrados.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

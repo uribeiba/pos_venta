@@ -138,6 +138,12 @@
                         {{ form.seats_total }}
                         <small class="text-muted">{{ form.seats_total.help_text }}</small>
                     </div>
+                    <!-- ===== NUEVO CAMPO: CORTE DE VENTA WEB ===== -->
+                    <div class="col-md-6">
+                        <label class="form-label text-uppercase fw-semibold small">{{ form.cutoff_minutes.label }}</label>
+                        {{ form.cutoff_minutes }}
+                        <small class="text-muted">{{ form.cutoff_minutes.help_text }}</small>
+                    </div>
                 </div>
 
                 <div class="mt-4 d-flex gap-2">
@@ -188,6 +194,7 @@
                             <th class="sortable" data-sort="departure">SALIDA <i class="fas fa-sort"></i></th>
                             <th class="sortable" data-sort="arrival">LLEGADA <i class="fas fa-sort"></i></th>
                             <th>ASIENTOS</th>
+                            <th>CORTE (min)</th>
                             <th>ESTADO</th>
                             <th>ACCIONES</th>
                         </tr>
@@ -201,6 +208,7 @@
                             <td class="departure-cell" data-date="{{ trip.departure|date:'Y-m-d H:i' }}">{{ trip.departure|date:"d/m/Y H:i" }}</td>
                             <td class="arrival-cell" data-date="{{ trip.arrival|date:'Y-m-d H:i' }}">{{ trip.arrival|date:"d/m/Y H:i"|default:"-" }}</td>
                             <td>{{ trip.seats_total }}</td>
+                            <td>{{ trip.cutoff_minutes }}</td>
                             <td>
                                 {% now "U" as now_timestamp %}
                                 {% with departure_ts=trip.departure|date:"U" arrival_ts=trip.arrival|date:"U" %}
@@ -222,11 +230,16 @@
                                         data-has-tickets="{% if trip.tickets.count > 0 %}true{% else %}false{% endif %}">
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
+
+                                <a href="{% url 'coordinator:trip_detail' trip.id %}" class="btn btn-sm btn-info me-1" title="Detalle">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="8" class="text-center py-4 text-muted">
+                            <td colspan="9" class="text-center py-4 text-muted">
                                 <i class="fas fa-calendar-times fa-2x mb-2 d-block"></i>
                                 No hay viajes registrados. Crea uno arriba.
                             </td>
@@ -343,42 +356,41 @@
 
         // ========== 3. Filtro por mes/año (cliente) ==========
         const monthFilter = document.getElementById('monthFilter');
-const clearMonthBtn = document.getElementById('clearMonthFilter');
-const tableRows = document.querySelectorAll('#tripsTable tbody tr');
+        const clearMonthBtn = document.getElementById('clearMonthFilter');
+        const tableRows = document.querySelectorAll('#tripsTable tbody tr');
 
-function filterByMonth() {
-    const selectedMonth = monthFilter.value; // formato YYYY-MM
-    tableRows.forEach(row => {
-        if (!row.cells) return;
-        const depCell = row.querySelector('.departure-cell');
-        if (!depCell) return;
-        const depDate = depCell.getAttribute('data-date');
-        if (!depDate) return;
-        const rowMonth = depDate.substring(0, 7); // YYYY-MM
-        if (!selectedMonth || rowMonth === selectedMonth) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
+        function filterByMonth() {
+            const selectedMonth = monthFilter.value; // formato YYYY-MM
+            tableRows.forEach(row => {
+                if (!row.cells) return;
+                const depCell = row.querySelector('.departure-cell');
+                if (!depCell) return;
+                const depDate = depCell.getAttribute('data-date');
+                if (!depDate) return;
+                const rowMonth = depDate.substring(0, 7); // YYYY-MM
+                if (!selectedMonth || rowMonth === selectedMonth) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
         }
-    });
-}
 
-if (monthFilter) {
-    monthFilter.addEventListener('change', filterByMonth);
-    
-    // Siempre aplicar el filtro del mes actual al cargar la página
-    const today = new Date();
-    const currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-    monthFilter.value = currentMonth;
-    filterByMonth();
-}
+        if (monthFilter) {
+            monthFilter.addEventListener('change', filterByMonth);
+            // Siempre aplicar el filtro del mes actual al cargar la página
+            const today = new Date();
+            const currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+            monthFilter.value = currentMonth;
+            filterByMonth();
+        }
 
-if (clearMonthBtn) {
-    clearMonthBtn.addEventListener('click', () => {
-        monthFilter.value = '';
-        filterByMonth();
-    });
-}
+        if (clearMonthBtn) {
+            clearMonthBtn.addEventListener('click', () => {
+                monthFilter.value = '';
+                filterByMonth();
+            });
+        }
 
         // ========== 4. Ordenamiento de tabla ==========
         const getCellValue = (row, index) => {

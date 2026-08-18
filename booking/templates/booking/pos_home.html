@@ -2,372 +2,911 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}Dashboard de Ventas | POS{% endblock %}
+{% block title %}POS — Panel de Ventas{% endblock %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
-    /* Colores personalizados para las tarjetas de métricas */
-    .stats-card {
+    /* ===== VARIABLES Y ESTILOS BASE ===== */
+    :root {
+        --pos-primary: #0f172a;
+        --pos-secondary: #1e293b;
+        --pos-accent: #f5821f;
+        --pos-success: #10b981;
+        --pos-danger: #ef4444;
+        --pos-warning: #f59e0b;
+        --pos-bg: #f1f5f9;
+        --pos-radius: 16px;
+        --pos-radius-sm: 10px;
+        --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+        --shadow-md: 0 4px 16px rgba(0,0,0,0.1);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+        --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ===== SHORTCUTS HINT ===== */
+    .shortcuts-hint {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: var(--pos-primary);
+        color: white;
+        padding: 10px 18px;
+        border-radius: 50px;
+        font-size: 11px;
+        font-weight: 500;
+        box-shadow: var(--shadow-lg);
+        z-index: 999;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        opacity: 0.85;
+        transition: var(--transition);
+        cursor: pointer;
+    }
+    .shortcuts-hint:hover {
+        opacity: 1;
+        transform: scale(1.02);
+    }
+    .shortcuts-hint kbd {
+        background: rgba(255,255,255,0.15);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        color: white;
+        border: 1px solid rgba(255,255,255,0.1);
+        font-weight: 700;
+    }
+    .shortcuts-hint .hint-separator {
+        color: rgba(255,255,255,0.2);
+    }
+
+    /* ===== KPI CARDS ===== */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        padding: 20px 24px;
+    }
+    .kpi-card {
         background: white;
-        border-radius: 1rem;
-        padding: 1rem;
-        transition: all 0.2s;
-        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
-        height: 100%;
-        border-left: 4px solid;
+        border-radius: var(--pos-radius);
+        padding: 18px 20px;
+        box-shadow: var(--shadow-sm);
+        border-left: 4px solid var(--pos-primary);
+        transition: var(--transition);
+        cursor: pointer;
         position: relative;
         overflow: hidden;
     }
-    .stats-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
-    }
-    .stats-card .stats-number {
-        font-size: 1.8rem;
-        font-weight: 800;
-        margin-top: 0.5rem;
-    }
-    .stats-card .stats-icon {
+    .kpi-card::after {
+        content: '';
         position: absolute;
-        right: 1rem;
-        top: 1rem;
-        font-size: 2rem;
-        opacity: 0.2;
+        top: 0;
+        right: 0;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        opacity: 0.03;
+        background: currentColor;
+        transform: translate(30px, -30px);
     }
-    .card-sales { border-left-color: #3b82f6; }
-    .card-tickets { border-left-color: #10b981; }
-    .card-avg { border-left-color: #f59e0b; }
-    .card-routes { border-left-color: #8b5cf6; }
-
-    .card-trip {
-        transition: transform 0.2s, box-shadow 0.2s;
-        border-radius: 1rem;
-        overflow: hidden;
-        border: none;
+    .kpi-card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-md);
     }
-    .card-trip:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 1rem 2rem rgba(0,0,0,0.1) !important;
-    }
-    .trip-price {
-        font-size: 1.3rem;
-        font-weight: 800;
-        color: #2c3e50;
-    }
-    .btn-select {
-        background-color: #2c3e50;
-        border: none;
-        border-radius: 2rem;
-        padding: 0.4rem 1rem;
+    .kpi-card .kpi-label {
+        font-size: 11px;
         font-weight: 600;
-        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #94a3b8;
+        margin-bottom: 4px;
     }
-    .btn-select:hover {
-        background-color: #1e2b38;
+    .kpi-card .kpi-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: var(--pos-primary);
+        line-height: 1.2;
     }
-    .search-filters {
+    .kpi-card .kpi-change {
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        border-radius: 50px;
+        margin-top: 4px;
+    }
+    .kpi-card .kpi-change.up { color: var(--pos-success); background: #ecfdf5; }
+    .kpi-card .kpi-change.down { color: var(--pos-danger); background: #fef2f2; }
+    .kpi-card.green { border-left-color: var(--pos-success); }
+    .kpi-card.orange { border-left-color: var(--pos-warning); }
+    .kpi-card .kpi-icon {
+        position: absolute;
+        right: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 28px;
+        color: #e2e8f0;
+        opacity: 0.5;
+    }
+
+    /* ===== SEARCH CARD ===== */
+    .search-section {
+        padding: 0 24px 20px;
+    }
+    .search-card {
         background: white;
-        border-radius: 1rem;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+        border-radius: var(--pos-radius);
+        padding: 20px 24px;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #f1f5f9;
     }
-    .table-sales-filter {
-        font-size: 0.8rem;
+    .search-card .form-control,
+    .search-card .form-select {
+        border-radius: var(--pos-radius-sm);
+        border: 2px solid #e2e8f0;
+        padding: 10px 16px;
+        font-size: 14px;
+        transition: var(--transition);
+        height: 48px;
+        background: white;
     }
-    .badge-available {
-        background-color: #10b981;
+    .search-card .form-control:focus,
+    .search-card .form-select:focus {
+        border-color: var(--pos-accent);
+        box-shadow: 0 0 0 4px rgba(245, 130, 31, 0.1);
+        outline: none;
+    }
+    .search-card .form-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: #94a3b8;
+        margin-bottom: 4px;
+    }
+    .btn-search-primary {
+        background: var(--pos-accent);
+        border: none;
+        border-radius: var(--pos-radius-sm);
+        padding: 10px 32px;
+        font-weight: 600;
+        height: 48px;
+        transition: var(--transition);
+        color: white;
+        width: 100%;
+    }
+    .btn-search-primary:hover {
+        background: #e0751a;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(245, 130, 31, 0.3);
         color: white;
     }
-    .loading-spinner {
-        display: none;
-        text-align: center;
-        padding: 1rem;
-    }
-    canvas {
-        max-height: 250px;
+    .btn-reset-search {
+        border: 2px solid #e2e8f0;
+        border-radius: var(--pos-radius-sm);
+        height: 48px;
+        font-weight: 500;
+        background: white;
+        transition: var(--transition);
         width: 100%;
+    }
+    .btn-reset-search:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+    }
+
+    /* ===== TRIPS TABLE ===== */
+    .trips-section {
+        padding: 0 24px 24px;
+    }
+    .trips-table-wrapper {
+        background: white;
+        border-radius: var(--pos-radius);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #f1f5f9;
+    }
+    .trips-table-wrapper .table {
+        margin: 0;
+    }
+    .trips-table-wrapper .table thead th {
+        background: #f8fafc;
+        border-bottom: 2px solid #e2e8f0;
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: #94a3b8;
+        padding: 12px 16px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .trips-table-wrapper .table tbody td {
+        padding: 14px 16px;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 14px;
+    }
+    .trips-table-wrapper .table tbody tr {
+        transition: var(--transition);
+        cursor: pointer;
+    }
+    .trips-table-wrapper .table tbody tr:hover {
+        background: #fffbeb;
+    }
+    .trips-table-wrapper .table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .badge-available {
+        background: #ecfdf5;
+        color: var(--pos-success);
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 50px;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .badge-occupied {
+        background: #fef2f2;
+        color: var(--pos-danger);
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 50px;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .badge-hold {
+        background: #fffbeb;
+        color: #d97706;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 50px;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .btn-sm-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: var(--pos-radius-sm);
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: var(--transition);
+        font-size: 14px;
+        background: var(--pos-accent);
+        color: white;
+    }
+    .btn-sm-icon:hover {
+        background: #e0751a;
+        transform: scale(1.05);
+        color: white;
+    }
+
+    /* ===== RECENT SALES ===== */
+    .recent-sales {
+        padding: 0 24px 24px;
+    }
+    .recent-sales-card {
+        background: white;
+        border-radius: var(--pos-radius);
+        padding: 20px;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #f1f5f9;
+    }
+    .recent-sales-card .sale-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #f1f5f9;
+        transition: var(--transition);
+    }
+    .recent-sales-card .sale-item:last-child {
+        border-bottom: none;
+    }
+    .recent-sales-card .sale-item:hover {
+        background: #f8fafc;
+        margin: 0 -10px;
+        padding: 10px 10px;
+        border-radius: 8px;
+    }
+    .recent-sales-card .sale-item .sale-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .recent-sales-card .sale-item .sale-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #fffbeb;
+        color: var(--pos-accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+    .recent-sales-card .sale-item .sale-time {
+        font-size: 11px;
+        color: #94a3b8;
+    }
+
+    /* ===== EMPTY STATE ===== */
+    .empty-state {
+        padding: 60px 20px;
+        text-align: center;
+    }
+    .empty-state .empty-icon {
+        font-size: 48px;
+        color: #e2e8f0;
+        margin-bottom: 16px;
+    }
+    .empty-state .empty-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 8px;
+    }
+    .empty-state .empty-subtitle {
+        font-size: 14px;
+        color: #94a3b8;
+    }
+
+    /* ===== TOAST ===== */
+    .toast-feedback {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: white;
+        color: #1a1a1a;
+        padding: 14px 28px;
+        border-radius: 50px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        z-index: 9999;
+        font-weight: 600;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-left: 4px solid var(--pos-success);
+        animation: slideUp 0.3s ease;
+        max-width: 90%;
+    }
+    .toast-feedback.error { border-left-color: var(--pos-danger); }
+    .toast-feedback.warning { border-left-color: var(--pos-warning); }
+    .toast-feedback.info { border-left-color: #3b82f6; }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+        .kpi-grid { grid-template-columns: repeat(2, 1fr); padding: 12px; gap: 10px; }
+        .kpi-card .kpi-value { font-size: 20px; }
+        .search-section { padding: 0 12px 12px; }
+        .search-card { padding: 16px; }
+        .trips-section { padding: 0 12px 12px; }
+        .recent-sales { padding: 0 12px 12px; }
+        .shortcuts-hint { display: none; }
+        .trips-table-wrapper .table thead th { font-size: 10px; padding: 8px 10px; }
+        .trips-table-wrapper .table tbody td { font-size: 12px; padding: 10px 10px; }
+        .badge-available, .badge-occupied, .badge-hold { font-size: 10px; padding: 2px 8px; }
+        .btn-sm-icon { width: 28px; height: 28px; font-size: 12px; }
+    }
+    @media (max-width: 480px) {
+        .kpi-grid { grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+        .kpi-card { padding: 12px 14px; }
+        .kpi-card .kpi-value { font-size: 18px; }
+        .kpi-card .kpi-label { font-size: 9px; }
+        .search-card .btn-search-primary { font-size: 13px; padding: 8px 16px; height: 40px; }
+        .search-card .form-control, .search-card .form-select { height: 40px; font-size: 12px; padding: 6px 12px; }
+        .recent-sales-card .sale-item { flex-wrap: wrap; gap: 4px; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid px-4">
-    <h3 class="mb-4"><i class="fas fa-chart-line text-primary me-2"></i> Panel de Ventas</h3>
+<div class="container-fluid p-0">
 
-    <!-- 1. Tarjetas de métricas -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="stats-card card-sales">
-                <div class="stats-icon"><i class="fas fa-dollar-sign"></i></div>
-                <div class="text-muted small">Ventas hoy</div>
-                <div class="stats-number">$ {{ total_ventas|intcomma }}</div>
-                <small class="text-{{ tendencia_ventas|yesno:'success,danger' }}">
-                    <i class="fas fa-arrow-{{ tendencia_ventas|yesno:'up,down' }}"></i> {{ tendencia_ventas|floatformat:1 }}%
-                </small>
-            </div>
+    <!-- ===== KPI CARDS ===== -->
+    <div class="kpi-grid">
+        <div class="kpi-card" onclick="window.location='#search-section'">
+            <div class="kpi-label">Ventas Hoy</div>
+            <div class="kpi-value">${{ total_ventas|floatformat:0|intcomma }}</div>
+            <span class="kpi-change {% if tendencia_ventas >= 0 %}up{% else %}down{% endif %}">
+                <i class="fas fa-{% if tendencia_ventas >= 0 %}arrow-up{% else %}arrow-down{% endif %}"></i>
+                {{ tendencia_ventas|floatformat:1 }}%
+            </span>
+            <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
         </div>
-        <div class="col-md-3">
-            <div class="stats-card card-tickets">
-                <div class="stats-icon"><i class="fas fa-ticket-alt"></i></div>
-                <div class="text-muted small">Boletos vendidos</div>
-                <div class="stats-number">{{ total_boletos }}</div>
-                <small class="text-{{ tendencia_boletos|yesno:'success,danger' }}">
-                    <i class="fas fa-arrow-{{ tendencia_boletos|yesno:'up,down' }}"></i> {{ tendencia_boletos|floatformat:1 }}%
-                </small>
-            </div>
+        <div class="kpi-card green" onclick="window.location='#search-section'">
+            <div class="kpi-label">Boletos Vendidos</div>
+            <div class="kpi-value">{{ total_boletos }}</div>
+            <span class="kpi-change {% if tendencia_boletos >= 0 %}up{% else %}down{% endif %}">
+                <i class="fas fa-{% if tendencia_boletos >= 0 %}arrow-up{% else %}arrow-down{% endif %}"></i>
+                {{ tendencia_boletos|floatformat:1 }}%
+            </span>
+            <div class="kpi-icon"><i class="fas fa-ticket-alt"></i></div>
         </div>
-        <div class="col-md-3">
-            <div class="stats-card card-avg">
-                <div class="stats-icon"><i class="fas fa-receipt"></i></div>
-                <div class="text-muted small">Ticket promedio</div>
-                <div class="stats-number">$ {{ promedio_venta|intcomma }}</div>
-            </div>
+        <div class="kpi-card orange" onclick="window.location='#search-section'">
+            <div class="kpi-label">Ticket Promedio</div>
+            <div class="kpi-value">${{ promedio_venta|floatformat:0|intcomma }}</div>
+            <div class="kpi-icon"><i class="fas fa-calculator"></i></div>
         </div>
-        <div class="col-md-3">
-            <div class="stats-card card-routes">
-                <div class="stats-icon"><i class="fas fa-road"></i></div>
-                <div class="text-muted small">Rutas vendidas</div>
-                <div class="stats-number">{{ rutas_vendidas }}</div>
-            </div>
+        <div class="kpi-card" onclick="window.location='#search-section'">
+            <div class="kpi-label">Rutas Vendidas</div>
+            <div class="kpi-value">{{ rutas_vendidas }}</div>
+            <div class="kpi-icon"><i class="fas fa-route"></i></div>
         </div>
     </div>
 
-    <!-- 2. Buscador de viajes para vender (debajo de las tarjetas) -->
-    <div class="card shadow-sm border-0 rounded-4 mb-4">
-        <div class="card-header bg-white py-3">
-            <h5 class="mb-0"><i class="fas fa-search me-2"></i> Buscar viajes para vender</h5>
-        </div>
-        <div class="card-body">
-            <div class="search-filters">
-                <form method="get" id="search-form" class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Origen</label>
-                        <input type="text" name="origin_id" id="origin-input" list="origin-datalist" class="form-control" placeholder="Ciudad de origen" value="{{ origin_id }}">
-                        <datalist id="origin-datalist"></datalist>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Destino</label>
-                        <input type="text" name="dest_id" id="dest-input" list="dest-datalist" class="form-control" placeholder="Ciudad de destino" value="{{ dest_id }}">
-                        <datalist id="dest-datalist"></datalist>
+    <!-- ===== BUSCADOR - VERSIÓN ESTABLE CON SELECTORES ===== -->
+    <div class="search-section" id="search-section">
+        <div class="search-card">
+            <form method="GET" action="{% url 'pos_home' %}" id="searchForm" onsubmit="return validateSearch(event)">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small">Origen</label>
+                        <select name="origin_id" class="form-select" id="originSelect">
+                            <option value="">Todas las ciudades</option>
+                            {% for city in cities %}
+                            <option value="{{ city.id }}" {% if origin_id|add:"0" == city.id %}selected{% endif %}>
+                                {{ city.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">Fecha</label>
-                        <input type="date" name="date" class="form-control" value="{{ date }}" min="{{ date }}">
+                        <label class="form-label fw-semibold small">Destino</label>
+                        <select name="dest_id" class="form-select" id="destSelect">
+                            <option value="">Todas las ciudades</option>
+                            {% for city in cities %}
+                            <option value="{{ city.id }}" {% if dest_id|add:"0" == city.id %}selected{% endif %}>
+                                {{ city.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col-md-1 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Buscar</button>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold small">Fecha</label>
+                        <input type="date" name="date" class="form-control" value="{{ date }}" id="dateInput">
                     </div>
-                </form>
-            </div>
-
-            <div id="loadingSpinner" class="loading-spinner">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Cargando...</span>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold small">Servicio</label>
+                        <select class="form-select" name="service" id="serviceSelect">
+                            <option value="">Todos</option>
+                            <option value="semi">Semi Cama</option>
+                            <option value="cama">Cama</option>
+                            <option value="ejecutivo">Ejecutivo</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn-search-primary">
+                                <i class="fas fa-search me-2"></i> Buscar
+                            </button>
+                            <button type="button" class="btn-reset-search" onclick="resetForm()" title="Limpiar filtros">
+                                <i class="fas fa-undo"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </form>
+        </div>
+    </div>
 
-            <div id="tripsContainer">
-                {% if not did_search %}
-                    <div class="alert alert-info text-center py-4">
-                        <i class="fas fa-info-circle fa-2x mb-2"></i>
-                        <p>Utilice los filtros para buscar viajes disponibles.</p>
-                    </div>
-                {% elif trips %}
-                    <div class="row g-3">
-                        {% for trip in trips %}
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card card-trip h-100 shadow-sm">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <span class="badge bg-secondary mb-2">Viaje #{{ trip.id }}</span>
-                                            <h6 class="card-title">{{ trip.route.origin.name }} <i class="fas fa-long-arrow-alt-right"></i> {{ trip.route.destination.name }}</h6>
+    <!-- ===== TABLA DE VIAJES ===== -->
+    <div class="trips-section">
+        <div class="trips-table-wrapper">
+            {% if did_search %}
+                {% if trips %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tripsTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 12%;">Salida</th>
+                                <th style="width: 28%;">Ruta</th>
+                                <th style="width: 12%;">Bus</th>
+                                <th style="width: 25%;">Asientos</th>
+                                <th style="width: 13%;">Disponibilidad</th>
+                                <th style="width: 10%;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for trip in trips %}
+                            <tr onclick="window.location='{% url 'pos_trip' trip.id %}'">
+                                <td>
+                                    <strong class="text-dark">{{ trip.departure|date:"H:i" }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ trip.departure|date:"d/m/Y" }}</small>
+                                </td>
+                                <td>
+                                    <strong>{{ trip.route.origin.name }}</strong>
+                                    <i class="fas fa-arrow-right mx-2 text-muted" style="font-size:10px;"></i>
+                                    <strong>{{ trip.route.destination.name }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">{{ trip.bus.plate }}</span>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        <span class="badge-available">
+                                            <i class="fas fa-check-circle"></i> {{ trip.free }}
+                                        </span>
+                                        <span class="badge-occupied">
+                                            <i class="fas fa-user"></i> {{ trip.sold }}
+                                        </span>
+                                        {% if trip.hold > 0 %}
+                                        <span class="badge-hold">
+                                            <i class="fas fa-clock"></i> {{ trip.hold }}
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 6px; width: 100px; border-radius: 50px; background: #f1f5f9;">
+                                        {% with sold=trip.sold total=trip.total %}
+                                        {% if total > 0 %}
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: {% widthratio sold total 100 %}%; border-radius: 50px;">
                                         </div>
-                                        <span class="badge badge-available rounded-pill">{{ trip.free }} disp.</span>
+                                        <div class="progress-bar bg-warning" role="progressbar"
+                                             style="width: {% widthratio trip.hold total 100 %}%; border-radius: 50px;">
+                                        </div>
+                                        {% endif %}
+                                        {% endwith %}
                                     </div>
-                                    <div class="my-2">
-                                        <i class="far fa-clock me-1"></i> {{ trip.departure|date:"H:i" }} hrs
-                                    </div>
-                                    <div class="trip-price">
-                                        $ {{ trip.route.base_price|floatformat:0|intcomma }}
-                                    </div>
-                                    <div class="mt-2 small">
-                                        <i class="fas fa-bus me-1"></i> {{ trip.bus.plate }}
-                                        <span class="mx-2">•</span>
-                                        <i class="fas fa-chair"></i> {{ trip.total }} asientos
-                                    </div>
-                                </div>
-                                <div class="card-footer bg-transparent border-0 pb-3">
-                                    <a href="{% url 'pos_trip' trip.id %}" class="btn btn-select w-100">
-                                        Seleccionar Asientos <i class="fas fa-chevron-right ms-1"></i>
+                                    <small class="text-muted" style="font-size:10px;">
+                                        {{ trip.sold }}/{{ trip.total }}
+                                    </small>
+                                </td>
+                                <td>
+                                    <a href="{% url 'pos_trip' trip.id %}" class="btn-sm-icon" title="Vender">
+                                        <i class="fas fa-ticket-alt"></i>
                                     </a>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
                 {% else %}
-                    <div class="alert alert-warning text-center py-4">
-                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
-                        <p>No se encontraron viajes para los filtros seleccionados.</p>
-                    </div>
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fas fa-search"></i></div>
+                    <div class="empty-title">No se encontraron viajes</div>
+                    <div class="empty-subtitle">Prueba con otros filtros de búsqueda o cambia la fecha</div>
+                </div>
                 {% endif %}
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fas fa-search"></i></div>
+                <div class="empty-title">Busca viajes para vender</div>
+                <div class="empty-subtitle">Selecciona origen, destino y fecha para ver los viajes disponibles</div>
             </div>
+            {% endif %}
         </div>
     </div>
 
-    <!-- 3. Estado de caja + Gráfico de tendencia -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-header bg-white py-3">
-                    <h5 class="mb-0"><i class="fas fa-cash-register me-2"></i> Estado de Caja</h5>
-                </div>
-                <div class="card-body">
-                    {% if caja_abierta %}
-                        <div class="alert alert-success">Caja abierta por {{ caja_actual.user.username }} desde {{ caja_actual.opening_date|date:"H:i" }}</div>
-                        <button id="cerrarCajaBtn" class="btn btn-danger"><i class="fas fa-door-closed"></i> Cerrar Caja</button>
-                    {% else %}
-                        <div class="alert alert-secondary">No hay caja abierta. Inicie turno:</div>
-                        <div class="input-group">
-                            <span class="input-group-text">Saldo inicial</span>
-                            <input type="number" id="openingBalance" class="form-control" value="0" step="1000">
-                            <button id="abrirCajaBtn" class="btn btn-primary"><i class="fas fa-door-open"></i> Abrir Caja</button>
+    <!-- ===== VENTAS RECIENTES ===== -->
+    {% if ventas_recientes %}
+    <div class="recent-sales">
+        <div class="recent-sales-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="fas fa-clock me-2" style="color:var(--pos-accent);"></i> Ventas Recientes</h6>
+                <span class="badge bg-light text-dark">{{ ventas_recientes|length }}</span>
+            </div>
+            {% for venta in ventas_recientes %}
+            <div class="sale-item">
+                <div class="sale-info">
+                    <div class="sale-icon"><i class="fas fa-ticket-alt"></i></div>
+                    <div>
+                        <div class="fw-semibold">{{ venta.buyer_name|truncatechars:25 }}</div>
+                        <div class="small text-muted">
+                            {{ venta.trip.route.origin.name }} → {{ venta.trip.route.destination.name }}
+                            <span class="mx-1">•</span>
+                            Asiento {{ venta.seat.number }}
                         </div>
-                    {% endif %}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold text-success">${{ venta.price|floatformat:0|intcomma }}</div>
+                    <div class="sale-time">{{ venta.created_at|date:"H:i" }}</div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-8">
-            <div class="card shadow-sm border-0 rounded-4 h-100">
-                <div class="card-header bg-white py-3">
-                    <h5 class="mb-0"><i class="fas fa-chart-simple me-2"></i> Tendencia últimos 7 días</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="salesChart" height="120"></canvas>
-                </div>
-            </div>
+            {% endfor %}
         </div>
     </div>
+    {% endif %}
 
-    <!-- 4. Últimas ventas (tabla con buscador) -->
-    <div class="card shadow-sm border-0 rounded-4 mb-4">
-        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap">
-            <h5 class="mb-0"><i class="fas fa-receipt me-2"></i> Últimas ventas</h5>
-            <div class="mt-2 mt-sm-0">
-                <input type="text" id="searchSales" class="form-control form-control-sm" placeholder="Buscar pasajero, RUT o asiento..." style="width: 250px;">
-            </div>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sales-filter mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Boleto</th>
-                            <th>Pasajero</th>
-                            <th>RUT</th>
-                            <th>Asiento</th>
-                            <th>Ruta</th>
-                            <th>Monto</th>
-                            <th>Pago</th>
-                            <th>Hora</th>
-                        </tr>
-                    </thead>
-                    <tbody id="salesTableBody">
-                        {% for venta in ventas_recientes %}
-                        <tr>
-                            <td>{{ venta.number }}</td>
-                            <td>{{ venta.buyer_name }}</td>
-                            <td>{{ venta.national_id|default:"—" }}</td>
-                            <td>{{ venta.seat.number }}</td>
-                            <td>{{ venta.trip.route.origin.name }} → {{ venta.trip.route.destination.name }}</td>
-                            <td>$ {{ venta.price|intcomma }}</td>
-                            <td>{{ venta.get_payment_method_display }}</td>
-                            <td>{{ venta.created_at|date:"H:i" }}</td>
-                        </tr>
-                        {% empty %}
-                            <td colspan="8" class="text-center">No hay ventas registradas hoy.</td>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+</div>
+
+<!-- ===== SHORTCUTS HINT ===== -->
+<div class="shortcuts-hint" onclick="showShortcutsHelp()" title="Ver atajos de teclado">
+    <span><kbd>Ctrl+N</kbd> Nueva</span>
+    <span class="hint-separator">|</span>
+    <span><kbd>Ctrl+F</kbd> Buscar</span>
+    <span class="hint-separator">|</span>
+    <span><kbd>F1</kbd> Ayuda</span>
+    <i class="fas fa-question-circle ms-1" style="opacity:0.5;"></i>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="{% static 'booking/js/pos_home.js' %}"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
-    // Gráfico de tendencia
-    const ctx = document.getElementById('salesChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Hace 6d', 'Hace 5d', 'Hace 4d', 'Hace 3d', 'Hace 2d', 'Ayer', 'Hoy'],
-            datasets: [{
-                label: 'Ventas ($)',
-                data: [120000, 135000, 98000, 156000, 178000, 200000, {{ total_ventas|default:0 }}],
-                borderColor: '#2c3e50',
-                tension: 0.3,
-                fill: false,
-                backgroundColor: 'rgba(44, 62, 80, 0.1)'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: { position: 'top' }
+    // ================================================================
+    // TOAST NOTIFICATIONS
+    // ================================================================
+    function showToast(message, type = 'success') {
+        const existingToast = document.querySelector('.toast-feedback');
+        if (existingToast) existingToast.remove();
+        
+        const icons = {
+            success: 'fa-check-circle',
+            error: 'fa-times-circle',
+            warning: 'fa-exclamation-triangle',
+            info: 'fa-info-circle'
+        };
+        
+        const colors = {
+            success: '#10b981',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
+        };
+        
+        const toast = document.createElement('div');
+        toast.className = `toast-feedback ${type}`;
+        toast.innerHTML = `
+            <i class="fas ${icons[type] || icons.info}" style="color:${colors[type] || colors.info};"></i>
+            <span>${message}</span>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-50%) translateY(20px)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // ================================================================
+    // VALIDACIÓN: ORIGEN Y DESTINO NO PUEDEN SER IGUALES
+    // ================================================================
+    function validateSearch(e) {
+        const originSelect = document.getElementById('originSelect');
+        const destSelect = document.getElementById('destSelect');
+        
+        if (originSelect && destSelect) {
+            const originVal = originSelect.value;
+            const destVal = destSelect.value;
+            
+            if (originVal && destVal && originVal === destVal) {
+                e.preventDefault();
+                showToast('⚠️ El origen y el destino no pueden ser iguales. Por favor, selecciona ciudades diferentes.', 'warning');
+                return false;
             }
+        }
+        return true;
+    }
+
+    // ================================================================
+    // FUNCIONES DEL BUSCADOR
+    // ================================================================
+    
+    // Auto-submit al cambiar selector de origen
+    document.getElementById('originSelect')?.addEventListener('change', function() {
+        // Validar antes de enviar
+        const destSelect = document.getElementById('destSelect');
+        if (this.value && destSelect && this.value === destSelect.value) {
+            showToast('⚠️ El origen y el destino no pueden ser iguales', 'warning');
+            return;
+        }
+        document.getElementById('searchForm').submit();
+    });
+    
+    // Auto-submit al cambiar selector de destino
+    document.getElementById('destSelect')?.addEventListener('change', function() {
+        const originSelect = document.getElementById('originSelect');
+        if (this.value && originSelect && this.value === originSelect.value) {
+            showToast('⚠️ El origen y el destino no pueden ser iguales', 'warning');
+            return;
+        }
+        document.getElementById('searchForm').submit();
+    });
+    
+    // Auto-submit al cambiar selector de servicio
+    document.querySelector('select[name="service"]')?.addEventListener('change', function() {
+        document.getElementById('searchForm').submit();
+    });
+    
+    // Resetear filtros
+    function resetForm() {
+        document.getElementById('originSelect').value = '';
+        document.getElementById('destSelect').value = '';
+        document.querySelector('input[name="date"]').value = '';
+        document.querySelector('select[name="service"]').value = '';
+        document.getElementById('searchForm').submit();
+    }
+    
+    // Auto-submit con Enter en el campo de fecha
+    document.querySelector('input[name="date"]')?.addEventListener('keypress', function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            const originSelect = document.getElementById('originSelect');
+            const destSelect = document.getElementById('destSelect');
+            if (originSelect && destSelect && originSelect.value && destSelect.value && originSelect.value === destSelect.value) {
+                showToast('⚠️ El origen y el destino no pueden ser iguales', 'warning');
+                return;
+            }
+            document.getElementById('searchForm').submit();
         }
     });
 
-    // Buscador en tabla de ventas
-    document.getElementById('searchSales').addEventListener('keyup', function() {
-        const filter = this.value.toLowerCase();
-        const rows = document.querySelectorAll('#salesTableBody tr');
-        rows.forEach(row => {
-            const text = row.innerText.toLowerCase();
-            row.style.display = text.includes(filter) ? '' : 'none';
-        });
+    // ================================================================
+    // KEYBOARD SHORTCUTS
+    // ================================================================
+    document.addEventListener('keydown', function(e) {
+        // Ctrl+F = Focus en buscador de fecha
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            document.querySelector('input[name="date"]')?.focus();
+        }
+        
+        // Ctrl+N = Nueva venta (ir a home)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            e.preventDefault();
+            window.location.href = '/pos/';
+        }
+        
+        // F1 = Ayuda de atajos
+        if (e.key === 'F1') {
+            e.preventDefault();
+            showShortcutsHelp();
+        }
     });
 
-    // Abrir caja con AJAX
-    const abrirBtn = document.getElementById('abrirCajaBtn');
-    if (abrirBtn) {
-        abrirBtn.addEventListener('click', () => {
-            const balance = document.getElementById('openingBalance').value;
-            fetch('/pos/caja/abrir/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ opening_balance: balance })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) location.reload();
-                else alert(data.error);
-            });
-        });
+    // ================================================================
+    // AYUDA DE ATAJOS
+    // ================================================================
+    function showShortcutsHelp() {
+        const shortcuts = [
+            ['Ctrl+N', 'Nueva venta (ir a buscar viaje)'],
+            ['Ctrl+F', 'Buscar viaje (en home)'],
+            ['Ctrl+S', 'Seleccionar asiento (en croquis)'],
+            ['Ctrl+Enter', 'Confirmar pago'],
+            ['Escape', 'Cancelar / Cerrar modal'],
+            ['F1', 'Mostrar esta ayuda'],
+        ];
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'shortcuts-modal-overlay';
+        overlay.innerHTML = `
+            <div class="shortcuts-modal">
+                <h4><i class="fas fa-keyboard me-2" style="color:var(--pos-accent);"></i> Atajos de Teclado</h4>
+                <ul>
+                    ${shortcuts.map(s => `
+                        <li>
+                            <kbd>${s[0]}</kbd>
+                            <span>${s[1]}</span>
+                        </li>
+                    `).join('')}
+                </ul>
+                <button class="btn btn-primary" onclick="this.closest('.shortcuts-modal-overlay').remove()">
+                    <i class="fas fa-check me-2"></i> Entendido
+                </button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        
+        // Estilos
+        const style = document.createElement('style');
+        style.textContent = `
+            .shortcuts-modal-overlay {
+                position: fixed;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.5);
+                backdrop-filter: blur(4px);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                animation: fadeIn 0.2s ease;
+            }
+            .shortcuts-modal {
+                background: white;
+                border-radius: 16px;
+                padding: 32px 40px;
+                max-width: 500px;
+                width: 90%;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                animation: slideUp 0.3s ease;
+            }
+            .shortcuts-modal h4 {
+                color: #0f172a;
+                margin-bottom: 20px;
+                font-weight: 700;
+            }
+            .shortcuts-modal ul {
+                list-style: none;
+                padding: 0;
+                margin: 0 0 24px 0;
+            }
+            .shortcuts-modal ul li {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 0;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .shortcuts-modal ul li:last-child {
+                border-bottom: none;
+            }
+            .shortcuts-modal kbd {
+                background: #f1f5f9;
+                padding: 4px 14px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: 700;
+                color: #0f172a;
+                border: 1px solid #e2e8f0;
+                min-width: 100px;
+                text-align: center;
+            }
+            .shortcuts-modal ul li span {
+                color: #475569;
+                font-size: 14px;
+            }
+            .shortcuts-modal .btn {
+                width: 100%;
+                border-radius: 50px;
+                padding: 12px;
+                background: var(--pos-accent);
+                border: none;
+                font-weight: 600;
+            }
+            .shortcuts-modal .btn:hover {
+                background: #e0751a;
+            }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        `;
+        document.head.appendChild(style);
     }
 
-    // Cerrar caja con AJAX
-    const cerrarBtn = document.getElementById('cerrarCajaBtn');
-    if (cerrarBtn) {
-        cerrarBtn.addEventListener('click', () => {
-            fetch('/pos/caja/cerrar/', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) location.reload();
-                else alert(data.error);
-            });
-        });
-    }
+    // ================================================================
+    // INICIALIZACIÓN
+    // ================================================================
+    $(document).ready(function() {
+        // Establecer fecha mínima de hoy
+        const today = new Date().toISOString().split('T')[0];
+        const dateInput = document.querySelector('input[name="date"]');
+        if (dateInput && !dateInput.value) {
+            dateInput.min = today;
+        }
+        
+        // Si no hay fecha seleccionada y no hay búsqueda, poner fecha de hoy
+        if (dateInput && !dateInput.value && !document.querySelector('input[name="origin_id"]')?.value) {
+            dateInput.value = today;
+        }
+    });
 </script>
 {% endblock %}

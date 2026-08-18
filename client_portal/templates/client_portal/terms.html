@@ -1,0 +1,33 @@
+{% extends 'client_portal/base.html' %}
+{% load static %}
+
+{% block title %}Términos y Condiciones - Cejer{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h4 class="mb-0">Términos, Condiciones y Políticas de Compra</h4>
+        </div>
+        <div class="card-body">
+            <h5>1. Política de transporte de equipaje</h5>
+            <p>Un equipaje se considera bajo la custodia, cuidado y responsabilidad de Cejer desde el momento en que es etiquetado y subido al maletero del bus hasta la entrega de éste en destino...</p>
+            
+            <h5>2. Equipaje de bodega/maletero</h5>
+            <p>Cada pasajero tiene derecho a llevar hasta 25kg de equipaje en bodega...</p>
+            
+            <h5>3. Equipaje de mano</h5>
+            <p>Se permite un equipaje de mano de hasta 5kg y 40x30x20cm...</p>
+            
+            <h5>4. Política de cambios y devoluciones</h5>
+            <p>Los cambios están sujetos a disponibilidad y tienen un costo de $3,000 por pasaje...</p>
+            
+            <h5>5. Política de seguridad</h5>
+            <p>Cejer se compromete a seguir todos los protocolos de seguridad vial y sanitarios...</p>
+        </div>
+        <div class="card-footer text-center">
+            <a href="javascript:history.back()" class="btn btn-outline-secondary">Volver</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Auditoría - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .table-audit {
+        font-size: 0.85rem;
+    }
+    .table-audit th {
+        background: #f1f5f9;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.5px;
+    }
+    .badge-accion {
+        padding: 4px 10px;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 0.7rem;
+    }
+    .badge-accion.CREATE { background: #dbeafe; color: #1e40af; }
+    .badge-accion.UPDATE { background: #fef3c7; color: #92400e; }
+    .badge-accion.DELETE { background: #fee2e2; color: #991b1b; }
+    .badge-accion.LOGIN { background: #dcfce7; color: #166534; }
+    .badge-accion.LOGOUT { background: #f1f5f9; color: #475569; }
+    .badge-accion.VIEW { background: #e0e7ff; color: #3730a3; }
+    .badge-accion.EXPORT { background: #fce7f3; color: #9d174d; }
+    .badge-accion.BACKUP { background: #d1fae5; color: #065f46; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:dashboard' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="#">Seguridad</a></li>
+            <li class="breadcrumb-item active">Auditoría</li>
+        </ol>
+    </nav>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0">
+                <i class="fas fa-clipboard-list me-2 text-primary"></i> Registro de Auditoría
+            </h5>
+        </div>
+        <div class="card-body">
+            <!-- Filtros -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Usuario</label>
+                    <select name="usuario" class="form-select form-select-sm" id="filterUser">
+                        <option value="">Todos</option>
+                        {% for user in usuarios %}
+                        <option value="{{ user.id }}">{{ user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Acción</label>
+                    <select name="accion" class="form-select form-select-sm" id="filterAction">
+                        <option value="">Todas</option>
+                        <option value="CREATE">Crear</option>
+                        <option value="UPDATE">Modificar</option>
+                        <option value="DELETE">Eliminar</option>
+                        <option value="LOGIN">Inicio sesión</option>
+                        <option value="LOGOUT">Cierre sesión</option>
+                        <option value="VIEW">Consultar</option>
+                        <option value="EXPORT">Exportar</option>
+                        <option value="BACKUP">Respaldo</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Desde</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="filterDateFrom">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Hasta</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="filterDateTo">
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-audit align-middle">
+                    <thead>
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Usuario</th>
+                            <th>Acción</th>
+                            <th>Tabla</th>
+                            <th>Registro</th>
+                            <th>Detalles</th>
+                            <th>IP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            <td>{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+                            <td>
+                                <strong>{{ log.user.get_full_name|default:log.user.username }}</strong>
+                                <br><small class="text-muted">{{ log.user.username }}</small>
+                            </td>
+                            <td>
+                                <span class="badge-accion {{ log.action }}">
+                                    {{ log.get_action_display }}
+                                </span>
+                            </td>
+                            <td>{{ log.model_name|default:"-" }}</td>
+                            <td>{{ log.object_repr|truncatechars:40 }}</td>
+                            <td>
+                                {% if log.changes %}
+                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#changes-{{ forloop.counter }}">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <div class="collapse mt-1" id="changes-{{ forloop.counter }}">
+                                        <pre class="small bg-light p-2 rounded" style="max-width:300px;">{{ log.changes|pprint }}</pre>
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td><code>{{ log.ip_address|default:"—" }}</code></td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="fas fa-info-circle me-2"></i> No hay registros de auditoría.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if logs.has_other_pages %}
+            <div class="d-flex justify-content-center mt-4">
+                {% include "pagination.html" with page_obj=logs %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterUser = document.getElementById('filterUser');
+        const filterAction = document.getElementById('filterAction');
+        const filterDateFrom = document.getElementById('filterDateFrom');
+        const filterDateTo = document.getElementById('filterDateTo');
+
+        function applyFilters() {
+            const params = new URLSearchParams();
+            if (filterUser.value) params.set('usuario', filterUser.value);
+            if (filterAction.value) params.set('accion', filterAction.value);
+            if (filterDateFrom.value) params.set('desde', filterDateFrom.value);
+            if (filterDateTo.value) params.set('hasta', filterDateTo.value);
+            window.location.search = params.toString();
+        }
+
+        filterUser.addEventListener('change', applyFilters);
+        filterAction.addEventListener('change', applyFilters);
+        filterDateFrom.addEventListener('change', applyFilters);
+        filterDateTo.addEventListener('change', applyFilters);
+
+        // Pre-cargar filtros desde la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('usuario')) filterUser.value = urlParams.get('usuario');
+        if (urlParams.get('accion')) filterAction.value = urlParams.get('accion');
+        if (urlParams.get('desde')) filterDateFrom.value = urlParams.get('desde');
+        if (urlParams.get('hasta')) filterDateTo.value = urlParams.get('hasta');
+    });
+</script>
+{% endblock %}

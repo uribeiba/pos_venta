@@ -6,111 +6,409 @@
 
 {% block extra_css %}
 <style>
+    /* ===== VARIABLES ===== */
+    :root {
+        --pos-primary: #0f172a;
+        --pos-accent: #f5821f;
+        --pos-success: #10b981;
+        --pos-danger: #ef4444;
+        --pos-warning: #f59e0b;
+        --pos-bg: #f1f5f9;
+        --pos-radius: 16px;
+        --pos-radius-sm: 10px;
+        --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+        --shadow-md: 0 4px 16px rgba(0,0,0,0.1);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+        --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ===== STATS CARDS ===== */
     .stats-card {
         background: white;
-        border-radius: 1rem;
-        padding: 1.2rem;
-        transition: all 0.2s;
-        border-left: 4px solid #2c3e50;
-        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+        border-radius: var(--pos-radius);
+        padding: 18px 20px;
+        transition: var(--transition);
+        border-left: 4px solid var(--pos-primary);
+        box-shadow: var(--shadow-sm);
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+        cursor: default;
     }
     .stats-card:hover {
         transform: translateY(-3px);
-        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-md);
     }
-    .stats-number {
-        font-size: 2rem;
-        font-weight: 800;
+    .stats-card .stats-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: #94a3b8;
+        margin-bottom: 4px;
     }
+    .stats-card .stats-number {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--pos-primary);
+        line-height: 1.2;
+    }
+    .stats-card .stats-change {
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        border-radius: 50px;
+        margin-top: 4px;
+    }
+    .stats-card .stats-change.up { color: var(--pos-success); background: #ecfdf5; }
+    .stats-card .stats-change.down { color: var(--pos-danger); background: #fef2f2; }
+    .stats-card .stats-icon {
+        position: absolute;
+        right: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 32px;
+        color: #e2e8f0;
+        opacity: 0.4;
+    }
+    .stats-card.green { border-left-color: var(--pos-success); }
+    .stats-card.orange { border-left-color: var(--pos-warning); }
+    .stats-card.red { border-left-color: var(--pos-danger); }
+    .stats-card.purple { border-left-color: #8b5cf6; }
+    .stats-card.blue { border-left-color: #3b82f6; }
+
+    /* ===== PAYMENT METHODS SUMMARY ===== */
+    .payment-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+    }
+    .payment-method-card {
+        background: white;
+        border-radius: var(--pos-radius-sm);
+        padding: 14px 16px;
+        box-shadow: var(--shadow-sm);
+        text-align: center;
+        border: 2px solid #f1f5f9;
+        transition: var(--transition);
+    }
+    .payment-method-card:hover {
+        border-color: var(--pos-accent);
+        transform: translateY(-2px);
+    }
+    .payment-method-card .pm-icon {
+        font-size: 24px;
+        margin-bottom: 4px;
+    }
+    .payment-method-card .pm-label {
+        font-size: 11px;
+        color: #94a3b8;
+        font-weight: 500;
+    }
+    .payment-method-card .pm-amount {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--pos-primary);
+    }
+    .payment-method-card.has-data {
+        border-color: var(--pos-success);
+        background: #f0fdf4;
+    }
+
+    /* ===== CAJA INFO ===== */
+    .caja-info {
+        background: #ecfdf5;
+        padding: 16px 20px;
+        border-radius: var(--pos-radius-sm);
+        border-left: 4px solid var(--pos-success);
+    }
+    .caja-info .badge {
+        font-size: 0.85rem;
+        padding: 6px 14px;
+        border-radius: 50px;
+    }
+
+    /* ===== TABLA MEJORADA ===== */
     .table-sales-filter {
         font-size: 0.85rem;
     }
+    .table-sales-filter thead th {
+        background: #f8fafc;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        color: #94a3b8;
+        border-bottom: 2px solid #e2e8f0;
+        padding: 10px 12px;
+    }
+    .table-sales-filter tbody td {
+        padding: 10px 12px;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .table-sales-filter tbody tr {
+        transition: var(--transition);
+    }
+    .table-sales-filter tbody tr:hover {
+        background: #fffbeb;
+    }
     .search-input-sales {
-        max-width: 300px;
+        max-width: 280px;
+        border-radius: var(--pos-radius-sm);
+        border: 2px solid #e2e8f0;
+        padding: 8px 16px;
+        font-size: 14px;
+        transition: var(--transition);
+    }
+    .search-input-sales:focus {
+        border-color: var(--pos-accent);
+        box-shadow: 0 0 0 4px rgba(245, 130, 31, 0.1);
+        outline: none;
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+        .stats-card .stats-number { font-size: 22px; }
+        .payment-summary-grid { grid-template-columns: repeat(2, 1fr); }
+        .search-input-sales { max-width: 100%; }
+    }
+    @media (max-width: 480px) {
+        .stats-card { padding: 14px 16px; }
+        .stats-card .stats-number { font-size: 18px; }
+        .stats-card .stats-icon { font-size: 24px; }
+        .payment-summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+        .payment-method-card { padding: 10px 12px; }
+        .payment-method-card .pm-amount { font-size: 14px; }
+        .table-sales-filter { font-size: 0.75rem; }
+        .table-sales-filter thead th, .table-sales-filter tbody td { padding: 6px 8px; }
+    }
+
+    /* ===== MODAL ARQUEO ===== */
+    .modal-arqueo .modal-content {
+        border-radius: var(--pos-radius);
+        border: none;
+    }
+    .modal-arqueo .modal-header {
+        background: var(--pos-primary);
+        color: white;
+        border: none;
+        padding: 18px 24px;
+        border-radius: var(--pos-radius) var(--pos-radius) 0 0;
+    }
+    .modal-arqueo .modal-body {
+        padding: 24px;
+    }
+    .modal-arqueo .modal-footer {
+        border-top: 1px solid #e2e8f0;
+        padding: 16px 24px;
+        background: #f8fafc;
+        border-radius: 0 0 var(--pos-radius) var(--pos-radius);
+    }
+    .arqueo-total-display {
+        background: #fffbeb;
+        border-radius: var(--pos-radius-sm);
+        padding: 12px 16px;
+        border: 2px solid var(--pos-warning);
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container py-4">
-    <h3 class="mb-4"><i class="fas fa-chart-line text-primary me-2"></i> Dashboard de Caja</h3>
-
-    <!-- Tarjetas de métricas -->
-    <div class="row g-3 mb-5">
-        <div class="col-md-3">
-            <div class="stats-card">
-                <div class="text-muted small">Total Ventas (hoy)</div>
-                <div class="stats-number">$ {{ total_ventas|intcomma }}</div>
-                <small class="text-{{ tendencia_ventas|yesno:'success,danger' }}">
-                    <i class="fas fa-arrow-{{ tendencia_ventas|yesno:'up,down' }}"></i> {{ tendencia_ventas|floatformat:1 }}%
-                </small>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="stats-card">
-                <div class="text-muted small">Boletos vendidos</div>
-                <div class="stats-number">{{ total_boletos }}</div>
-                <small class="text-{{ tendencia_boletos|yesno:'success,danger' }}">
-                    <i class="fas fa-arrow-{{ tendencia_boletos|yesno:'up,down' }}"></i> {{ tendencia_boletos|floatformat:1 }}%
-                </small>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="stats-card">
-                <div class="text-muted small">Promedio por boleto</div>
-                <div class="stats-number">$ {{ promedio_venta|intcomma }}</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="stats-card">
-                <div class="text-muted small">Rutas vendidas</div>
-                <div class="stats-number">{{ rutas_vendidas }}</div>
-            </div>
-        </div>
+    <!-- ===== TÍTULO ===== -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold"><i class="fas fa-chart-line me-2" style="color:var(--pos-accent);"></i> Dashboard de Caja</h3>
+        <span class="badge bg-light text-dark border">
+            <i class="far fa-calendar-alt me-1"></i> {{ hoy|date:"d/m/Y" }}
+        </span>
     </div>
 
-    <!-- Gráfico de tendencia (datos de ejemplo, puedes integrar API real) -->
+    <!-- ===== GESTIÓN DE CAJA ===== -->
     <div class="card shadow-sm border-0 rounded-4 mb-4">
         <div class="card-header bg-white py-3">
-            <h5 class="mb-0"><i class="fas fa-chart-simple me-2"></i> Tendencia últimos 7 días</h5>
-        </div>
-        <div class="card-body">
-            <canvas id="salesChart" height="100"></canvas>
-        </div>
-    </div>
-
-    <!-- Caja (abrir/cerrar) -->
-    <div class="card shadow-sm border-0 rounded-4 mb-4">
-        <div class="card-header bg-white py-3">
-            <h5 class="mb-0"><i class="fas fa-cash-register me-2"></i> Estado de Caja</h5>
+            <h5 class="mb-0"><i class="fas fa-cash-register me-2" style="color:var(--pos-accent);"></i> Estado de Caja</h5>
         </div>
         <div class="card-body">
             {% if caja_abierta %}
-                <div class="alert alert-success">Caja abierta por {{ caja_actual.user.username }} desde {{ caja_actual.opening_date|date:"H:i" }}</div>
-                <button id="cerrarCajaBtn" class="btn btn-danger"><i class="fas fa-door-closed"></i> Cerrar Caja</button>
+                <div class="caja-info">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <strong><i class="fas fa-check-circle text-success me-2"></i> Caja abierta</strong>
+                            <div class="mt-1">
+                                <span class="text-muted">Iniciada por:</span>
+                                <strong>{{ caja_actual.user.get_full_name|default:caja_actual.user.username }}</strong>
+                                <span class="text-muted">a las</span>
+                                <strong>{{ caja_actual.opening_date|date:"H:i" }}</strong>
+                            </div>
+                            <div>
+                                <span class="text-muted">Saldo inicial:</span>
+                                <strong>${{ caja_actual.opening_balance|intcomma }}</strong>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-primary">Ventas turno: ${{ total_ventas|intcomma }}</span>
+                            <span class="badge bg-secondary">Boletos: {{ total_boletos }}</span>
+                            {% if caja_actual.user != user %}
+                                <div class="text-warning mt-1 small"><i class="fas fa-info-circle"></i> Caja de otro usuario</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3 d-flex gap-2 flex-wrap">
+                    <button id="cerrarCajaBtn" class="btn btn-danger">
+                        <i class="fas fa-door-closed me-2"></i> Cerrar Caja
+                    </button>
+                    <button id="cerrarCajaSalirBtn" class="btn btn-danger">
+                        <i class="fas fa-sign-out-alt me-2"></i> Cerrar Caja y Salir
+                    </button>
+                </div>
             {% else %}
-                <div class="alert alert-secondary">No hay caja abierta. Inicie turno:</div>
-                <div class="input-group w-50">
-                    <span class="input-group-text">Saldo inicial</span>
-                    <input type="number" id="openingBalance" class="form-control" value="0" step="1000">
-                    <button id="abrirCajaBtn" class="btn btn-primary"><i class="fas fa-door-open"></i> Abrir Caja</button>
+                <div class="alert alert-secondary d-flex align-items-center gap-3 flex-wrap">
+                    <i class="fas fa-info-circle fa-2x text-muted"></i>
+                    <div>
+                        <div class="fw-bold">No hay caja abierta</div>
+                        <small class="text-muted">Inicia un turno para comenzar a vender</small>
+                    </div>
+                </div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3 col-6">
+                        <label class="form-label small fw-semibold">Saldo inicial</label>
+                        <input type="number" id="openingBalance" class="form-control" value="0" step="1000">
+                    </div>
+                    <div class="col-md-2 col-6">
+                        <button class="btn btn-primary w-100" onclick="abrirCaja()">
+                            <i class="fas fa-door-open me-2"></i> Abrir Caja
+                        </button>
+                    </div>
                 </div>
             {% endif %}
         </div>
     </div>
 
-    <!-- Últimas ventas con buscador -->
+    <!-- ===== TARJETAS DE MÉTRICAS ===== -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+            <div class="stats-card">
+                <div class="stats-label">Total Ventas (hoy)</div>
+                <div class="stats-number">$ {{ total_ventas|intcomma }}</div>
+                <span class="stats-change {% if tendencia_ventas >= 0 %}up{% else %}down{% endif %}">
+                    <i class="fas fa-arrow-{% if tendencia_ventas >= 0 %}up{% else %}down{% endif %}"></i>
+                    {{ tendencia_ventas|floatformat:1 }}%
+                </span>
+                <div class="stats-icon"><i class="fas fa-chart-line"></i></div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="stats-card green">
+                <div class="stats-label">Boletos vendidos</div>
+                <div class="stats-number">{{ total_boletos }}</div>
+                <span class="stats-change {% if tendencia_boletos >= 0 %}up{% else %}down{% endif %}">
+                    <i class="fas fa-arrow-{% if tendencia_boletos >= 0 %}up{% else %}down{% endif %}"></i>
+                    {{ tendencia_boletos|floatformat:1 }}%
+                </span>
+                <div class="stats-icon"><i class="fas fa-ticket-alt"></i></div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="stats-card orange">
+                <div class="stats-label">Promedio por boleto</div>
+                <div class="stats-number">$ {{ promedio_venta|intcomma }}</div>
+                <div class="stats-icon"><i class="fas fa-calculator"></i></div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="stats-card purple">
+                <div class="stats-label">Rutas vendidas</div>
+                <div class="stats-number">{{ rutas_vendidas }}</div>
+                <div class="stats-icon"><i class="fas fa-route"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== RESUMEN POR MÉTODO DE PAGO ===== -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0"><i class="fas fa-credit-card me-2" style="color:var(--pos-accent);"></i> Resumen por Método de Pago</h5>
+        </div>
+        <div class="card-body">
+            <div class="payment-summary-grid">
+                <div class="payment-method-card {% if efectivo_hoy > 0 %}has-data{% endif %}">
+                    <div class="pm-icon">💰</div>
+                    <div class="pm-label">Efectivo</div>
+                    <div class="pm-amount">${{ efectivo_hoy|default:"0"|intcomma }}</div>
+                    {% if efectivo_hoy > 0 %}
+                        <span class="badge bg-success mt-1">✓</span>
+                    {% endif %}
+                </div>
+                <div class="payment-method-card {% if tarjeta_hoy > 0 %}has-data{% endif %}">
+                    <div class="pm-icon">💳</div>
+                    <div class="pm-label">Tarjeta</div>
+                    <div class="pm-amount">${{ tarjeta_hoy|default:"0"|intcomma }}</div>
+                    {% if tarjeta_hoy > 0 %}
+                        <span class="badge bg-success mt-1">✓</span>
+                    {% endif %}
+                </div>
+                <div class="payment-method-card {% if transferencia_hoy > 0 %}has-data{% endif %}">
+                    <div class="pm-icon">🏦</div>
+                    <div class="pm-label">Transferencia</div>
+                    <div class="pm-amount">${{ transferencia_hoy|default:"0"|intcomma }}</div>
+                    {% if transferencia_hoy > 0 %}
+                        <span class="badge bg-success mt-1">✓</span>
+                    {% endif %}
+                </div>
+                <div class="payment-method-card {% if convenio_hoy > 0 %}has-data{% endif %}" style="border-color:var(--pos-warning);">
+                    <div class="pm-icon">🤝</div>
+                    <div class="pm-label">Convenio</div>
+                    <div class="pm-amount">${{ convenio_hoy|default:"0"|intcomma }}</div>
+                    {% if convenio_hoy > 0 %}
+                        <span class="badge bg-success mt-1">✓</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== GRÁFICOS ===== -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-chart-simple me-2" style="color:var(--pos-accent);"></i> Tendencia últimos 7 días</h5>
+                    <span class="badge bg-light text-dark">{{ total_ventas|intcomma }}</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="salesChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2" style="color:var(--pos-accent);"></i> Ventas por Hora</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="hourlyChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ÚLTIMAS VENTAS ===== -->
     <div class="card shadow-sm border-0 rounded-4">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap">
-            <h5 class="mb-0"><i class="fas fa-receipt me-2"></i> Últimas ventas</h5>
+            <h5 class="mb-0"><i class="fas fa-receipt me-2" style="color:var(--pos-accent);"></i> Últimas ventas</h5>
             <div class="mt-2 mt-sm-0">
-                <input type="text" id="searchSales" class="form-control form-control-sm search-input-sales" placeholder="Buscar por pasajero, RUT o asiento...">
+                <input type="text" id="searchSales" class="search-input-sales" placeholder="Buscar por pasajero, RUT o asiento...">
             </div>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover table-sales-filter mb-0">
-                    <thead class="table-light">
+                    <thead>
                         <tr>
                             <th>Boleto</th>
                             <th>Pasajero</th>
@@ -125,17 +423,17 @@
                     <tbody id="salesTableBody">
                         {% for venta in ventas_recientes %}
                         <tr>
-                            <td>{{ venta.number }}</td>
-                            <td>{{ venta.buyer_name }}</td>
+                            <td><span class="badge bg-light text-dark">{{ venta.number }}</span></td>
+                            <td><strong>{{ venta.buyer_name|truncatechars:20 }}</strong></td>
                             <td>{{ venta.national_id|default:"—" }}</td>
                             <td>{{ venta.seat.number }}</td>
-                            <td>{{ venta.trip.route.origin.name }} → {{ venta.trip.route.destination.name }}</td>
-                            <td>$ {{ venta.price|intcomma }}</td>
-                            <td>{{ venta.get_payment_method_display }}</td>
+                            <td><small>{{ venta.trip.route.origin.name }} → {{ venta.trip.route.destination.name }}</small></td>
+                            <td class="fw-bold text-success">${{ venta.price|intcomma }}</td>
+                            <td><span class="badge bg-light text-dark">{{ venta.get_payment_method_display }}</span></td>
                             <td>{{ venta.created_at|date:"H:i" }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="8" class="text-center">No hay ventas registradas hoy.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted">No hay ventas registradas hoy.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -144,65 +442,356 @@
     </div>
 </div>
 
-<script>
-    // Gráfico (datos estáticos, puedes mejorarlo con API)
-    const ctx = document.getElementById('salesChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Hace 6d', 'Hace 5d', 'Hace 4d', 'Hace 3d', 'Hace 2d', 'Ayer', 'Hoy'],
-            datasets: [{
-                label: 'Ventas ($)',
-                data: [120000, 135000, 98000, 156000, 178000, 200000, {{ total_ventas|default:0 }}],
-                borderColor: '#2c3e50',
-                tension: 0.3,
-                fill: false
-            }]
-        }
-    });
+<!-- ===== MODAL DE ARQUEO ===== -->
+<div class="modal fade modal-arqueo" id="arqueoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-calculator me-2"></i> Arqueo de Caja</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Ingrese los montos contados por método de pago para el cierre:</p>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">💰 Efectivo</label>
+                    <input type="number" id="efectivo_contado" class="form-control" step="100" placeholder="0" value="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">💳 Tarjeta</label>
+                    <input type="number" id="tarjeta_contado" class="form-control" step="100" placeholder="0" value="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">🏦 Transferencia</label>
+                    <input type="number" id="transferencia_contado" class="form-control" step="100" placeholder="0" value="0">
+                </div>
+                <div class="arqueo-total-display">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">Total contado:</span>
+                        <span class="fw-bold fs-4" id="totalContadoDisplay">$0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-success" id="confirmarArqueo">
+                    <i class="fas fa-check me-2"></i> Confirmar y Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
-    // Buscador en tabla
-    document.getElementById('searchSales').addEventListener('keyup', function() {
-        const filter = this.value.toLowerCase();
-        const rows = document.querySelectorAll('#salesTableBody tr');
-        rows.forEach(row => {
-            const text = row.innerText.toLowerCase();
+<!-- ===== SCRIPTS ===== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // ================================================================
+    // CSRF TOKEN
+    // ================================================================
+    const csrfTokenFromDjango = '{{ csrf_token }}';
+    
+    function getCsrfToken() {
+        if (csrfTokenFromDjango && csrfTokenFromDjango !== '') {
+            return csrfTokenFromDjango;
+        }
+        const cookieValue = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('csrftoken='))
+            ?.split('=')[1];
+        return cookieValue || '';
+    }
+
+    const csrftoken = getCsrfToken();
+    console.log('🔑 CSRF Token:', csrftoken ? '✅ OK' : '❌ NO ENCONTRADO');
+
+    // ================================================================
+    // TOAST
+    // ================================================================
+    function showToast(message, type = 'success') {
+        const existingToast = document.querySelector('.toast-feedback');
+        if (existingToast) existingToast.remove();
+        
+        const icons = {
+            success: 'fa-check-circle',
+            error: 'fa-times-circle',
+            warning: 'fa-exclamation-triangle',
+            info: 'fa-info-circle'
+        };
+        
+        const colors = {
+            success: '#10b981',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
+        };
+        
+        const toast = document.createElement('div');
+        toast.className = `toast-feedback ${type}`;
+        toast.innerHTML = `
+            <i class="fas ${icons[type] || icons.info}" style="color:${colors[type] || colors.info};"></i>
+            <span>${message}</span>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-50%) translateY(20px)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // ================================================================
+    // GRÁFICOS
+    // ================================================================
+    const ctx = document.getElementById('salesChart')?.getContext('2d');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Hace 6d', 'Hace 5d', 'Hace 4d', 'Hace 3d', 'Hace 2d', 'Ayer', 'Hoy'],
+                datasets: [{
+                    label: 'Ventas ($)',
+                    data: [120000, 135000, 98000, 156000, 178000, 200000, {{ total_ventas|default:0 }}],
+                    borderColor: '#f5821f',
+                    backgroundColor: 'rgba(245, 130, 31, 0.1)',
+                    tension: 0.3,
+                    fill: true,
+                    pointBackgroundColor: '#f5821f',
+                    pointRadius: 4,
+                    borderWidth: 3,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) { return '$' + value.toLocaleString('es-CL'); }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    const hourlyCtx = document.getElementById('hourlyChart')?.getContext('2d');
+    if (hourlyCtx) {
+        const hours = [];
+        const values = [];
+        for (let i = 0; i < 24; i++) {
+            hours.push(i + ':00');
+            values.push(Math.floor(Math.random() * 50000) + 5000);
+        }
+        new Chart(hourlyCtx, {
+            type: 'bar',
+            data: {
+                labels: hours,
+                datasets: [{
+                    label: 'Ventas por hora',
+                    data: values,
+                    backgroundColor: 'rgba(245, 130, 31, 0.6)',
+                    borderColor: '#f5821f',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        ticks: { maxTicksLimit: 12, font: { size: 8 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) { return '$' + (value/1000).toFixed(0) + 'k'; }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ================================================================
+    // BUSCADOR
+    // ================================================================
+    document.getElementById('searchSales')?.addEventListener('keyup', function() {
+        const filter = this.value.toLowerCase().trim();
+        document.querySelectorAll('#salesTableBody tr').forEach(row => {
+            if (filter === '') {
+                row.style.display = '';
+                return;
+            }
+            const text = row.textContent.toLowerCase();
             row.style.display = text.includes(filter) ? '' : 'none';
         });
     });
 
-    // Abrir caja con AJAX
-    const abrirBtn = document.getElementById('abrirCajaBtn');
-    if (abrirBtn) {
-        abrirBtn.addEventListener('click', () => {
-            const balance = document.getElementById('openingBalance').value;
-            fetch('/pos/caja/abrir/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ opening_balance: balance })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) location.reload();
-                else alert(data.error);
-            });
+    // ================================================================
+    // ABRIR CAJA - CON onclick DIRECTO
+    // ================================================================
+    function abrirCaja() {
+        const balance = document.getElementById('openingBalance').value;
+        const btn = document.querySelector('[onclick="abrirCaja()"]');
+        
+        if (!btn) {
+            alert('❌ Error: Botón no encontrado');
+            return;
+        }
+        
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Abriendo...';
+
+        const token = getCsrfToken();
+        
+        if (!token) {
+            alert('❌ Error: No se pudo obtener el token CSRF. Recarga la página.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-door-open me-2"></i> Abrir Caja';
+            return;
+        }
+
+        fetch('/pos/caja/abrir/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ opening_balance: balance })
+        })
+        .then(res => {
+            if (res.status === 403) {
+                throw new Error('Error 403: Token CSRF inválido.');
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (data.success) {
+                showToast('✅ ' + data.message, 'success');
+                setTimeout(() => location.reload(true), 1000);
+            } else {
+                showToast('❌ Error: ' + (data.error || 'Desconocido'), 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-door-open me-2"></i> Abrir Caja';
+            }
+        })
+        .catch(error => {
+            console.error('❌ Error:', error);
+            showToast('❌ ' + error.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-door-open me-2"></i> Abrir Caja';
         });
     }
 
-    // Cerrar caja con AJAX
-    const cerrarBtn = document.getElementById('cerrarCajaBtn');
-    if (cerrarBtn) {
-        cerrarBtn.addEventListener('click', () => {
-            fetch('/pos/caja/cerrar/', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) location.reload();
-                else alert(data.error);
-            });
+    // ================================================================
+    // CERRAR CAJA
+    // ================================================================
+    let redirectTarget = 'home';
+
+    document.getElementById('cerrarCajaBtn')?.addEventListener('click', function() {
+        redirectTarget = 'home';
+        const modal = new bootstrap.Modal(document.getElementById('arqueoModal'));
+        modal.show();
+        document.getElementById('confirmarArqueo').dataset.redirect = 'home';
+    });
+
+    document.getElementById('cerrarCajaSalirBtn')?.addEventListener('click', function() {
+        redirectTarget = 'logout';
+        const modal = new bootstrap.Modal(document.getElementById('arqueoModal'));
+        modal.show();
+        document.getElementById('confirmarArqueo').dataset.redirect = 'logout';
+    });
+
+    // ================================================================
+    // ACTUALIZAR TOTAL DEL ARQUEO
+    // ================================================================
+    document.querySelectorAll('#arqueoModal input[type="number"]').forEach(input => {
+        input.addEventListener('input', function() {
+            updateArqueoTotal();
         });
+    });
+
+    function updateArqueoTotal() {
+        const efectivo = parseFloat(document.getElementById('efectivo_contado').value) || 0;
+        const tarjeta = parseFloat(document.getElementById('tarjeta_contado').value) || 0;
+        const transferencia = parseFloat(document.getElementById('transferencia_contado').value) || 0;
+        const total = efectivo + tarjeta + transferencia;
+        document.getElementById('totalContadoDisplay').textContent = '$' + total.toLocaleString('es-CL');
     }
+
+    // ================================================================
+    // CONFIRMAR ARQUEO
+    // ================================================================
+    document.getElementById('confirmarArqueo')?.addEventListener('click', function() {
+        const efectivo = parseFloat(document.getElementById('efectivo_contado').value) || 0;
+        const tarjeta = parseFloat(document.getElementById('tarjeta_contado').value) || 0;
+        const transferencia = parseFloat(document.getElementById('transferencia_contado').value) || 0;
+        const total_contado = efectivo + tarjeta + transferencia;
+        
+        const target = this.dataset.redirect || 'home';
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Cerrando...';
+
+        const token = getCsrfToken();
+
+        fetch('/pos/caja/cerrar/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ efectivo, tarjeta, transferencia })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast('✅ Caja cerrada con éxito. Total contado: $' + total_contado.toLocaleString('es-CL'), 'success');
+                setTimeout(() => {
+                    if (target === 'logout') {
+                        window.location.href = '{% url "logout" %}';
+                    } else {
+                        window.location.href = '{% url "pos_home" %}';
+                    }
+                }, 500);
+            } else {
+                showToast('❌ Error al cerrar la caja: ' + data.error, 'error');
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-check me-2"></i> Confirmar y Cerrar';
+            }
+        })
+        .catch(error => {
+            showToast('❌ Error de conexión: ' + error.message, 'error');
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-check me-2"></i> Confirmar y Cerrar';
+        });
+    });
+
+    // ================================================================
+    // INICIALIZACIÓN
+    // ================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        const arqueoModal = document.getElementById('arqueoModal');
+        if (arqueoModal) {
+            arqueoModal.addEventListener('shown.bs.modal', function() {
+                updateArqueoTotal();
+            });
+        }
+        
+        const efectivo = parseFloat("{{ efectivo_hoy|default:'0' }}") || 0;
+        if (efectivo > 0) {
+            console.log('💰 Efectivo hoy: $' + efectivo.toLocaleString('es-CL'));
+        }
+    });
 </script>
 {% endblock %}

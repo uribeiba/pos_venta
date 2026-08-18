@@ -1,8 +1,10 @@
+# booking/models.py
 from __future__ import annotations
 
 from datetime import timedelta
 from typing import Optional
-
+from decimal import Decimal
+from django.core.exceptions import ValidationError
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -33,7 +35,13 @@ class City(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name or "")
+            base = slugify(self.name or "")
+            slug = base
+            counter = 1
+            while City.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{counter}"
+                counter += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -78,16 +86,9 @@ class Driver(models.Model):
     license_number = models.CharField("N° Licencia", max_length=30, blank=True)
     is_active = models.BooleanField("Activo", default=True)
 
-    # Nuevos campos para el módulo de choferes
-    photo = models.ImageField(
-        "Foto", upload_to='drivers/photos/', null=True, blank=True
-    )
-    medical_cert_expiry = models.DateField(
-        "Vencimiento certificado médico", null=True, blank=True
-    )
-    background_check_expiry = models.DateField(
-        "Vencimiento antecedentes", null=True, blank=True
-    )
+    photo = models.ImageField("Foto", upload_to='drivers/photos/', null=True, blank=True)
+    medical_cert_expiry = models.DateField("Vencimiento certificado médico", null=True, blank=True)
+    background_check_expiry = models.DateField("Vencimiento antecedentes", null=True, blank=True)
     notes = models.TextField("Observaciones", blank=True)
 
     class Meta:
@@ -105,10 +106,7 @@ class Assistant(models.Model):
     email = models.EmailField("Correo electrónico", blank=True, default="")
     phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
     is_active = models.BooleanField("Activo", default=True)
-# NUEVOS CAMPOS
-    photo = models.ImageField(
-        "Foto", upload_to='assistants/photos/', null=True, blank=True
-    )
+    photo = models.ImageField("Foto", upload_to='assistants/photos/', null=True, blank=True)
     notes = models.TextField("Observaciones", blank=True)
 
     class Meta:
@@ -167,9 +165,7 @@ class BusLayout(models.Model):
 # Bus con diseño de asientos (layout)
 # =========================================================
 class Bus(models.Model):
-    # --- Campos existentes (no se tocan) ---
     company = models.ForeignKey(Company, verbose_name="Empresa", on_delete=models.PROTECT)
-
     plate = models.CharField("Patente", max_length=30, unique=True)
     model = models.CharField("Modelo", max_length=80, blank=True)
     year = models.PositiveIntegerField("Año", default=2024)
@@ -199,19 +195,12 @@ class Bus(models.Model):
         verbose_name="Mapa (plantilla)"
     )
 
-    # ==================== NUEVOS CAMPOS ====================
     # Datos del propietario
-    owner_first_name = models.CharField(
-        "Nombres del propietario", max_length=100, blank=True
-    )
-    owner_last_name = models.CharField(
-        "Apellidos del propietario", max_length=100, blank=True
-    )
+    owner_first_name = models.CharField("Nombres del propietario", max_length=100, blank=True)
+    owner_last_name = models.CharField("Apellidos del propietario", max_length=100, blank=True)
 
     # Documentos y registro
-    circulation_card = models.CharField(
-        "Tarjeta de circulación", max_length=50, blank=True, unique=True, null=True
-    )
+    circulation_card = models.CharField("Tarjeta de circulación", max_length=50, blank=True, unique=True, null=True)
     vehicle_class = models.CharField(
         "Clase", max_length=50, blank=True,
         choices=[
@@ -224,9 +213,7 @@ class Bus(models.Model):
         default='BUS RURAL'
     )
     brand = models.CharField("Marca", max_length=80, blank=True)
-    manufacturing_year = models.PositiveIntegerField(
-        "Año fabricación", null=True, blank=True
-    )
+    manufacturing_year = models.PositiveIntegerField("Año fabricación", null=True, blank=True)
     fuel_type = models.CharField(
         "Tipo combustible", max_length=30, blank=True,
         choices=[
@@ -241,30 +228,24 @@ class Bus(models.Model):
     axles = models.PositiveSmallIntegerField("Ejes", default=2)
     color = models.CharField("Color", max_length=100, blank=True)
     engine_number = models.CharField("N° Motor", max_length=50, blank=True)
-    cylinders = models.PositiveSmallIntegerField(
-        "Cantidad de cilindros", null=True, blank=True
-    )
-    serial_number = models.CharField(
-        "N° Serie (VIN)", max_length=50, blank=True, unique=True, null=True
-    )
+    cylinders = models.PositiveSmallIntegerField("Cantidad de cilindros", null=True, blank=True)
+    serial_number = models.CharField("N° Serie (VIN)", max_length=50, blank=True, unique=True, null=True)
     wheels_count = models.PositiveSmallIntegerField("Cantidad de ruedas", default=6)
-    dry_weight = models.DecimalField(
-        "Peso seco (kg)", max_digits=10, decimal_places=2, null=True, blank=True
-    )
-    gross_weight = models.DecimalField(
-        "Peso bruto (kg)", max_digits=10, decimal_places=2, null=True, blank=True
-    )
-    length = models.DecimalField(
-        "Longitud (m)", max_digits=6, decimal_places=2, null=True, blank=True
-    )
-    height = models.DecimalField(
-        "Altura (m)", max_digits=6, decimal_places=2, null=True, blank=True
-    )
-    width = models.DecimalField(
-        "Ancho (m)", max_digits=6, decimal_places=2, null=True, blank=True
-    )
+    dry_weight = models.DecimalField("Peso seco (kg)", max_digits=10, decimal_places=2, null=True, blank=True)
+    gross_weight = models.DecimalField("Peso bruto (kg)", max_digits=10, decimal_places=2, null=True, blank=True)
+    length = models.DecimalField("Longitud (m)", max_digits=6, decimal_places=2, null=True, blank=True)
+    height = models.DecimalField("Altura (m)", max_digits=6, decimal_places=2, null=True, blank=True)
+    width = models.DecimalField("Ancho (m)", max_digits=6, decimal_places=2, null=True, blank=True)
     total_passengers = models.PositiveSmallIntegerField("Total pasajeros", default=0)
     total_seats = models.PositiveSmallIntegerField("Total asientos", default=0)
+
+    # Mantenimiento y operación
+    current_mileage = models.PositiveIntegerField("Kilometraje actual", default=0)
+    last_maintenance_mileage = models.PositiveIntegerField("Kilometraje último mantenimiento", default=0)
+    next_maintenance_mileage = models.PositiveIntegerField("Próximo mantenimiento (km)", default=0)
+    fuel_consumption = models.DecimalField("Consumo (L/100km)", max_digits=5, decimal_places=2, null=True, blank=True)
+    last_fuel_refill = models.DateField("Última carga combustible", null=True, blank=True)
+    last_fuel_mileage = models.PositiveIntegerField("Kilometraje última carga", default=0)
     service_type = models.CharField(
         "Tipo servicio", max_length=30, blank=True,
         choices=[
@@ -276,24 +257,13 @@ class Bus(models.Model):
         default='semi_cama'
     )
 
-    # Fechas de documentos (nuevas)
-    technical_review_expiry = models.DateField(
-        "Vencimiento revisión técnica", null=True, blank=True
-    )
-    insurance_expiry = models.DateField(
-        "Vencimiento seguro", null=True, blank=True
-    )
-    permit_expiry = models.DateField(
-        "Vencimiento permiso circulación", null=True, blank=True
-    )
-    last_maintenance = models.DateField(
-        "Último mantenimiento", null=True, blank=True
-    )
+    # Fechas de documentos
+    technical_review_expiry = models.DateField("Vencimiento revisión técnica", null=True, blank=True)
+    insurance_expiry = models.DateField("Vencimiento seguro", null=True, blank=True)
+    permit_expiry = models.DateField("Vencimiento permiso circulación", null=True, blank=True)
+    last_maintenance = models.DateField("Último mantenimiento", null=True, blank=True)
 
-    # Estado activo/inactivo
     is_active = models.BooleanField("Activo", default=True)
-
-    # ========== FIN NUEVOS CAMPOS ==========
 
     class Meta:
         verbose_name = "Bus"
@@ -335,10 +305,7 @@ class Bus(models.Model):
                 yield r, c, (r * cols + c)
 
     def ensure_layouts(self):
-        """
-        Asegura que layout, numbers y services tengan el tamaño correcto.
-        Si una celda tipo 'L' no tiene número, asigna uno provisional usando el prefijo.
-        """
+        """Asegura que layout, numbers y services tengan el tamaño correcto."""
         gl_lower = self.grid_len_lower()
 
         # PISO INFERIOR
@@ -470,6 +437,7 @@ class Bus(models.Model):
             self.ensure_layouts()
         super().save(*args, **kwargs)
 
+
 # =========================================================
 # Documentos de Chofer
 # =========================================================
@@ -497,6 +465,7 @@ class DriverDocument(models.Model):
     def __str__(self):
         return f"{self.driver.full_name} - {self.get_doc_type_display()}"
 
+
 # =========================================================
 # Documentos de Vehículo (Bus)
 # =========================================================
@@ -523,18 +492,14 @@ class BusDocument(models.Model):
 
     def __str__(self):
         return f"{self.bus.plate} - {self.get_doc_type_display()}"
+
+
 # =========================================================
 # Rutas y viajes
 # =========================================================
 class Route(models.Model):
-    origin = models.ForeignKey(
-        City, verbose_name="Origen",
-        on_delete=models.PROTECT, related_name="routes_from"
-    )
-    destination = models.ForeignKey(
-        City, verbose_name="Destino",
-        on_delete=models.PROTECT, related_name="routes_to"
-    )
+    origin = models.ForeignKey(City, verbose_name="Origen", on_delete=models.PROTECT, related_name="routes_from")
+    destination = models.ForeignKey(City, verbose_name="Destino", on_delete=models.PROTECT, related_name="routes_to")
     origin_terminal = models.ForeignKey(
         Terminal, verbose_name="Terminal origen",
         on_delete=models.PROTECT, related_name="routes_from", null=True, blank=True
@@ -545,7 +510,6 @@ class Route(models.Model):
     )
     duration_minutes = models.PositiveIntegerField("Duración (min)", default=120)
     base_price = models.DecimalField("Precio base", max_digits=10, decimal_places=2)
-    
     is_active = models.BooleanField("Activa", default=True)
 
     class Meta:
@@ -553,7 +517,6 @@ class Route(models.Model):
         verbose_name = "Ruta"
         verbose_name_plural = "Rutas"
         ordering = ("origin__name", "destination__name")
-        
 
     def __str__(self) -> str:
         base = f"{self.origin} → {self.destination}"
@@ -571,7 +534,12 @@ class Trip(models.Model):
     arrival = models.DateTimeField("Llegada")
     seats_total = models.PositiveIntegerField("Asientos totales", default=0)
 
-    # 🔥 NUEVOS CAMPOS: choferes y auxiliar (CORREGIDO: driver1 ahora usa Driver)
+    cutoff_minutes = models.PositiveSmallIntegerField(
+        "Corte de ventas web (min)",
+        default=10,
+        help_text="Minutos antes de la salida en que se bloquea la compra en la web. 0 = sin restricción."
+    )
+
     driver1 = models.ForeignKey(
         Driver, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="trips_as_driver1", verbose_name="Chofer principal"
@@ -590,8 +558,8 @@ class Trip(models.Model):
         verbose_name_plural = "Viajes"
         ordering = ("-departure",)
         indexes = [
-            models.Index(fields=['departure']),   # 🔥 NUEVO ÍNDICE: acelera búsquedas por fecha
-            models.Index(fields=['bus']),         # 🔥 NUEVO ÍNDICE: acelera filtros por bus en reportes
+            models.Index(fields=['departure']),
+            models.Index(fields=['bus']),
         ]
 
     def __str__(self) -> str:
@@ -631,10 +599,7 @@ class Seat(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(
-                fields=["bus", "deck", "number"],
-                name="uniq_seat_per_bus_deck_number"
-            )
+            models.UniqueConstraint(fields=["bus", "deck", "number"], name="uniq_seat_per_bus_deck_number")
         ]
         verbose_name = "Asiento"
         verbose_name_plural = "Asientos"
@@ -645,7 +610,7 @@ class Seat(models.Model):
 
 
 # =========================================================
-# Cliente (definido antes de Ticket para evitar importaciones circulares)
+# Cliente
 # =========================================================
 class Customer(models.Model):
     national_id = models.CharField("RUT/Documento", max_length=40, unique=True, db_index=True)
@@ -680,77 +645,297 @@ class Customer(models.Model):
 # Bloqueos temporales (SeatHold)
 # =========================================================
 class SeatHold(models.Model):
-    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="holds")
-    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, related_name="holds")
-    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="seat_holds")
+    """
+    Bloqueo temporal de un asiento para un viaje.
+
+    Puede pertenecer a:
+    - un usuario autenticado (POS / vendedor / cliente registrado)
+    - una sesión web anónima mediante session_key
+
+    La concurrencia debe controlarse siempre utilizando
+    transaction.atomic() + select_for_update() sobre Seat.
+    """
+
+    trip = models.ForeignKey(
+        Trip,
+        on_delete=models.CASCADE,
+        related_name="holds",
+    )
+
+    seat = models.ForeignKey(
+        Seat,
+        on_delete=models.CASCADE,
+        related_name="holds",
+    )
+
+    # IMPORTANTE:
+    # En venta web el cliente puede no estar autenticado.
+    # Por eso user debe aceptar NULL.
+    user = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="seat_holds",
+        null=True,
+        blank=True,
+    )
+
     expires_at = models.DateTimeField()
-    active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+
+    active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    # Identifica clientes web, incluso si no están autenticados.
+    session_key = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        db_index=True,
+    )
 
     class Meta:
         indexes = [
-            models.Index(fields=["trip", "seat"]),   # Índice compuesto original
-            models.Index(fields=["active"]),         # Original
-            models.Index(fields=["expires_at"]),     # Original
-            models.Index(fields=["trip"]),           # 🔥 NUEVO ÍNDICE: para limpieza y consultas por viaje
-            models.Index(fields=["user"]),           # 🔥 NUEVO ÍNDICE: para liberar holds de un usuario rápidamente
+            models.Index(fields=["trip", "seat"]),
+            models.Index(fields=["active"]),
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["trip"]),
+            models.Index(fields=["user"]),
+            models.Index(fields=["session_key"]),
+
+            # Ayuda a las consultas frecuentes de disponibilidad.
+            models.Index(
+                fields=["trip", "seat", "active"],
+                name="hold_trip_seat_active_idx",
+            ),
         ]
+
         verbose_name = "Bloqueo temporal"
         verbose_name_plural = "Bloqueos temporales"
 
-    def __str__(self) -> str:
-        return f"{self.trip} — {self.seat.number} ({'activo' if self.active else 'inactivo'})"
+    def __str__(self):
+        owner = (
+            self.user.username
+            if self.user_id
+            else self.session_key or "anónimo"
+        )
+
+        return (
+            f"{self.trip} — "
+            f"{self.seat.number} — "
+            f"{owner} "
+            f"({'activo' if self.active else 'inactivo'})"
+        )
+
+    @property
+    def is_expired(self):
+        """
+        Indica si el bloqueo ya expiró.
+        """
+        return self.expires_at <= timezone.now()
 
     @classmethod
     def cleanup(cls):
+        """
+        Desactiva reservas expiradas.
+
+        No elimina registros para conservar trazabilidad.
+        """
         now = timezone.now()
-        cls.objects.filter(active=True, expires_at__lte=now).update(active=False)
+
+        return cls.objects.filter(
+            active=True,
+            expires_at__lte=now,
+        ).update(active=False)
 
     @classmethod
-    def hold(cls, trip, seat, user, minutes: int = 10):
+    def hold(
+        cls,
+        trip,
+        seat,
+        user=None,
+        session_key=None,
+        minutes=10,
+    ):
+        """
+        Crea o renueva una reserva temporal de asiento.
+
+        SEGURIDAD DE CONCURRENCIA:
+        El asiento físico se bloquea con SELECT FOR UPDATE para impedir
+        que dos procesos reserven simultáneamente la misma butaca.
+
+        Puede utilizarse desde:
+        - POS mediante user
+        - Web mediante session_key
+        """
+
+        if user is None and not session_key:
+            raise ValueError(
+                "Debe existir un usuario o una sesión para reservar el asiento."
+            )
+
         now = timezone.now()
         new_expire = now + timedelta(minutes=minutes)
 
         with transaction.atomic():
-            cls.cleanup()
-            s = Seat.objects.select_for_update().get(pk=seat.pk)
 
-            # Verificar si el asiento ya está vendido
-            Ticket = apps.get_model('booking', 'Ticket')  # Reemplaza 'booking' por tu app_label
-            if Ticket.objects.filter(trip=trip, seat=s).exists() or getattr(s, "is_occupied", False):
-                raise ValueError("Asiento ocupado.")
+            # -------------------------------------------------
+            # 1. BLOQUEAR ASIENTO EN POSTGRESQL
+            # -------------------------------------------------
+            locked_seat = Seat.objects.select_for_update().get(
+                pk=seat.pk
+            )
 
-            active_qs = cls.objects.select_for_update().filter(
-                trip=trip, seat=s, active=True, expires_at__gt=now
-            ).order_by("-expires_at")
+            # -------------------------------------------------
+            # 2. LIMPIAR HOLDS EXPIRADOS DE ESTE ASIENTO
+            # -------------------------------------------------
+            cls.objects.filter(
+                trip=trip,
+                seat=locked_seat,
+                active=True,
+                expires_at__lte=now,
+            ).update(active=False)
 
-            if active_qs.exists():
-                h = active_qs.first()
-                if h.user_id != user.id:
-                    raise ValueError("Asiento temporalmente bloqueado por otro vendedor.")
-                h.expires_at = new_expire
-                h.active = True
-                h.save(update_fields=["expires_at", "active"])
-                return h
+            # -------------------------------------------------
+            # 3. VERIFICAR QUE EL ASIENTO NO ESTÉ VENDIDO
+            # -------------------------------------------------
+            TicketModel = apps.get_model(
+                "booking",
+                "Ticket",
+            )
 
+            if TicketModel.objects.filter(
+                trip=trip,
+                seat=locked_seat,
+            ).exists():
+                raise ValueError(
+                    "El asiento ya fue vendido."
+                )
+
+            # -------------------------------------------------
+            # 4. BUSCAR RESERVA ACTIVA
+            # -------------------------------------------------
+            existing_hold = (
+                cls.objects
+                .select_for_update()
+                .filter(
+                    trip=trip,
+                    seat=locked_seat,
+                    active=True,
+                    expires_at__gt=now,
+                )
+                .order_by("-expires_at")
+                .first()
+            )
+
+            if existing_hold:
+
+                # ---------------------------------------------
+                # Determinar si el hold pertenece al solicitante
+                # ---------------------------------------------
+                same_owner = False
+
+                # Usuario autenticado
+                if user is not None and existing_hold.user_id:
+                    same_owner = (
+                        existing_hold.user_id == user.id
+                    )
+
+                # Sesión web
+                if (
+                    session_key
+                    and existing_hold.session_key
+                    and existing_hold.session_key == session_key
+                ):
+                    same_owner = True
+
+                if not same_owner:
+                    raise ValueError(
+                        "El asiento está temporalmente reservado "
+                        "por otro usuario."
+                    )
+
+                # ---------------------------------------------
+                # Renovar reserva existente
+                # ---------------------------------------------
+                existing_hold.expires_at = new_expire
+                existing_hold.active = True
+
+                # Si ahora tenemos datos que antes no existían,
+                # los asociamos.
+                if user is not None:
+                    existing_hold.user = user
+
+                if session_key:
+                    existing_hold.session_key = session_key
+
+                existing_hold.save(
+                    update_fields=[
+                        "expires_at",
+                        "active",
+                        "user",
+                        "session_key",
+                    ]
+                )
+
+                return existing_hold
+
+            # -------------------------------------------------
+            # 5. CREAR NUEVA RESERVA
+            # -------------------------------------------------
             return cls.objects.create(
                 trip=trip,
-                seat=s,
+                seat=locked_seat,
                 user=user,
+                session_key=session_key,
                 expires_at=new_expire,
                 active=True,
             )
 
     @classmethod
-    def release(cls, trip, seat, user) -> int:
+    def release(
+        cls,
+        trip,
+        seat,
+        user=None,
+        session_key=None,
+    ):
+        """
+        Libera una reserva únicamente si pertenece
+        al usuario o sesión solicitante.
+        """
+
+        if user is None and not session_key:
+            return 0
+
+        filters = {
+            "trip": trip,
+            "seat": seat,
+            "active": True,
+        }
+
+        if user is not None:
+            filters["user"] = user
+
+        if session_key:
+            filters["session_key"] = session_key
+
         with transaction.atomic():
+            Seat.objects.select_for_update().get(
+                pk=seat.pk
+            )
+
             return cls.objects.filter(
-                trip=trip, seat=seat, user=user, active=True
+                **filters
             ).update(active=False)
 
 
 # =========================================================
-# Boletos (Ticket)
+# Boletos (Ticket) - CORREGIDO COMPLETO
 # =========================================================
 class Ticket(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.PROTECT, related_name="tickets")
@@ -758,7 +943,8 @@ class Ticket(models.Model):
     number = models.CharField("N° ticket", max_length=20, unique=True)
     buyer_name = models.CharField("Nombre pasajero", max_length=140)
     national_id = models.CharField("Documento", max_length=40, blank=True, default="")
-
+    checked_in = models.BooleanField("Embarcado", default=False)
+    checked_in_at = models.DateTimeField("Hora embarque", null=True, blank=True)
     customer = models.ForeignKey(
         Customer,
         on_delete=models.SET_NULL,
@@ -770,6 +956,7 @@ class Ticket(models.Model):
     PAYMENT_METHOD_CHOICES = [
         ("cash", "Efectivo"),
         ("card", "Tarjeta"),
+        ("credit", "Crédito Convenio"),
     ]
     payment_method = models.CharField(
         "Método de pago",
@@ -783,13 +970,28 @@ class Ticket(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="tickets_sold")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    contract = models.ForeignKey(
+        'CompanyContract',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        verbose_name="Contrato de convenio"
+    )
+    is_credit = models.BooleanField(
+        default=False,
+        verbose_name="¿Compra a crédito?"
+    )
+
     class Meta:
         indexes = [
             models.Index(fields=["trip"]),
             models.Index(fields=["created_at"]),
             models.Index(fields=["payment_method"]),
-            models.Index(fields=["created_by"]),   # 🔥 NUEVO ÍNDICE: acelera reportes por vendedor
-            models.Index(fields=["customer"]),     # 🔥 NUEVO ÍNDICE: acelera reportes por cliente
+            models.Index(fields=["created_by"]),
+            models.Index(fields=["customer"]),
+            models.Index(fields=["contract"]),
+            models.Index(fields=["is_credit"]),
         ]
         verbose_name = "Boleto"
         verbose_name_plural = "Boletos"
@@ -803,26 +1005,119 @@ class Ticket(models.Model):
 
     @staticmethod
     def _next_number() -> str:
-        with transaction.atomic():
-            cur = connection.cursor()
-            cur.execute("SELECT number FROM booking_ticket ORDER BY id DESC LIMIT 1")
-            row = cur.fetchone()
-            last = 0
-            if row and row[0]:
-                digits = "".join(ch for ch in row[0] if ch.isdigit())
-                last = int(digits) if digits else 0
-            return f"T-{last+1:06d}"
+        """
+        Genera el siguiente número de ticket.
+        Esta versión NUNCA genera duplicados porque verifica la existencia.
+        """
+        from django.db import connection
+        import time
+        
+        # ===== INTENTAR CON LA SECUENCIA =====
+        try:
+            with connection.cursor() as cursor:
+                # Primero, asegurar que la secuencia esté en el valor correcto
+                # Obtener el último número usado
+                cursor.execute("SELECT COALESCE(MAX(CAST(SUBSTRING(number FROM 3) AS INTEGER)), 0) FROM booking_ticket")
+                max_num = cursor.fetchone()[0]
+                
+                # Reiniciar la secuencia si es necesario
+                cursor.execute(f"SELECT setval('ticket_number_seq', {max_num}, true)")
+                
+                # Obtener el siguiente valor
+                cursor.execute("SELECT nextval('ticket_number_seq')")
+                next_id = cursor.fetchone()[0]
+                
+                # Verificar que el número no exista
+                new_number = f"T-{next_id:06d}"
+                if Ticket.objects.filter(number=new_number).exists():
+                    # Si existe, buscar el siguiente disponible
+                    while Ticket.objects.filter(number=f"T-{next_id:06d}").exists():
+                        next_id += 1
+                    return f"T-{next_id:06d}"
+                return new_number
+        except Exception as e:
+            print(f"⚠️ Error con secuencia: {e}")
+        
+        # ===== MÉTODO ALTERNATIVO: Buscar el último número y sumar 1 =====
+        try:
+            # Obtener todos los números de tickets
+            numbers = Ticket.objects.values_list('number', flat=True)
+            max_num = 0
+            for num in numbers:
+                if num.startswith('T-'):
+                    try:
+                        current = int(num[2:])
+                        if current > max_num:
+                            max_num = current
+                    except:
+                        pass
+            
+            next_id = max_num + 1
+            
+            # Verificar que no exista
+            new_number = f"T-{next_id:06d}"
+            if Ticket.objects.filter(number=new_number).exists():
+                # Si existe, buscar el siguiente disponible
+                while Ticket.objects.filter(number=f"T-{next_id:06d}").exists():
+                    next_id += 1
+                return f"T-{next_id:06d}"
+            return new_number
+        except Exception as e:
+            print(f"⚠️ Error en método alternativo: {e}")
+        
+        # ===== ÚLTIMO RECURSO: timestamp + random =====
+        import random
+        timestamp = int(time.time() * 1000) % 1000000
+        new_number = f"T-{timestamp:06d}"
+        counter = 1
+        while Ticket.objects.filter(number=new_number).exists():
+            new_number = f"T-{timestamp:06d}-{counter}"
+            counter += 1
+        return new_number
 
     @classmethod
     def create_for_sale(
-        cls, *, trip: Trip, seat: Seat, buyer_name: str,
-        national_id: str, price, created_by: User, number: Optional[str] = None,
-        customer=None, **extra
+        cls, 
+        *, 
+        trip,  # Trip
+        seat,  # Seat
+        buyer_name: str,
+        national_id: str, 
+        price, 
+        created_by,  # User
+        number: Optional[str] = None,
+        customer=None, 
+        **kwargs
     ):
+        """
+        Crea un ticket para la venta con validaciones atómicas.
+        """
         from django.core.exceptions import ValidationError
+        from django.apps import apps
 
         if not created_by:
             raise ValidationError("created_by es obligatorio para emitir un boleto.")
+
+        # Extraer campos de convenio si están presentes
+        contract = kwargs.pop('contract', None)
+        is_credit = kwargs.pop('is_credit', False)
+        payment_method = kwargs.pop('payment_method', 'cash')
+
+        # Validar contrato si está presente
+        if contract:
+            if not contract.is_active:
+                raise ValidationError("El contrato no está activo.")
+            
+            today = timezone.now().date()
+            if contract.valid_from and contract.valid_from > today:
+                raise ValidationError("El contrato aún no está vigente.")
+            if contract.valid_to and contract.valid_to < today:
+                raise ValidationError("El contrato ha expirado.")
+            
+            if not contract.can_purchase(price):
+                raise ValidationError(
+                    f"Crédito insuficiente. Disponible: ${contract.available_credit:,.0f}"
+                )
 
         with transaction.atomic():
             s = Seat.objects.select_for_update().get(pk=seat.pk)
@@ -830,7 +1125,9 @@ class Ticket(models.Model):
             if cls.objects.filter(trip=trip, seat=s).exists():
                 raise ValidationError("El asiento ya está ocupado para este viaje.")
 
-            SeatHold.objects.filter(trip=trip, seat=s, user=created_by, active=True).update(active=False)
+            SeatHold.objects.filter(
+                trip=trip, seat=s, user=created_by, active=True
+            ).update(active=False)
 
             number = number or cls._next_number()
 
@@ -845,8 +1142,9 @@ class Ticket(models.Model):
                 except Exception:
                     customer = None
 
-            if "payment_method" in extra and not (extra.get("payment_method") or "").strip():
-                extra.pop("payment_method", None)
+            # Si es compra a crédito, asegurar que el método de pago sea 'credit'
+            if is_credit:
+                payment_method = 'credit'
 
             t = cls.objects.create(
                 trip=trip,
@@ -857,8 +1155,16 @@ class Ticket(models.Model):
                 price=price,
                 created_by=created_by,
                 customer=customer,
-                **extra,
+                contract=contract,
+                is_credit=is_credit,
+                payment_method=payment_method,
+                **kwargs,
             )
+
+            # Actualizar crédito del contrato
+            if contract and is_credit:
+                contract.used_credit += price
+                contract.save(update_fields=['used_credit'])
 
             if hasattr(s, "is_occupied"):
                 s.is_occupied = True
@@ -868,6 +1174,8 @@ class Ticket(models.Model):
 
     @classmethod
     def purchase(cls, trip: Trip, seat_ids, buyer_name, national_id, user, customer=None, payment_method="cash"):
+        from django.apps import apps
+        
         SeatHold.cleanup()
         seat_ids = list(seat_ids or [])
         if not seat_ids:
@@ -925,6 +1233,8 @@ class Ticket(models.Model):
             return tickets
 
     def get_or_create_customer(self):
+        from django.apps import apps
+        
         if self.customer:
             return self.customer
         if self.national_id:
@@ -1005,6 +1315,7 @@ class UserProfile(models.Model):
         ('coordinator', 'Coordinador'),
         ('vendedor', 'Vendedor'),
         ('cajero', 'Cajero'),
+        ('convenio', 'Gestor de Convenios'),
     )
 
     user = models.OneToOneField(
@@ -1060,8 +1371,11 @@ class UserProfile(models.Model):
         except Exception:
             role_display = self.role
         return f"{getattr(self.user, 'username', 'user')} - {role_display}"
-    
-    
+
+
+# =========================================================
+# Paradas intermedias de rutas
+# =========================================================
 class RouteStop(models.Model):
     route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name='stops')
     city = models.ForeignKey(City, on_delete=models.PROTECT, verbose_name="Ciudad")
@@ -1079,9 +1393,11 @@ class RouteStop(models.Model):
 
     def __str__(self):
         return f"{self.route} - {self.order}: {self.city}"
-    
 
 
+# =========================================================
+# Agencias
+# =========================================================
 class Agency(models.Model):
     name = models.CharField("Nombre de la agencia", max_length=120, unique=True)
     city = models.ForeignKey(City, on_delete=models.PROTECT, verbose_name="Ciudad")
@@ -1099,3 +1415,726 @@ class Agency(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# =========================================================
+# Tarifas dinámicas y promociones (unificado)
+# =========================================================
+class Season(models.Model):
+    name = models.CharField("Nombre", max_length=100)
+    start_date = models.DateField("Fecha inicio")
+    end_date = models.DateField("Fecha fin")
+    multiplier = models.DecimalField("Multiplicador", max_digits=4, decimal_places=2, default=1.0,
+                                     help_text="Ej: 1.2 = +20%, 0.9 = -10%")
+    is_active = models.BooleanField("Activo", default=True)
+
+    class Meta:
+        verbose_name = "Temporada"
+        verbose_name_plural = "Temporadas"
+        ordering = ['start_date']
+
+    def __str__(self):
+        return f"{self.name} ({self.start_date} → {self.end_date})"
+
+
+class Promotion(models.Model):
+    DISCOUNT_TYPES = (
+        ('percentage', 'Porcentaje'),
+        ('fixed', 'Monto fijo'),
+    )
+
+    name = models.CharField("Nombre", max_length=100)
+    code = models.CharField("Código", max_length=50, unique=True, db_index=True)
+    discount_type = models.CharField("Tipo descuento", max_length=20, choices=DISCOUNT_TYPES, default='percentage')
+    discount_value = models.DecimalField("Valor descuento", max_digits=10, decimal_places=2)
+
+    min_purchase_amount = models.DecimalField("Monto mínimo de compra", max_digits=10, decimal_places=2, default=0)
+    max_discount_amount = models.DecimalField("Descuento máximo", max_digits=10, decimal_places=2, null=True, blank=True)
+
+    valid_from = models.DateField("Válido desde", null=True, blank=True)
+    valid_to = models.DateField("Válido hasta", null=True, blank=True)
+
+    max_uses = models.IntegerField("Usos máximos", default=0, help_text="0 = ilimitado")
+    used_count = models.IntegerField("Usos realizados", default=0)
+
+    is_active = models.BooleanField("Activo", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Promoción"
+        verbose_name_plural = "Promociones"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.code} ({self.get_discount_type_display()}: {self.discount_value})"
+
+    def is_valid(self, total_amount=0):
+        now = timezone.now().date()
+        if not self.is_active:
+            return False, "No activo"
+        if self.valid_from and self.valid_from > now:
+            return False, f"Válido desde {self.valid_from}"
+        if self.valid_to and self.valid_to < now:
+            return False, f"Expiró el {self.valid_to}"
+        if self.max_uses > 0 and self.used_count >= self.max_uses:
+            return False, "Límite de usos alcanzado"
+        if total_amount < self.min_purchase_amount:
+            return False, f"Monto mínimo ${self.min_purchase_amount}"
+        return True, "Válido"
+
+    def calculate_discount(self, total_amount):
+        if self.discount_type == 'percentage':
+            discount = total_amount * (self.discount_value / 100)
+        else:
+            discount = self.discount_value
+        if self.max_discount_amount and discount > self.max_discount_amount:
+            discount = self.max_discount_amount
+        return max(0, discount)
+
+
+# =========================================================
+# Módulo de Encomiendas (Paquetes)
+# =========================================================
+class Parcel(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pendiente'),
+        ('delivered', 'Entregada'),
+        ('cancelled', 'Cancelada'),
+    )
+    trip = models.ForeignKey(Trip, on_delete=models.PROTECT, related_name='parcels')
+    tracking_number = models.CharField("Nº seguimiento", max_length=20, unique=True, editable=False)
+    sender_name = models.CharField("Remitente", max_length=140)
+    sender_phone = models.CharField("Teléfono remitente", max_length=20)
+    recipient_name = models.CharField("Destinatario", max_length=140)
+    recipient_phone = models.CharField("Teléfono destinatario", max_length=20)
+    recipient_rut = models.CharField("RUT destinatario", max_length=20, blank=True, default="")
+    description = models.TextField("Descripción", blank=True)
+    weight = models.DecimalField("Peso (kg)", max_digits=6, decimal_places=2, default=1.0)
+    price = models.DecimalField("Tarifa", max_digits=10, decimal_places=2)
+    payment_method = models.CharField("Método pago", max_length=10, choices=Ticket.PAYMENT_METHOD_CHOICES, default='cash')
+    status = models.CharField("Estado", max_length=20, choices=STATUS_CHOICES, default='pending')
+    delivered_at = models.DateTimeField("Fecha entrega", null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='parcels_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField("Notas internas", blank=True)
+
+    class Meta:
+        verbose_name = "Encomienda"
+        verbose_name_plural = "Encomiendas"
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f"{self.tracking_number} - {self.sender_name} → {self.recipient_name}"
+
+    def save(self, *args, **kwargs):
+        if not self.tracking_number:
+            today = timezone.now().strftime('%Y%m%d')
+            last = Parcel.objects.filter(tracking_number__startswith=f'PAR-{today}').count()
+            self.tracking_number = f"PAR-{today}-{last+1:05d}"
+        super().save(*args, **kwargs)
+
+    def deliver(self):
+        if self.status == 'pending':
+            self.status = 'delivered'
+            self.delivered_at = timezone.now()
+            self.save()
+
+
+# =========================================================
+# Mantenimiento de flota
+# =========================================================
+class Maintenance(models.Model):
+    MAINTENANCE_TYPES = (
+        ('preventive', 'Mantenimiento preventivo'),
+        ('corrective', 'Mantenimiento correctivo'),
+    )
+    bus = models.ForeignKey(Bus, on_delete=models.CASCADE, related_name='maintenances')
+    maintenance_type = models.CharField("Tipo", max_length=20, choices=MAINTENANCE_TYPES)
+    date = models.DateField("Fecha mantenimiento")
+    mileage = models.PositiveIntegerField("Kilometraje al momento")
+    description = models.TextField("Descripción del trabajo")
+    cost = models.DecimalField("Costo", max_digits=10, decimal_places=2, default=0)
+    workshop = models.CharField("Taller", max_length=200, blank=True)
+    next_maintenance_km = models.PositiveIntegerField("Próximo mantenimiento (km)", default=0,
+                                                      help_text="Kilometraje sugerido para próximo mantenimiento")
+    technician = models.CharField("Técnico responsable", max_length=100, blank=True)
+    notes = models.TextField("Notas adicionales", blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='maintenances_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Mantenimiento"
+        verbose_name_plural = "Mantenimientos"
+        ordering = ('-date',)
+
+    def __str__(self):
+        return f"{self.bus.plate} - {self.date} - {self.get_maintenance_type_display()}"
+
+
+# =========================================================
+# Registro de Combustible
+# =========================================================
+class FuelRecord(models.Model):
+    bus = models.ForeignKey('Bus', on_delete=models.PROTECT, related_name='fuel_records', verbose_name="Bus")
+    date = models.DateField("Fecha de carga", help_text="Fecha en que se realizó la carga de combustible")
+    liters = models.DecimalField("Litros cargados", max_digits=10, decimal_places=2,
+                                 validators=[MinValueValidator(0.01)], help_text="Cantidad de combustible en litros")
+    cost = models.DecimalField("Costo total", max_digits=10, decimal_places=2,
+                               validators=[MinValueValidator(0)], help_text="Monto total pagado por la carga")
+    mileage = models.PositiveIntegerField("Kilometraje al momento", help_text="Kilometraje del bus en el momento de la carga")
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='fuel_records_created', verbose_name="Registrado por")
+    created_at = models.DateTimeField("Fecha de registro", auto_now_add=True)
+    notes = models.TextField("Observaciones", blank=True, help_text="Notas adicionales sobre la carga")
+    invoice_number = models.CharField("N° Factura", max_length=50, blank=True, help_text="Número de factura o comprobante")
+    gas_station = models.CharField("Estación de servicio", max_length=200, blank=True, help_text="Nombre de la estación donde se realizó la carga")
+    fuel_type = models.CharField(
+        "Tipo de combustible", max_length=30, blank=True,
+        choices=[
+            ('Diesel', 'Diesel'),
+            ('Gasolina 93', 'Gasolina 93'),
+            ('Gasolina 95', 'Gasolina 95'),
+            ('Gasolina 97', 'Gasolina 97'),
+            ('GLP', 'GLP'),
+            ('GNV', 'GNV'),
+            ('Otro', 'Otro'),
+        ],
+        default='Diesel'
+    )
+
+    class Meta:
+        verbose_name = "Carga de combustible"
+        verbose_name_plural = "Cargas de combustible"
+        ordering = ('-date', '-created_at')
+        indexes = [
+            models.Index(fields=['bus', 'date']),
+            models.Index(fields=['date']),
+            models.Index(fields=['bus']),
+        ]
+        get_latest_by = 'date'
+
+    def __str__(self):
+        return f"{self.bus.plate} - {self.date} - {self.liters}L - ${self.cost:,.0f}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.mileage > self.bus.current_mileage:
+            self.bus.current_mileage = self.mileage
+            self.bus.save(update_fields=['current_mileage'])
+
+    @property
+    def price_per_liter(self) -> float:
+        if self.liters > 0:
+            return float(self.cost / self.liters)
+        return 0.0
+
+    @classmethod
+    def get_consumption_stats(cls, bus, start_date=None, end_date=None):
+        queryset = cls.objects.filter(bus=bus)
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+
+        stats = queryset.aggregate(
+            total_liters=models.Sum('liters'),
+            total_cost=models.Sum('cost'),
+            count=models.Count('id')
+        )
+
+        result = {
+            'total_liters': stats['total_liters'] or 0,
+            'total_cost': stats['total_cost'] or 0,
+            'total_loads': stats['count'] or 0,
+            'avg_price_per_liter': 0.0,
+            'consumption_per_100km': 0.0,
+        }
+
+        if result['total_liters'] > 0:
+            result['avg_price_per_liter'] = float(result['total_cost'] / result['total_liters'])
+
+        if queryset.count() >= 2:
+            first = queryset.first()
+            last = queryset.last()
+            if first and last and first.mileage < last.mileage:
+                km_traveled = last.mileage - first.mileage
+                if km_traveled > 0:
+                    result['consumption_per_100km'] = float((result['total_liters'] / km_traveled) * 100)
+                    result['km_traveled'] = km_traveled
+
+        return result
+
+
+class Sale(models.Model):
+    STATUS = (
+        ('draft', 'Borrador'),
+        ('pending_payment', 'Pendiente Pago'),
+        ('paid', 'Pagado'),
+        ('cancelled', 'Cancelado'),
+        ('reserved', 'Reservado'),
+    )
+
+    trip = models.ForeignKey(Trip, on_delete=models.PROTECT)
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True
+    )
+    total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS,
+        default='draft'
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+
+# =========================================================
+# CONVENIOS
+# =========================================================
+class CompanyContract(models.Model):
+    company = models.ForeignKey('Company', on_delete=models.PROTECT, related_name='contracts')
+    contract_number = models.CharField("N° Contrato", max_length=50, unique=True)
+    credit_limit = models.DecimalField("Límite de crédito", max_digits=12, decimal_places=2, default=0)
+    used_credit = models.DecimalField("Crédito utilizado", max_digits=12, decimal_places=2, default=0)
+    discount_percentage = models.DecimalField("Descuento (%)", max_digits=5, decimal_places=2, default=0)
+    valid_from = models.DateField("Válido desde")
+    valid_to = models.DateField("Válido hasta")
+    is_active = models.BooleanField("Activo", default=True)
+
+    contact_name = models.CharField("Nombre de contacto", max_length=140, blank=True)
+    contact_phone = models.CharField("Teléfono de contacto", max_length=20, blank=True)
+    contact_email = models.EmailField("Email de contacto", blank=True)
+
+    notes = models.TextField("Observaciones", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Contrato de Convenio"
+        verbose_name_plural = "Contratos de Convenio"
+        ordering = ['company__name', 'contract_number']
+
+    def __str__(self):
+        return f"{self.company.name} - {self.contract_number}"
+
+    @property
+    def available_credit(self):
+        return self.credit_limit - self.used_credit
+
+    def can_purchase(self, amount):
+        return self.available_credit >= amount
+
+
+class ContractEmployee(models.Model):
+    contract = models.ForeignKey(CompanyContract, on_delete=models.CASCADE, related_name='employees')
+    customer = models.ForeignKey('Customer', on_delete=models.PROTECT, related_name='contracts_employee')
+    employee_id = models.CharField("ID Interno (empresa)", max_length=50, blank=True, db_index=True)
+    is_active = models.BooleanField("Activo", default=True)
+    notes = models.TextField("Observaciones", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Empleado Convenio"
+        verbose_name_plural = "Empleados Convenio"
+        unique_together = (('contract', 'customer'),)
+        ordering = ['contract__company__name', 'customer__full_name']
+
+    def __str__(self):
+        return f"{self.customer.full_name} ({self.contract.company.name})"
+
+
+class AuditLog(models.Model):
+    ACTION_CHOICES = (
+        ('login', 'Inicio de sesión'),
+        ('logout', 'Cierre de sesión'),
+        ('create', 'Creación'),
+        ('update', 'Actualización'),
+        ('delete', 'Eliminación'),
+        ('view', 'Visualización'),
+        ('export', 'Exportación'),
+        ('login_failed', 'Intento de login fallido'),
+        ('download_backup', 'Descarga de respaldo'),
+        ('backup_created', 'Respaldo creado'),
+    )
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, db_index=True)
+    model_name = models.CharField(max_length=100, blank=True, db_index=True)
+    object_id = models.CharField(max_length=50, blank=True, null=True, db_index=True)
+    object_repr = models.CharField(max_length=200, blank=True)
+    changes = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    session_key = models.CharField(max_length=40, blank=True, null=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['timestamp', 'user']),
+            models.Index(fields=['action', 'timestamp']),
+        ]
+        verbose_name = "Registro de auditoría"
+        verbose_name_plural = "Registros de auditoría"
+
+    def __str__(self):
+        return f"{self.get_action_display()} - {self.user} - {self.timestamp}"
+    
+    
+    
+    # ============================================================
+# RESERVAS WEB / ÓRDENES DE COMPRA
+# ============================================================
+
+class BookingOrder(models.Model):
+    """
+    Reserva/orden de compra previa al pago.
+
+    IMPORTANTE:
+    Una BookingOrder NO es todavía un boleto vendido.
+    El Ticket se debe crear únicamente después de confirmar
+    correctamente el pago con el proveedor (ej. Transbank).
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_PAYMENT_STARTED = "payment_started"
+    STATUS_PAID = "paid"
+    STATUS_FAILED = "failed"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_EXPIRED = "expired"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pendiente"),
+        (STATUS_PAYMENT_STARTED, "Pago iniciado"),
+        (STATUS_PAID, "Pagada"),
+        (STATUS_FAILED, "Pago fallido"),
+        (STATUS_CANCELLED, "Cancelada"),
+        (STATUS_EXPIRED, "Expirada"),
+    ]
+
+    code = models.CharField(
+        max_length=40,
+        unique=True,
+        db_index=True,
+    )
+
+    trip = models.ForeignKey(
+        Trip,
+        on_delete=models.PROTECT,
+        related_name="booking_orders",
+    )
+
+    user = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="booking_orders",
+    )
+
+    session_key = models.CharField(
+        max_length=100,
+        db_index=True,
+    )
+
+    customer = models.ForeignKey(
+        Customer,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="booking_orders",
+    )
+
+    subtotal = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    discount_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    total_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+
+
+    buyer_name = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+    )
+
+    buyer_email = models.EmailField(
+        max_length=254,
+        blank=True,
+        default="",
+    )
+
+    buyer_phone = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+    )
+
+    buyer_address = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    discount_code = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+    )
+
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    expires_at = models.DateTimeField(
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        indexes = [
+            models.Index(
+                fields=["status", "expires_at"],
+                name="order_status_exp_idx",
+            ),
+            models.Index(
+                fields=["trip", "status"],
+                name="order_trip_status_idx",
+            ),
+            models.Index(
+                fields=["session_key", "status"],
+                name="order_session_status_idx",
+            ),
+        ]
+
+        verbose_name = "Reserva web"
+        verbose_name_plural = "Reservas web"
+
+    def __str__(self):
+        return f"Reserva {self.code} - {self.status}"
+
+
+# ============================================================
+# ASIENTOS / PASAJEROS DE LA RESERVA
+# ============================================================
+
+class BookingOrderSeat(models.Model):
+    """
+    Asiento/pasajero asociado a una BookingOrder.
+
+    Permite que una misma reserva incluya varios pasajeros
+    y varios asientos.
+    """
+
+    order = models.ForeignKey(
+        BookingOrder,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+
+    seat = models.ForeignKey(
+        Seat,
+        on_delete=models.PROTECT,
+        related_name="booking_order_items",
+    )
+
+    passenger_name = models.CharField(
+        max_length=150,
+    )
+
+    passenger_document = models.CharField(
+        max_length=30,
+    )
+
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    passenger_lastname = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+    )
+
+    passenger_nationality = models.CharField(
+        max_length=10,
+        default="CHI",
+    )
+
+    passenger_document_type = models.CharField(
+        max_length=20,
+        default="RUT",
+    )
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "seat"],
+                name="uniq_order_seat",
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["order", "seat"],
+                name="order_seat_idx",
+            ),
+        ]
+
+        verbose_name = "Asiento de reserva"
+        verbose_name_plural = "Asientos de reserva"
+
+    def __str__(self):
+        return (
+            f"{self.order.code} - "
+            f"Asiento {self.seat.number}"
+        )
+
+
+# ============================================================
+# TRANSACCIONES DE PAGO
+# ============================================================
+
+class PaymentTransaction(models.Model):
+    """
+    Registro de cada intento de pago asociado a una BookingOrder.
+
+    Una orden puede tener más de un intento de pago.
+    """
+
+    STATUS_CREATED = "created"
+    STATUS_AUTHORIZED = "authorized"
+    STATUS_REJECTED = "rejected"
+    STATUS_ABORTED = "aborted"
+    STATUS_ERROR = "error"
+
+    STATUS_CHOICES = [
+        (STATUS_CREATED, "Creada"),
+        (STATUS_AUTHORIZED, "Autorizada"),
+        (STATUS_REJECTED, "Rechazada"),
+        (STATUS_ABORTED, "Abortada"),
+        (STATUS_ERROR, "Error"),
+    ]
+
+    order = models.ForeignKey(
+        BookingOrder,
+        on_delete=models.PROTECT,
+        related_name="payments",
+    )
+
+    provider = models.CharField(
+        max_length=30,
+        default="transbank",
+    )
+
+    token = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+
+    buy_order = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+    )
+
+    session_id = models.CharField(
+        max_length=100,
+    )
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default=STATUS_CREATED,
+        db_index=True,
+    )
+
+    authorization_code = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    response_code = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    raw_response = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        indexes = [
+            models.Index(
+                fields=["order", "status"],
+                name="payment_order_status_idx",
+            ),
+            models.Index(
+                fields=["provider", "status"],
+                name="payment_provider_status_idx",
+            ),
+        ]
+
+        verbose_name = "Transacción de pago"
+        verbose_name_plural = "Transacciones de pago"
+
+    def __str__(self):
+        return (
+            f"{self.provider} - "
+            f"{self.buy_order} - "
+            f"{self.status}"
+        )

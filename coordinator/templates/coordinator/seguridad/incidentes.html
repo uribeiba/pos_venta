@@ -1,0 +1,161 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Vigilancia de Incidentes - Cejer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .incident-card {
+        border-left: 4px solid #f59e0b;
+        transition: 0.2s;
+    }
+    .incident-card.critical {
+        border-left-color: #dc2626;
+    }
+    .incident-card.resolved {
+        border-left-color: #10b981;
+    }
+    .incident-card .badge-status {
+        font-size: 0.7rem;
+        padding: 4px 12px;
+        border-radius: 30px;
+    }
+    .badge-critical { background: #fee2e2; color: #991b1b; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-resolved { background: #dcfce7; color: #166534; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <nav aria-label="breadcrumb" class="mt-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coordinator:dashboard' %}">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="#">Seguridad</a></li>
+            <li class="breadcrumb-item active">Vigilancia</li>
+        </ol>
+    </nav>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0">
+                <i class="fas fa-shield-alt me-2 text-primary"></i> Incidentes de Seguridad
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="alert alert-danger mb-0">
+                        <strong><i class="fas fa-exclamation-triangle"></i> Críticos</strong>
+                        <span class="badge bg-danger float-end">{{ critical_count|default:0 }}</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="alert alert-warning mb-0">
+                        <strong><i class="fas fa-exclamation-circle"></i> Advertencias</strong>
+                        <span class="badge bg-warning float-end">{{ warning_count|default:0 }}</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="alert alert-success mb-0">
+                        <strong><i class="fas fa-check-circle"></i> Resueltos</strong>
+                        <span class="badge bg-success float-end">{{ resolved_count|default:0 }}</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="alert alert-info mb-0">
+                        <strong><i class="fas fa-clock"></i> Últimas 24h</strong>
+                        <span class="badge bg-info float-end">{{ last_24h_count|default:0 }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Tipo</th>
+                            <th>Mensaje</th>
+                            <th>Origen</th>
+                            <th>Usuario</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for incident in incidents %}
+                        <tr class="{% if incident.severity == 'critical' %}table-danger{% elif incident.severity == 'warning' %}table-warning{% endif %}">
+                            <td>{{ incident.timestamp|date:"d/m/Y H:i:s" }}</td>
+                            <td>
+                                <span class="badge-status badge-{{ incident.severity }}">
+                                    {{ incident.get_severity_display }}
+                                </span>
+                            </td>
+                            <td>{{ incident.message|truncatechars:60 }}</td>
+                            <td>{{ incident.source|default:"—" }}</td>
+                            <td>{{ incident.user.get_full_name|default:incident.user.username|default:"—" }}</td>
+                            <td>
+                                <span class="badge-status badge-{{ incident.status }}">
+                                    {{ incident.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if incident.status == 'open' %}
+                                <button class="btn btn-sm btn-success" onclick="resolveIncident({{ incident.id }})">
+                                    <i class="fas fa-check"></i> Resolver
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#details-{{ incident.id }}">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="collapse" id="details-{{ incident.id }}">
+                            <td colspan="7">
+                                <div class="bg-light p-3 rounded">
+                                    <strong>Detalles:</strong><br>
+                                    {{ incident.details|default:"Sin detalles adicionales" }}
+                                    {% if incident.ip_address %}
+                                    <br><strong>IP:</strong> {{ incident.ip_address }}
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="fas fa-check-circle fa-2x mb-2 d-block text-success"></i>
+                                No hay incidentes registrados.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if incidents.has_other_pages %}
+            <div class="d-flex justify-content-center mt-4">
+                {% include "pagination.html" with page_obj=incidents %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    function resolveIncident(id) {
+        if (!confirm('¿Marcar este incidente como resuelto?')) return;
+        fetch(`/coordinator/seguridad/incidentes/resolver/${id}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert('Error: ' + data.error);
+        });
+    }
+</script>
+{% endblock %}

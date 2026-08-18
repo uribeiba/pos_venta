@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><title>Comprobante Encomienda</title><style>body{font-family:sans-serif;padding:2rem} .receipt{max-width:400px;margin:auto;border:1px solid #ccc;padding:1rem}</style></head>
+<body>
+<div class="receipt">
+    <h2>Cejer - Encomienda</h2>
+    <p><strong>Nº seguimiento:</strong> {{ parcel.tracking_number }}</p>
+    <p><strong>Viaje:</strong> {{ parcel.trip }} ({{ parcel.trip.departure|date:"d/m/Y H:i" }})</p>
+    <hr>
+    <p><strong>Remitente:</strong> {{ parcel.sender_name }}<br>Tel: {{ parcel.sender_phone }}</p>
+    <p><strong>Destinatario:</strong> {{ parcel.recipient_name }}<br>Tel: {{ parcel.recipient_phone }}<br>RUT: {{ parcel.recipient_rut|default:"—" }}</p>
+    <p><strong>Descripción:</strong> {{ parcel.description|default:"—" }}</p>
+    <p><strong>Peso:</strong> {{ parcel.weight }} kg &nbsp;| <strong>Tarifa:</strong> ${{ parcel.price }}</p>
+    <p><strong>Pagado con:</strong> {{ parcel.get_payment_method_display }}</p>
+    <p><strong>Fecha registro:</strong> {{ parcel.created_at|date:"d/m/Y H:i" }}</p>
+    <hr>
+    <p style="text-align:center">Gracias por confiar en Cejer</p>
+</div>
+<script>window.print();</script>
+</body>
+</html>

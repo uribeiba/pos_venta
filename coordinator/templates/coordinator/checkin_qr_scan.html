@@ -1,0 +1,518 @@
+{% extends 'coordinator/base.html' %}
+
+{% block title %}Escanear Pasaje{% endblock %}
+
+{% block content %}
+
+<style>
+    .scanner-wrapper {
+        max-width: 720px;
+        margin: 0 auto;
+    }
+
+    .scanner-card {
+        border: 0;
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+        overflow: hidden;
+    }
+
+    .scanner-header {
+        text-align: center;
+        padding: 10px 10px 4px;
+    }
+
+    .scanner-icon {
+        width: 82px;
+        height: 82px;
+        margin: 0 auto 14px;
+        border-radius: 22px;
+        background: #eff6ff;
+        color: #0d6efd;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 42px;
+    }
+
+    .scanner-title {
+        font-weight: 800;
+        color: #1f2937;
+        margin-bottom: 6px;
+    }
+
+    .scanner-subtitle {
+        color: #6b7280;
+        margin-bottom: 0;
+    }
+
+    .reader-box {
+        margin: 24px auto 0;
+        max-width: 520px;
+        border: 1px solid #dbe3ee;
+        border-radius: 16px;
+        background: #f8fafc;
+        padding: 12px;
+        overflow: hidden;
+    }
+
+    #reader {
+        width: 100%;
+    }
+
+    #reader video {
+        border-radius: 12px !important;
+    }
+
+    .scanner-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #94a3b8;
+        margin: 28px 0 20px;
+        font-size: .85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+
+    .scanner-divider::before,
+    .scanner-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: #e2e8f0;
+    }
+
+    .manual-box {
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 18px;
+        background: #ffffff;
+    }
+
+    .manual-box textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    .scanner-footer {
+        text-align: center;
+        margin-top: 22px;
+    }
+
+    .scan-status {
+        display: none;
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #ecfdf5;
+        color: #047857;
+        font-weight: 600;
+        text-align: center;
+    }
+
+    /* Ajustes visuales sobre html5-qrcode */
+    #reader__dashboard_section_csr span,
+    #reader__dashboard_section_csr button,
+    #reader__dashboard_section_swaplink {
+        font-family: inherit !important;
+    }
+
+    #reader__scan_region {
+        min-height: 220px;
+    }
+
+    #reader img {
+        max-width: 90px !important;
+    }
+
+    /* Ocultamos textos/branding innecesarios del widget */
+    #reader__header_message {
+        font-size: .85rem !important;
+    }
+
+    /* Mobile */
+    @media (max-width: 576px) {
+
+        .container.py-4 {
+            padding-top: 12px !important;
+            padding-bottom: 12px !important;
+        }
+
+        .scanner-card .card-body {
+            padding: 18px !important;
+        }
+
+        .scanner-icon {
+            width: 68px;
+            height: 68px;
+            font-size: 34px;
+        }
+
+        .scanner-title {
+            font-size: 1.7rem;
+        }
+
+        .reader-box {
+            padding: 8px;
+        }
+
+        .manual-box {
+            padding: 14px;
+        }
+    }
+</style>
+
+
+<div class="container py-4">
+
+    <div class="scanner-wrapper">
+
+        <div class="card scanner-card">
+
+            <div class="card-body p-4">
+
+                <div class="scanner-header">
+
+                    <div class="scanner-icon">
+                        <i class="fas fa-qrcode"></i>
+                    </div>
+
+                    <h2 class="scanner-title">
+                        Escanear pasaje
+                    </h2>
+
+                    <p class="scanner-subtitle">
+                        Apunta la cámara al código QR del pasaje.
+                    </p>
+
+                </div>
+
+
+                <div class="reader-box">
+
+                    <div id="reader"></div>
+
+                </div>
+
+
+                <div id="scanStatus"
+                     class="scan-status">
+
+                    <i class="fas fa-spinner fa-spin me-2"></i>
+                    Código detectado. Validando pasaje...
+
+                </div>
+
+
+                <form method="post"
+                      id="qrForm">
+
+                    {% csrf_token %}
+
+                    <input type="hidden"
+                           name="qr_value"
+                           id="qrValue">
+
+                </form>
+
+
+                <div class="scanner-divider">
+                    O también
+                </div>
+
+
+                <div class="manual-box">
+
+                    <label for="manualQr"
+                           class="form-label fw-bold">
+
+                        Ingresar código manualmente
+
+                    </label>
+
+                    <p class="text-muted small mb-3">
+                        Úsalo sólo si no puedes escanear el QR con la cámara.
+                    </p>
+
+                    <textarea id="manualQr"
+                              class="form-control"
+                              rows="3"
+                              placeholder="Pega aquí el contenido del código QR"></textarea>
+
+                    <button type="button"
+                            id="manualBtn"
+                            class="btn btn-outline-primary w-100 mt-3">
+
+                        <i class="fas fa-search me-2"></i>
+                        Validar código
+
+                    </button>
+
+                </div>
+
+
+                <div class="scanner-footer">
+
+                    <a href="{% url 'coordinator:trips_dashboard' %}"
+                       class="btn btn-outline-secondary">
+
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Volver
+
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+
+        const form =
+            document.getElementById("qrForm");
+
+        const qrValue =
+            document.getElementById("qrValue");
+
+        const manualQr =
+            document.getElementById("manualQr");
+
+        const manualBtn =
+            document.getElementById("manualBtn");
+
+        const scanStatus =
+            document.getElementById("scanStatus");
+
+        let submitted = false;
+
+
+        function translateScannerUi() {
+
+            const buttons =
+                document.querySelectorAll(
+                    "#reader button"
+                );
+
+            buttons.forEach(
+                function (button) {
+
+                    const text =
+                        button.textContent.trim();
+
+                    if (
+                        text ===
+                        "Request Camera Permissions"
+                    ) {
+                        button.textContent =
+                            "Activar cámara";
+                    }
+
+                    if (
+                        text ===
+                        "Start Scanning"
+                    ) {
+                        button.textContent =
+                            "Iniciar escaneo";
+                    }
+
+                    if (
+                        text ===
+                        "Stop Scanning"
+                    ) {
+                        button.textContent =
+                            "Detener cámara";
+                    }
+
+                }
+            );
+
+
+            const links =
+                document.querySelectorAll(
+                    "#reader a"
+                );
+
+            links.forEach(
+                function (link) {
+
+                    const text =
+                        link.textContent.trim();
+
+                    if (
+                        text ===
+                        "Scan an Image File"
+                    ) {
+                        link.textContent =
+                            "Seleccionar imagen QR";
+                    }
+
+                    if (
+                        text ===
+                        "Scan using camera directly"
+                    ) {
+                        link.textContent =
+                            "Usar cámara";
+                    }
+
+                }
+            );
+
+
+            const fileInput =
+                document.querySelector(
+                    "#reader input[type='file']"
+                );
+
+            if (fileInput) {
+                fileInput.setAttribute(
+                    "aria-label",
+                    "Seleccionar imagen QR"
+                );
+            }
+        }
+
+
+        function submitQr(value) {
+
+            if (submitted) {
+                return;
+            }
+
+            value =
+                (value || "").trim();
+
+            if (!value) {
+                return;
+            }
+
+            submitted = true;
+
+            qrValue.value = value;
+
+            if (scanStatus) {
+                scanStatus.style.display =
+                    "block";
+            }
+
+            if (manualBtn) {
+                manualBtn.disabled = true;
+            }
+
+            form.submit();
+        }
+
+
+        function onScanSuccess(
+            decodedText,
+            decodedResult
+        ) {
+
+            submitQr(decodedText);
+
+        }
+
+
+        const scanner =
+    new Html5QrcodeScanner(
+        "reader",
+        {
+            fps: 10,
+
+            qrbox: {
+                width: 250,
+                height: 250
+            },
+
+            aspectRatio: 1.333333,
+
+            rememberLastUsedCamera: false,
+
+            showTorchButtonIfSupported: true
+        },
+        false
+    );
+
+
+        scanner.render(
+            onScanSuccess
+        );
+
+
+        /*
+        html5-qrcode construye parte de su
+        interfaz después del render.
+        Traducimos varias veces durante
+        los primeros segundos.
+        */
+
+        translateScannerUi();
+
+        setTimeout(
+            translateScannerUi,
+            300
+        );
+
+        setTimeout(
+            translateScannerUi,
+            1000
+        );
+
+        setTimeout(
+            translateScannerUi,
+            2000
+        );
+
+
+        manualBtn.addEventListener(
+            "click",
+            function () {
+
+                submitQr(
+                    manualQr.value
+                );
+
+            }
+        );
+
+
+        manualQr.addEventListener(
+            "keydown",
+            function (event) {
+
+                if (
+                    event.key === "Enter"
+                    && (
+                        event.ctrlKey
+                        || event.metaKey
+                    )
+                ) {
+
+                    event.preventDefault();
+
+                    submitQr(
+                        manualQr.value
+                    );
+
+                }
+
+            }
+        );
+
+    }
+);
+</script>
+
+{% endblock %}

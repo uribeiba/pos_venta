@@ -1,0 +1,75 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Detalle Bus {{ bus.plate }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
+        <h3><i class="fas fa-bus me-2"></i> Bus {{ bus.plate }} - {{ bus.model|default:"Sin modelo" }}</h3>
+        <a href="{% url 'coordinator:buses_dashboard' %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white fw-semibold">Datos del vehículo</div>
+                <div class="card-body">
+                    <p><strong>Empresa:</strong> {{ bus.company.name }}</p>
+                    <p><strong>Año:</strong> {{ bus.year }}</p>
+                    <p><strong>Pisos:</strong> {{ bus.floors }} &nbsp;|&nbsp; <strong>Asientos:</strong> {{ bus.seats.count }}</p>
+                    <p><strong>Propietario:</strong> {{ bus.owner_first_name }} {{ bus.owner_last_name }}</p>
+                    <p><strong>Marca:</strong> {{ bus.brand|default:"—" }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white fw-semibold">Estadísticas</div>
+                <div class="card-body">
+                    <p><strong>Viajes registrados (últimos 20):</strong> {{ trips|length }}</p>
+                    <p><strong>Pasajeros transportados:</strong> {{ total_passengers|intcomma }}</p>
+                    <p><strong>Rutas más frecuentes:</strong></p>
+                    <ul>
+                        {% for route, count in occupancy_by_route.items %}
+                        <li>{{ route }}: {{ count }} viaje(s)</li>
+                        {% empty %}
+                        <li>Sin viajes aún.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white fw-semibold">Últimos viajes</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Fecha</th><th>Ruta</th><th>Salida</th><th>Asientos</th><th>Pasajeros</th><th>Ocupación</th></tr></thead>
+                    <tbody>
+                        {% for t in trips %}
+                        <tr>
+                            <td>{{ t.departure|date:"d/m/Y" }}</td>
+                            <td>{{ t.route }}</td>
+                            <td>{{ t.departure|date:"H:i" }}</td>
+                            <td>{{ t.seats_total }}</td>
+                            <td>{{ t.tickets.count }}</td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-success" style="width: {{ t.tickets.count|default:0|floatformat:0 }}%">{{ t.tickets.count|default:0 }}%</div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center">No hay viajes registrados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

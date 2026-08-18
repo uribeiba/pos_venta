@@ -1,0 +1,53 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+
+{% block title %}Nueva carga de combustible{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-semibold"><i class="fas fa-gas-pump me-2 text-primary"></i> Registrar carga de combustible</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Bus *</label>
+                        <select name="bus" class="form-select" required>
+                            <option value="">-- Seleccionar bus --</option>
+                            {% for b in buses %}
+                            <option value="{{ b.id }}">{{ b.plate }} - {{ b.model|default:"Sin modelo" }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Fecha *</label>
+                        <input type="date" name="date" class="form-control" value="{% now 'Y-m-d' %}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Litros *</label>
+                        <input type="number" name="liters" step="0.01" class="form-control" placeholder="Ej: 50.5" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Costo total ($) *</label>
+                        <input type="number" name="cost" step="0.01" class="form-control" placeholder="Ej: 80000" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Kilometraje actual (km) *</label>
+                        <input type="number" name="mileage" class="form-control" placeholder="Ej: 25400" required>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-4 small">
+                    <i class="fas fa-info-circle"></i> Este registro actualizará automáticamente el kilometraje actual del bus.
+                </div>
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i> Guardar registro</button>
+                    <a href="{% url 'coordinator:fuel_list' %}" class="btn btn-secondary px-4">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
