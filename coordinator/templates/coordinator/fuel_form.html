@@ -28,15 +28,15 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Litros *</label>
-                        <input type="number" name="liters" step="0.01" class="form-control" placeholder="Ej: 50.5" required>
+                        <input type="number" name="liters" min="0.01" step="0.01" class="form-control" placeholder="Ej: 50.5" required>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Costo total ($) *</label>
-                        <input type="number" name="cost" step="0.01" class="form-control" placeholder="Ej: 80000" required>
+                        <input type="number" name="cost" min="0" step="1" class="form-control" placeholder="Ej: 80000" required>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Kilometraje actual (km) *</label>
-                        <input type="number" name="mileage" class="form-control" placeholder="Ej: 25400" required>
+                        <input type="number" name="mileage" min="0" step="1" class="form-control" placeholder="Ej: 25400" required>
                     </div>
                 </div>
                 <div class="alert alert-info mt-4 small">

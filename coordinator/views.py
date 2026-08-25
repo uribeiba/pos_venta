@@ -5,6 +5,7 @@ import subprocess
 import calendar
 from datetime import datetime, timedelta
 from decimal import Decimal
+from venv import logger
 
 from django.conf import settings
 from django.contrib import messages
@@ -12,7 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction, IntegrityError
-from django.db.models import ProtectedError, Count, Q, Exists, OuterRef, Sum, Avg
+from django.db.models import ProtectedError, Count, Q, Exists, OuterRef, Sum, Avg, Max
 from django.http import JsonResponse, HttpResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -185,9 +186,10 @@ def create_backup():
 @coordinator_required
 def dashboard(request):
     """
-    Panel principal del coordinador con métricas y viajes próximos.
+    Panel principal del coordinador con métricas, próximos viajes
+    y alertas operacionales.
     """
-    # Limpiar mensajes de la sesión
+    # Limpiar mensajes antiguos de la sesión
     storage = messages.get_messages(request)
     storage.used = True
     list(storage)
@@ -195,70 +197,258 @@ def dashboard(request):
     now = timezone.now()
     today = now.date()
 
-    # ===== MÉTRICAS DE RESUMEN =====
-    # ✅ GUARDAR EL QUERYSET PARA PODER USAR .count() Y .exists()
+    # ============================================================
+    # MÉTRICAS DE RESUMEN
+    # ============================================================
     viajes_hoy_qs = Trip.objects.filter(departure__date=today)
-    viajes_hoy = viajes_hoy_qs.count()  # Esto es un int
-    
+    viajes_hoy = viajes_hoy_qs.count()
+
     proxima_semana = today + timedelta(days=7)
     buses_activos = Trip.objects.filter(
         departure__date__range=[today, proxima_semana]
     ).values('bus').distinct().count()
-    
-    pasajeros_hoy = Ticket.objects.filter(trip__departure__date=today).count()
 
-    # ✅ USAR EL QUERYSET PARA LA OCUPACIÓN
+    pasajeros_hoy = Ticket.objects.filter(
+        trip__departure__date=today
+    ).count()
+
     trips_hoy = viajes_hoy_qs.select_related(
-        'route__origin', 'route__destination', 'bus', 'driver1'
+        'route__origin',
+        'route__destination',
+        'bus',
+        'driver1',
     ).annotate(
         sold_count=Count('tickets')
     )
-    
+
     ocupacion_promedio = 0
-    if trips_hoy.exists():  # ✅ .exists() funciona en QuerySet
+    if trips_hoy.exists():
         total_ocupacion = sum(
-            (trip.sold_count / trip.seats_total * 100) if trip.seats_total else 0
+            (
+                trip.sold_count / trip.seats_total * 100
+                if trip.seats_total else 0
+            )
             for trip in trips_hoy
         )
-        ocupacion_promedio = round(total_ocupacion / trips_hoy.count(), 1)
+        ocupacion_promedio = round(
+            total_ocupacion / trips_hoy.count(),
+            1,
+        )
 
-    # ✅ VIAJES PRÓXIMOS (QuerySet)
+    # ============================================================
+    # VIAJES PRÓXIMOS - 24 HORAS
+    # ============================================================
     proximas_24h = now + timedelta(hours=24)
+
     viajes_proximos_qs = Trip.objects.filter(
         departure__gte=now,
-        departure__lte=proximas_24h
+        departure__lte=proximas_24h,
     ).select_related(
-        'route__origin', 'route__destination', 'bus', 'driver1'
+        'route__origin',
+        'route__destination',
+        'bus',
+        'driver1',
     ).annotate(
         sold_count=Count('tickets')
     ).order_by('departure')
 
     viajes_data = []
+
     for trip in viajes_proximos_qs:
-        libres = trip.seats_total - trip.sold_count
-        estado = "Próximo" if trip.departure > now else "En curso"
+        libres = max(
+            (trip.seats_total or 0) - trip.sold_count,
+            0,
+        )
+
+        estado = (
+            "Próximo"
+            if trip.departure > now
+            else "En curso"
+        )
+
         viajes_data.append({
             'id': trip.id,
-            'hora': trip.departure.strftime('%H:%M'),
-            'ruta': f"{trip.route.origin.name} → {trip.route.destination.name}",
+            'hora': timezone.localtime(
+                trip.departure
+            ).strftime('%H:%M'),
+            'ruta': (
+                f"{trip.route.origin.name} "
+                f"→ {trip.route.destination.name}"
+            ),
             'bus': trip.bus.plate,
-            'chofer': trip.driver1.full_name if trip.driver1 else "Sin asignar",
+            'chofer': (
+                trip.driver1.full_name
+                if trip.driver1
+                else "Sin asignar"
+            ),
             'asientos_totales': trip.seats_total,
             'asientos_libres': libres,
             'asientos_ocupados': trip.sold_count,
             'estado': estado,
-            'estado_color': 'success' if estado == 'Próximo' else 'warning',
+            'estado_color': (
+                'success'
+                if estado == 'Próximo'
+                else 'warning'
+            ),
+        })
+
+    # ============================================================
+    # ALERTAS OPERACIONALES
+    # ============================================================
+    alertas_operacionales = []
+    limite_30_dias = today + timedelta(days=30)
+
+    # Documentos vencidos
+    driver_docs_vencidos = DriverDocument.objects.filter(
+        expiry_date__isnull=False,
+        expiry_date__lt=today,
+    ).count()
+
+    bus_docs_vencidos = BusDocument.objects.filter(
+        expiry_date__isnull=False,
+        expiry_date__lt=today,
+    ).count()
+
+    total_docs_vencidos = (
+        driver_docs_vencidos
+        + bus_docs_vencidos
+    )
+
+    if total_docs_vencidos:
+        alertas_operacionales.append({
+            'level': 'danger',
+            'icon': 'fa-file-circle-xmark',
+            'title': 'Documentación vencida',
+            'message': (
+                f'{total_docs_vencidos} documento(s) '
+                'de personal o flota están vencidos.'
+            ),
+            'url_name': 'coordinator:expiring_documents',
+            'action': 'Revisar documentos',
+        })
+
+    # Documentos próximos a vencer
+    driver_docs_proximos = DriverDocument.objects.filter(
+        expiry_date__isnull=False,
+        expiry_date__gte=today,
+        expiry_date__lte=limite_30_dias,
+    ).count()
+
+    bus_docs_proximos = BusDocument.objects.filter(
+        expiry_date__isnull=False,
+        expiry_date__gte=today,
+        expiry_date__lte=limite_30_dias,
+    ).count()
+
+    total_docs_proximos = (
+        driver_docs_proximos
+        + bus_docs_proximos
+    )
+
+    if total_docs_proximos:
+        alertas_operacionales.append({
+            'level': 'warning',
+            'icon': 'fa-file-circle-exclamation',
+            'title': 'Documentos por vencer',
+            'message': (
+                f'{total_docs_proximos} documento(s) '
+                'vencen durante los próximos 30 días.'
+            ),
+            'url_name': 'coordinator:expiring_documents',
+            'action': 'Ver vencimientos',
+        })
+
+    # Mantenciones por kilometraje.
+    # El modelo Maintenance usa next_maintenance_km y el Bus mantiene
+    # current_mileage / next_maintenance_mileage. Para el dashboard
+    # usamos los datos operacionales del Bus, evitando consultar
+    # un campo de fecha que no existe en Maintenance.
+    buses_mantenimiento = Bus.objects.filter(
+        is_active=True,
+        next_maintenance_mileage__gt=0,
+    ).only(
+        'id',
+        'plate',
+        'current_mileage',
+        'next_maintenance_mileage',
+    )
+
+    mantenciones_vencidas = 0
+    mantenciones_proximas = 0
+    margen_mantenimiento_km = 1000
+
+    for bus_item in buses_mantenimiento:
+        km_actual = bus_item.current_mileage or 0
+        km_proximo = bus_item.next_maintenance_mileage or 0
+        km_restantes = km_proximo - km_actual
+
+        if km_restantes <= 0:
+            mantenciones_vencidas += 1
+        elif km_restantes <= margen_mantenimiento_km:
+            mantenciones_proximas += 1
+
+    if mantenciones_vencidas:
+        alertas_operacionales.append({
+            'level': 'danger',
+            'icon': 'fa-screwdriver-wrench',
+            'title': 'Mantenciones vencidas',
+            'message': (
+                f'{mantenciones_vencidas} bus(es) ya alcanzaron '
+                'el kilometraje programado para mantenimiento.'
+            ),
+            'url_name': 'coordinator:maintenance_list',
+            'action': 'Revisar mantenciones',
+        })
+
+    if mantenciones_proximas:
+        alertas_operacionales.append({
+            'level': 'warning',
+            'icon': 'fa-screwdriver-wrench',
+            'title': 'Mantenciones próximas',
+            'message': (
+                f'{mantenciones_proximas} bus(es) están a menos de '
+                f'{margen_mantenimiento_km} km de su próximo mantenimiento.'
+            ),
+            'url_name': 'coordinator:maintenance_list',
+            'action': 'Revisar mantenciones',
+        })
+
+    # Viajes próximos sin chofer principal
+    viajes_sin_chofer = Trip.objects.filter(
+        departure__gte=now,
+        departure__lte=now + timedelta(days=7),
+        driver1__isnull=True,
+    ).count()
+
+    if viajes_sin_chofer:
+        alertas_operacionales.append({
+            'level': 'danger',
+            'icon': 'fa-user-slash',
+            'title': 'Viajes sin chofer',
+            'message': (
+                f'{viajes_sin_chofer} viaje(s) de los próximos '
+                '7 días no tienen chofer principal asignado.'
+            ),
+            'url_name': 'coordinator:trips_dashboard',
+            'action': 'Asignar chofer',
         })
 
     context = {
         'title': 'Dashboard - Coordinador',
-        'viajes_hoy': viajes_hoy,  # ✅ Esto es un int
-        'buses_activos': buses_activos,  # ✅ Esto es un int
-        'pasajeros_hoy': pasajeros_hoy,  # ✅ Esto es un int
-        'ocupacion_promedio': ocupacion_promedio,  # ✅ Esto es un float
-        'viajes_proximos': viajes_data,  # ✅ Esto es una lista
+        'viajes_hoy': viajes_hoy,
+        'buses_activos': buses_activos,
+        'pasajeros_hoy': pasajeros_hoy,
+        'ocupacion_promedio': ocupacion_promedio,
+        'viajes_proximos': viajes_data,
+        'alertas_operacionales': alertas_operacionales,
+        'total_alertas': len(alertas_operacionales),
     }
-    return render(request, 'coordinator/dashboard.html', context)
+
+    return render(
+        request,
+        'coordinator/dashboard.html',
+        context,
+    )
 
 # ============================================================================
 # VISTAS DE BUSES
@@ -681,7 +871,7 @@ def trips_dashboard(request):
     query = request.GET.get('q', '').strip()
     trips_list = Trip.objects.select_related(
         'route__origin', 'route__destination', 'bus', 'driver1', 'driver2', 'assistant'
-    ).all().order_by('-departure')
+    ).all().order_by('departure')
 
     if query:
         trips_list = trips_list.filter(
@@ -837,7 +1027,11 @@ def generate_trips(request):
 
     cal = calendar.monthcalendar(year, month)
     first_day = datetime(year, month, 1).date()
-    last_day = (datetime(year, month + 1, 1) - timedelta(days=1)).date() if month < 12 else datetime(year, 12, 31).date()
+    last_day = (
+        (datetime(year, month + 1, 1) - timedelta(days=1)).date()
+        if month < 12
+        else datetime(year, 12, 31).date()
+    )
 
     existing_trips = Trip.objects.filter(
         departure__date__range=(first_day, last_day)
@@ -853,7 +1047,11 @@ def generate_trips(request):
             else:
                 date_obj = datetime(year, month, day).date()
                 has_trip = date_obj in existing_dates
-                week_days.append({'day': day, 'date': date_obj, 'has_trip': has_trip})
+                week_days.append({
+                    'day': day,
+                    'date': date_obj,
+                    'has_trip': has_trip,
+                })
         month_days.append(week_days)
 
     if request.method == 'POST':
@@ -868,10 +1066,13 @@ def generate_trips(request):
         start_date_str = request.POST.get('start_date')
         end_date_str = request.POST.get('end_date')
         weekdays = request.POST.getlist('weekdays')
+        action = request.POST.get('action', 'create')
 
         errors = []
-        
-        # Validaciones básicas
+
+        # ============================================================
+        # VALIDACIONES BÁSICAS
+        # ============================================================
         if not route_id:
             errors.append("Debe seleccionar una ruta.")
         if not bus_id:
@@ -883,53 +1084,98 @@ def generate_trips(request):
         if not weekdays:
             errors.append("Debe seleccionar al menos un día de la semana.")
 
-        # Validaciones avanzadas
+        # ============================================================
+        # VALIDACIONES DE FECHAS Y HORARIO
+        # ============================================================
         if not errors:
             try:
                 start_date = parse_date(start_date_str)
                 end_date = parse_date(end_date_str)
                 hour, minute = map(int, departure_hour.split(':'))
                 selected_weekdays = [int(d) for d in weekdays]
-                
-                if start_date > end_date:
-                    errors.append("La fecha de inicio no puede ser posterior a la fecha fin.")
-                
+
+                if not start_date or not end_date:
+                    errors.append("Formato de fecha inválido.")
+                elif start_date > end_date:
+                    errors.append(
+                        "La fecha de inicio no puede ser posterior a la fecha fin."
+                    )
+
                 if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-                    errors.append("La hora de salida debe ser válida (00:00 - 23:59).")
-                    
+                    errors.append(
+                        "La hora de salida debe ser válida (00:00 - 23:59)."
+                    )
+
+                if any(day < 1 or day > 7 for day in selected_weekdays):
+                    errors.append("Los días de la semana seleccionados no son válidos.")
+
             except ValueError:
                 errors.append("Formato de fecha u hora inválido.")
             except Exception as e:
                 errors.append(f"Error en datos: {str(e)}")
 
-        # Validaciones de negocio
+        # ============================================================
+        # VALIDACIONES DE NEGOCIO
+        # ============================================================
         if not errors:
             try:
-                route = Route.objects.select_related('origin', 'destination').get(pk=route_id)
+                route = Route.objects.select_related(
+                    'origin',
+                    'destination',
+                ).get(pk=route_id)
+
                 bus = Bus.objects.get(pk=bus_id)
-                driver1 = Driver.objects.filter(pk=driver1_id).first() if driver1_id else None
-                driver2 = Driver.objects.filter(pk=driver2_id).first() if driver2_id else None
-                
+
+                driver1 = (
+                    Driver.objects.filter(pk=driver1_id).first()
+                    if driver1_id else None
+                )
+                driver2 = (
+                    Driver.objects.filter(pk=driver2_id).first()
+                    if driver2_id else None
+                )
+
                 if not route.is_active:
                     errors.append("La ruta seleccionada no está activa.")
-                
+
                 if not bus.is_active:
                     errors.append("El bus seleccionado no está activo.")
-                
+
                 if route.origin == route.destination:
-                    errors.append("El origen y destino de la ruta no pueden ser iguales.")
-                
-                if driver1_id and driver1 and not driver1.is_active:
+                    errors.append(
+                        "El origen y destino de la ruta no pueden ser iguales."
+                    )
+
+                if driver1_id and not driver1:
+                    errors.append("El chofer principal seleccionado no existe.")
+                elif driver1 and not driver1.is_active:
                     errors.append("El chofer principal no está activo.")
-                
-                if driver2_id and driver2 and not driver2.is_active:
+
+                if driver2_id and not driver2:
+                    errors.append("El chofer secundario seleccionado no existe.")
+                elif driver2 and not driver2.is_active:
                     errors.append("El chofer secundario no está activo.")
-                
+
+                if (
+                    driver1_id
+                    and driver2_id
+                    and str(driver1_id) == str(driver2_id)
+                ):
+                    errors.append(
+                        "El chofer principal y el chofer secundario "
+                        "no pueden ser la misma persona."
+                    )
+
                 if assistant_id:
-                    assistant = Assistant.objects.filter(pk=assistant_id, is_active=True).first()
+                    assistant = Assistant.objects.filter(
+                        pk=assistant_id,
+                        is_active=True,
+                    ).first()
                     if not assistant:
-                        errors.append("El auxiliar seleccionado no está activo.")
-                
+                        errors.append(
+                            "El auxiliar seleccionado no existe o no está activo."
+                        )
+
             except Route.DoesNotExist:
                 errors.append("La ruta seleccionada no existe.")
             except Bus.DoesNotExist:
@@ -939,11 +1185,145 @@ def generate_trips(request):
 
         if errors:
             error_msg = " | ".join(errors)
+
             if is_ajax:
-                return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                return JsonResponse(
+                    {
+                        'success': False,
+                        'error': error_msg,
+                    },
+                    status=400,
+                )
+
             for err in errors:
                 messages.error(request, err)
+
             return redirect('coordinator:generate_trips')
+
+        # ============================================================
+        # VISTA PREVIA: analiza la programación sin crear registros
+        # ============================================================
+        if action == 'preview':
+            preview_rows = []
+            preview_stats = {
+                'available': 0,
+                'existing': 0,
+                'bus_conflict': 0,
+                'driver_conflict': 0,
+                'total': 0,
+            }
+
+            current_date = start_date
+            delta = timedelta(days=1)
+            total_seats = Seat.objects.filter(bus=bus).count()
+
+            while current_date <= end_date:
+                if current_date.isoweekday() not in selected_weekdays:
+                    current_date += delta
+                    continue
+
+                departure_dt = timezone.make_aware(
+                    datetime.combine(
+                        current_date,
+                        datetime.strptime(departure_hour, '%H:%M').time(),
+                    )
+                )
+                arrival_dt = departure_dt + timedelta(
+                    minutes=route.duration_minutes
+                )
+
+                status = 'available'
+                status_label = 'Disponible'
+                detail = 'Se puede crear'
+
+                exact_trip = Trip.objects.filter(
+                    route=route,
+                    bus=bus,
+                    departure__date=current_date,
+                    departure__hour=departure_dt.hour,
+                    departure__minute=departure_dt.minute,
+                ).first()
+
+                if exact_trip:
+                    status = 'existing'
+                    status_label = 'Ya existe'
+                    detail = 'Misma ruta, bus y hora'
+                    preview_stats['existing'] += 1
+                else:
+                    bus_conflict = Trip.objects.filter(
+                        bus=bus,
+                        departure__lt=arrival_dt,
+                        arrival__gt=departure_dt,
+                    ).first()
+
+                    if bus_conflict:
+                        status = 'bus_conflict'
+                        status_label = 'Bus ocupado'
+                        detail = (
+                            f'Conflicto con viaje #{bus_conflict.id} '
+                            f'a las {timezone.localtime(bus_conflict.departure).strftime("%H:%M")}'
+                        )
+                        preview_stats['bus_conflict'] += 1
+                    else:
+                        driver_conflict = None
+                        driver_label = ''
+
+                        if driver1_id:
+                            driver_conflict = Trip.objects.filter(
+                                driver1_id=driver1_id,
+                                departure__lt=arrival_dt,
+                                arrival__gt=departure_dt,
+                            ).first()
+                            if driver_conflict:
+                                driver_label = 'Chofer principal ocupado'
+
+                        if not driver_conflict and driver2_id:
+                            driver_conflict = Trip.objects.filter(
+                                driver2_id=driver2_id,
+                                departure__lt=arrival_dt,
+                                arrival__gt=departure_dt,
+                            ).first()
+                            if driver_conflict:
+                                driver_label = 'Chofer secundario ocupado'
+
+                        if driver_conflict:
+                            status = 'driver_conflict'
+                            status_label = driver_label
+                            detail = (
+                                f'Conflicto con viaje #{driver_conflict.id} '
+                                f'a las {timezone.localtime(driver_conflict.departure).strftime("%H:%M")}'
+                            )
+                            preview_stats['driver_conflict'] += 1
+                        else:
+                            preview_stats['available'] += 1
+
+                preview_stats['total'] += 1
+                preview_rows.append({
+                    'date': current_date.strftime('%d/%m/%Y'),
+                    'date_iso': current_date.isoformat(),
+                    'departure': departure_dt.strftime('%H:%M'),
+                    'arrival': arrival_dt.strftime('%H:%M'),
+                    'status': status,
+                    'status_label': status_label,
+                    'detail': detail,
+                })
+
+                current_date += delta
+
+            return JsonResponse({
+                'success': True,
+                'preview': True,
+                'rows': preview_rows,
+                'stats': preview_stats,
+                'summary': {
+                    'route': str(route),
+                    'bus': f'{bus.plate} - {bus.model or "Sin modelo"}',
+                    'departure_hour': departure_hour,
+                    'start_date': start_date.strftime('%d/%m/%Y'),
+                    'end_date': end_date.strftime('%d/%m/%Y'),
+                    'total_seats': total_seats,
+                },
+            })
 
         created_count = 0
         skipped_count = 0
@@ -953,143 +1333,232 @@ def generate_trips(request):
 
         try:
             with transaction.atomic():
+                # Bloqueamos ruta y bus durante la generación para reducir
+                # condiciones de carrera entre dos coordinadores.
                 route = Route.objects.select_for_update().get(pk=route_id)
                 bus = Bus.objects.select_for_update().get(pk=bus_id)
+
                 total_seats = Seat.objects.filter(bus=bus).count()
 
-                # Pre-cargar viajes existentes para evitar múltiples consultas
+                # Pre-cargar viajes del BUS seleccionado en el rango.
+                # Se utiliza para detectar duplicados exactos sin hacer una
+                # consulta adicional por cada fecha.
                 existing_trips_dict = {}
+
                 trips_in_range = Trip.objects.filter(
                     bus_id=bus_id,
-                    departure__date__range=(start_date, end_date)
-                ).select_related('route', 'bus', 'driver1', 'driver2')
-                
+                    departure__date__range=(start_date, end_date),
+                ).select_related(
+                    'route',
+                    'bus',
+                    'driver1',
+                    'driver2',
+                )
+
                 for trip in trips_in_range:
                     date_key = trip.departure.date()
-                    if date_key not in existing_trips_dict:
-                        existing_trips_dict[date_key] = []
-                    existing_trips_dict[date_key].append(trip)
+                    existing_trips_dict.setdefault(
+                        date_key,
+                        [],
+                    ).append(trip)
 
                 while current_date <= end_date:
                     day_of_week = current_date.isoweekday()
-                    if day_of_week in selected_weekdays:
-                        departure_dt = timezone.make_aware(
-                            datetime.combine(current_date, datetime.strptime(departure_hour, '%H:%M').time())
+
+                    # Si el día no está marcado en el formulario,
+                    # avanzamos sin realizar ninguna validación adicional.
+                    if day_of_week not in selected_weekdays:
+                        current_date += delta
+                        continue
+
+                    departure_dt = timezone.make_aware(
+                        datetime.combine(
+                            current_date,
+                            datetime.strptime(
+                                departure_hour,
+                                '%H:%M',
+                            ).time(),
                         )
-                        arrival_dt = departure_dt + timedelta(minutes=route.duration_minutes)
+                    )
 
-                        # Verificar si ya existe un viaje en esa fecha y hora
-                        existing_on_date = existing_trips_dict.get(current_date, [])
-                        existing_trip = None
-                        for trip in existing_on_date:
-                            trip_time = trip.departure.time()
-                            departure_time = departure_dt.time()
-                            time_diff_hours = abs(
-                                (trip_time.hour * 60 + trip_time.minute) - 
-                                (departure_time.hour * 60 + departure_time.minute)
-                            ) / 60
-                            if time_diff_hours <= 1:
-                                existing_trip = trip
-                                break
+                    arrival_dt = departure_dt + timedelta(
+                        minutes=route.duration_minutes
+                    )
 
-                        if existing_trip:
-                            skipped_count += 1
-                            current_date += delta
-                            continue
+                    # ====================================================
+                    # 1. DUPLICADO EXACTO
+                    # ====================================================
+                    # Se considera duplicado sólo si coinciden:
+                    # ruta + bus + fecha + hora de salida.
+                    existing_on_date = existing_trips_dict.get(
+                        current_date,
+                        [],
+                    )
 
-                        # Validar conflictos de bus
-                        bus_conflict = Trip.objects.filter(
-                            bus=bus,
-                            departure__lt=arrival_dt,
-                            arrival__gt=departure_dt
-                        ).exclude(departure__date=current_date).exists()
-                        
-                        if bus_conflict:
-                            conflict_count += 1
-                            current_date += delta
-                            continue
+                    existing_trip = None
 
-                        # Validar conflictos de chofer principal
-                        driver1_conflict = False
-                        if driver1_id:
-                            driver1_conflict = Trip.objects.filter(
-                                driver1_id=driver1_id,
-                                departure__lt=arrival_dt,
-                                arrival__gt=departure_dt
-                            ).exclude(departure__date=current_date).exists()
-                        
-                        if driver1_conflict:
-                            conflict_count += 1
-                            current_date += delta
-                            continue
+                    for trip in existing_on_date:
+                        same_route = trip.route_id == route.id
+                        same_bus = trip.bus_id == bus.id
+                        same_departure_time = (
+                            trip.departure.hour == departure_dt.hour
+                            and trip.departure.minute == departure_dt.minute
+                        )
 
-                        # Validar conflictos de chofer secundario
-                        driver2_conflict = False
-                        if driver2_id:
-                            driver2_conflict = Trip.objects.filter(
-                                driver2_id=driver2_id,
-                                departure__lt=arrival_dt,
-                                arrival__gt=departure_dt
-                            ).exclude(departure__date=current_date).exists()
-                        
-                        if driver2_conflict:
-                            conflict_count += 1
-                            current_date += delta
-                            continue
+                        if (
+                            same_route
+                            and same_bus
+                            and same_departure_time
+                        ):
+                            existing_trip = trip
+                            break
 
-                        # Crear el viaje
-                        Trip.objects.create(
-                            route=route,
-                            bus=bus,
+                    if existing_trip:
+                        skipped_count += 1
+                        current_date += delta
+                        continue
+
+                    # ====================================================
+                    # 2. CONFLICTO DE BUS
+                    # ====================================================
+                    bus_conflict = Trip.objects.filter(
+                        bus=bus,
+                        departure__lt=arrival_dt,
+                        arrival__gt=departure_dt,
+                    ).exists()
+
+                    if bus_conflict:
+                        conflict_count += 1
+                        current_date += delta
+                        continue
+
+                    # ====================================================
+                    # 3. CONFLICTO CHOFER PRINCIPAL
+                    # ====================================================
+                    driver1_conflict = False
+
+                    if driver1_id:
+                        driver1_conflict = Trip.objects.filter(
                             driver1_id=driver1_id,
+                            departure__lt=arrival_dt,
+                            arrival__gt=departure_dt,
+                        ).exists()
+
+                    if driver1_conflict:
+                        conflict_count += 1
+                        current_date += delta
+                        continue
+
+                    # ====================================================
+                    # 4. CONFLICTO CHOFER SECUNDARIO
+                    # ====================================================
+                    driver2_conflict = False
+
+                    if driver2_id:
+                        driver2_conflict = Trip.objects.filter(
                             driver2_id=driver2_id,
-                            assistant_id=assistant_id,
-                            departure=departure_dt,
-                            arrival=arrival_dt,
-                            seats_total=total_seats,
-                        )
-                        created_count += 1
-                        
+                            departure__lt=arrival_dt,
+                            arrival__gt=departure_dt,
+                        ).exists()
+
+                    if driver2_conflict:
+                        conflict_count += 1
+                        current_date += delta
+                        continue
+
+                    # ====================================================
+                    # 5. CREAR VIAJE
+                    # ====================================================
+                    new_trip = Trip.objects.create(
+                        route=route,
+                        bus=bus,
+                        driver1_id=driver1_id,
+                        driver2_id=driver2_id,
+                        assistant_id=assistant_id,
+                        departure=departure_dt,
+                        arrival=arrival_dt,
+                        seats_total=total_seats,
+                    )
+
+                    created_count += 1
+
+                    # Agregar el nuevo viaje al diccionario local.
+                    # Esto permite detectar duplicados dentro de la misma
+                    # ejecución sin volver a consultar la base.
+                    existing_trips_dict.setdefault(
+                        current_date,
+                        [],
+                    ).append(new_trip)
+
                     current_date += delta
 
-            # Mensaje de resultado
+            # ============================================================
+            # MENSAJE DE RESULTADO
+            # ============================================================
             message_parts = []
+
             if created_count > 0:
-                message_parts.append(f"✅ {created_count} viajes creados")
+                message_parts.append(
+                    f"✅ {created_count} viajes creados"
+                )
+
             if skipped_count > 0:
-                message_parts.append(f"⏭️ {skipped_count} omitidos (ya existían)")
+                message_parts.append(
+                    f"⏭️ {skipped_count} omitidos (ya existían)"
+                )
+
             if conflict_count > 0:
-                message_parts.append(f"⚠️ {conflict_count} con conflictos de horario (no creados)")
-            
+                message_parts.append(
+                    f"⚠️ {conflict_count} con conflictos de horario "
+                    "(no creados)"
+                )
+
             if not message_parts:
-                message_parts.append("No se crearon viajes. Verifica los parámetros.")
+                message_parts.append(
+                    "No se crearon viajes. Verifica los parámetros."
+                )
 
             message = " | ".join(message_parts)
-            
+
             if is_ajax:
                 return JsonResponse({
-                    'success': True, 
+                    'success': True,
                     'message': message,
                     'stats': {
                         'created': created_count,
                         'skipped': skipped_count,
-                        'conflicts': conflict_count
-                    }
+                        'conflicts': conflict_count,
+                    },
                 })
+
+            if created_count > 0:
+                messages.success(request, message)
             else:
-                if created_count > 0:
-                    messages.success(request, message)
-                else:
-                    messages.warning(request, message)
-                return redirect('coordinator:trips_dashboard')
+                messages.warning(request, message)
+
+            return redirect('coordinator:trips_dashboard')
 
         except Exception as e:
             if is_ajax:
-                return JsonResponse({'success': False, 'error': str(e)}, status=500)
-            messages.error(request, f"Error al generar viajes: {str(e)}")
+                return JsonResponse(
+                    {
+                        'success': False,
+                        'error': str(e),
+                    },
+                    status=500,
+                )
+
+            messages.error(
+                request,
+                f"Error al generar viajes: {str(e)}",
+            )
             return redirect('coordinator:generate_trips')
 
-    routes = Route.objects.select_related('origin', 'destination').filter(is_active=True)
+    routes = Route.objects.select_related(
+        'origin',
+        'destination',
+    ).filter(is_active=True)
+
     buses = Bus.objects.filter(is_active=True)
     drivers = Driver.objects.filter(is_active=True)
     assistants = Assistant.objects.filter(is_active=True)
@@ -1107,11 +1576,21 @@ def generate_trips(request):
         'today': today,
         'existing_dates': existing_dates,
         'weekday_choices': [
-            (1, 'Lunes'), (2, 'Martes'), (3, 'Miércoles'),
-            (4, 'Jueves'), (5, 'Viernes'), (6, 'Sábado'), (7, 'Domingo')
+            (1, 'Lunes'),
+            (2, 'Martes'),
+            (3, 'Miércoles'),
+            (4, 'Jueves'),
+            (5, 'Viernes'),
+            (6, 'Sábado'),
+            (7, 'Domingo'),
         ],
     }
-    return render(request, 'coordinator/generate_trips.html', context)
+
+    return render(
+        request,
+        'coordinator/generate_trips.html',
+        context,
+    )
 
 
 @login_required
@@ -1417,6 +1896,79 @@ def routes_dashboard(request):
 # GESTIÓN DE CHOFERES
 # ============================================================================
 
+_DRIVER_DOC_SYNC_NOTE = "[SYNC_FICHA_CHOFER]"
+
+
+def _sync_driver_document_expiry(driver, doc_type, expiry_date, document_number=""):
+    """
+    Mantiene un documento operacional sincronizado desde la ficha del chofer.
+
+    Se usa un registro marcado internamente para no modificar ni eliminar
+    documentos históricos que hayan sido cargados manualmente.
+    """
+    synced_qs = DriverDocument.objects.filter(
+        driver=driver,
+        doc_type=doc_type,
+        notes=_DRIVER_DOC_SYNC_NOTE,
+    ).order_by('-created_at', '-id')
+
+    synced_doc = synced_qs.first()
+
+    # Si el usuario limpia la fecha, eliminamos únicamente el documento
+    # autogenerado por esta ficha; no tocamos archivos/documentos manuales.
+    if not expiry_date:
+        synced_qs.delete()
+        return
+
+    if synced_doc:
+        changed_fields = []
+
+        if synced_doc.expiry_date != expiry_date:
+            synced_doc.expiry_date = expiry_date
+            changed_fields.append('expiry_date')
+
+        if doc_type == 'license':
+            number = document_number or ''
+            if synced_doc.document_number != number:
+                synced_doc.document_number = number
+                changed_fields.append('document_number')
+
+        if changed_fields:
+            synced_doc.save(update_fields=changed_fields)
+
+        # Evita duplicados antiguos del propio sincronizador.
+        synced_qs.exclude(pk=synced_doc.pk).delete()
+        return
+
+    DriverDocument.objects.create(
+        driver=driver,
+        doc_type=doc_type,
+        document_number=(document_number or '') if doc_type == 'license' else '',
+        expiry_date=expiry_date,
+        notes=_DRIVER_DOC_SYNC_NOTE,
+    )
+
+
+def _sync_driver_documents(driver):
+    """Sincroniza licencia, certificado médico y antecedentes."""
+    _sync_driver_document_expiry(
+        driver,
+        'license',
+        driver.license_expiry,
+        driver.license_number,
+    )
+    _sync_driver_document_expiry(
+        driver,
+        'medical',
+        driver.medical_cert_expiry,
+    )
+    _sync_driver_document_expiry(
+        driver,
+        'background',
+        driver.background_check_expiry,
+    )
+
+
 @login_required
 @coordinator_required
 def driver_list(request):
@@ -1429,6 +1981,7 @@ def driver_list(request):
 def driver_create_edit(request, driver_id=None):
     driver = get_object_or_404(Driver, pk=driver_id) if driver_id else Driver()
     if request.method == "POST":
+        driver.license_expiry = request.POST.get('license_expiry') or None
         driver.medical_cert_expiry = request.POST.get('medical_cert_expiry') or None
         driver.background_check_expiry = request.POST.get('background_check_expiry') or None
         driver.notes = request.POST.get('notes', '')
@@ -1440,7 +1993,9 @@ def driver_create_edit(request, driver_id=None):
         driver.is_active = "is_active" in request.POST
         if 'photo' in request.FILES:
             driver.photo = request.FILES['photo']
-        driver.save()
+        with transaction.atomic():
+            driver.save()
+            _sync_driver_documents(driver)
         messages.success(request, f"Chofer {driver.full_name} guardado.")
         return redirect("coordinator:driver_list")
     return render(request, "coordinator/driver_form.html", {"driver": driver})
@@ -1458,26 +2013,68 @@ def driver_delete(request, driver_id):
 @login_required
 @coordinator_required
 def drivers_dashboard(request):
+    """
+    Alta/edición de choferes.
+    Las fechas operacionales se sincronizan con DriverDocument para que
+    alimenten automáticamente el centro de alertas y el dashboard.
+    """
     driver_to_edit = None
     edit_id = request.GET.get('edit')
+
     if edit_id:
         driver_to_edit = get_object_or_404(Driver, pk=edit_id)
 
     if request.method == 'POST':
-        form = DriverForm(request.POST, request.FILES, instance=driver_to_edit) if driver_to_edit else DriverForm(request.POST, request.FILES)
+        form = (
+            DriverForm(
+                request.POST,
+                request.FILES,
+                instance=driver_to_edit,
+            )
+            if driver_to_edit
+            else DriverForm(request.POST, request.FILES)
+        )
+
         if form.is_valid():
-            driver = form.save()
-            messages.success(request, f'Chofer {driver.full_name} guardado.')
-            return redirect('coordinator:drivers_dashboard')
+            try:
+                with transaction.atomic():
+                    driver = form.save()
+                    _sync_driver_documents(driver)
+
+                messages.success(
+                    request,
+                    f'Chofer {driver.full_name} guardado y documentos sincronizados.'
+                )
+                return redirect('coordinator:drivers_dashboard')
+
+            except Exception as e:
+                messages.error(
+                    request,
+                    f'No fue posible guardar el chofer: {str(e)}'
+                )
         else:
-            messages.error(request, 'Por favor corrige los errores del formulario.')
+            messages.error(
+                request,
+                'Por favor corrige los errores del formulario.'
+            )
     else:
-        form = DriverForm(instance=driver_to_edit) if driver_to_edit else DriverForm()
+        form = (
+            DriverForm(instance=driver_to_edit)
+            if driver_to_edit
+            else DriverForm()
+        )
 
     query = request.GET.get('q', '').strip()
-    drivers_list = Driver.objects.all().order_by('-is_active', 'full_name')
+    drivers_list = Driver.objects.all().order_by(
+        '-is_active',
+        'full_name',
+    )
+
     if query:
-        drivers_list = drivers_list.filter(Q(full_name__icontains=query) | Q(rut__icontains=query))
+        drivers_list = drivers_list.filter(
+            Q(full_name__icontains=query)
+            | Q(rut__icontains=query)
+        )
 
     paginator = Paginator(drivers_list, 10)
     drivers_page = paginator.get_page(request.GET.get('page'))
@@ -1487,9 +2084,18 @@ def drivers_dashboard(request):
         'drivers': drivers_page,
         'query': query,
         'edit_mode': bool(driver_to_edit),
-        'driver_edit_id': driver_to_edit.id if driver_to_edit else None,
+        'driver_edit_id': (
+            driver_to_edit.id
+            if driver_to_edit
+            else None
+        ),
     }
-    return render(request, 'choferes/choferes.html', context)
+
+    return render(
+        request,
+        'choferes/choferes.html',
+        context,
+    )
 
 
 # ============================================================================
@@ -1731,38 +2337,92 @@ def bus_document_delete(request, doc_id):
 @login_required
 @coordinator_required
 def expiring_documents(request):
-    today = timezone.now().date()
+    """
+    Centro de alertas documentales.
+    Clasifica documentos vencidos, urgentes (<= 7 días) y próximos (<= 30 días).
+    """
+    today = timezone.localdate()
     warning_days = 30
+    urgent_days = 7
     expiry_limit = today + timedelta(days=warning_days)
 
-    driver_docs = DriverDocument.objects.filter(
-        expiry_date__isnull=False,
-        expiry_date__gte=today,
-        expiry_date__lte=expiry_limit
-    ).select_related('driver').order_by('expiry_date')
+    driver_docs = list(
+        DriverDocument.objects.filter(
+            expiry_date__isnull=False,
+            expiry_date__lte=expiry_limit,
+        )
+        .select_related('driver')
+        .order_by('expiry_date', 'driver__full_name')
+    )
 
-    bus_docs = BusDocument.objects.filter(
-        expiry_date__isnull=False,
-        expiry_date__gte=today,
-        expiry_date__lte=expiry_limit
-    ).select_related('bus').order_by('expiry_date')
+    bus_docs = list(
+        BusDocument.objects.filter(
+            expiry_date__isnull=False,
+            expiry_date__lte=expiry_limit,
+        )
+        .select_related('bus')
+        .order_by('expiry_date', 'bus__plate')
+    )
 
-    expired_driver = DriverDocument.objects.filter(
-        expiry_date__isnull=False,
-        expiry_date__lt=today
-    ).select_related('driver').order_by('expiry_date')
+    def decorate_document(doc, owner_type):
+        days = (doc.expiry_date - today).days
+        doc.days_remaining = days
+        doc.owner_type = owner_type
 
-    expired_bus = BusDocument.objects.filter(
-        expiry_date__isnull=False,
-        expiry_date__lt=today
-    ).select_related('bus').order_by('expiry_date')
+        if owner_type == 'driver':
+            doc.owner_name = doc.driver.full_name
+            doc.owner_detail = doc.driver.rut
+        else:
+            doc.owner_name = doc.bus.plate
+            doc.owner_detail = doc.bus.model or ''
+
+        if days < 0:
+            doc.alert_status = 'expired'
+            doc.alert_label = 'Vencido'
+            doc.remaining_label = f'Venció hace {abs(days)} día{"s" if abs(days) != 1 else ""}'
+            doc.alert_order = 0
+        elif days <= urgent_days:
+            doc.alert_status = 'urgent'
+            doc.alert_label = 'Urgente'
+            if days == 0:
+                doc.remaining_label = 'Vence hoy'
+            else:
+                doc.remaining_label = f'{days} día{"s" if days != 1 else ""}'
+            doc.alert_order = 1
+        else:
+            doc.alert_status = 'warning'
+            doc.alert_label = 'Por vencer'
+            doc.remaining_label = f'{days} días'
+            doc.alert_order = 2
+
+        return doc
+
+    driver_docs = [decorate_document(doc, 'driver') for doc in driver_docs]
+    bus_docs = [decorate_document(doc, 'bus') for doc in bus_docs]
+
+    all_docs = sorted(
+        driver_docs + bus_docs,
+        key=lambda doc: (
+            doc.alert_order,
+            doc.expiry_date,
+            doc.owner_name.lower(),
+        ),
+    )
+
+    expired_count = sum(1 for doc in all_docs if doc.alert_status == 'expired')
+    urgent_count = sum(1 for doc in all_docs if doc.alert_status == 'urgent')
+    warning_count = sum(1 for doc in all_docs if doc.alert_status == 'warning')
 
     context = {
+        'all_docs': all_docs,
         'driver_docs': driver_docs,
         'bus_docs': bus_docs,
-        'expired_driver': expired_driver,
-        'expired_bus': expired_bus,
+        'expired_count': expired_count,
+        'urgent_count': urgent_count,
+        'warning_count': warning_count,
+        'attention_count': len(all_docs),
         'warning_days': warning_days,
+        'urgent_days': urgent_days,
         'today': today,
     }
     return render(request, 'coordinator/expiring_documents.html', context)
@@ -2213,7 +2873,7 @@ def parcel_list(request):
         parcels = parcels.filter(status=status_filter)
     if trip_filter:
         parcels = parcels.filter(trip_id=trip_filter)
-    trips = Trip.objects.all().order_by('-departure')
+    trips = Trip.objects.all().order_by('departure')
     context = {
         'parcels': parcels,
         'status_filter': status_filter,
@@ -2263,58 +2923,225 @@ def maintenance_list(request):
 @login_required
 @coordinator_required
 def maintenance_create(request, bus_id=None):
+    """
+    Registra una mantención usando los campos reales del modelo Maintenance
+    y sincroniza los datos operacionales principales del bus.
+    """
     bus = None
     if bus_id:
         bus = get_object_or_404(Bus, pk=bus_id)
 
     if request.method == 'POST':
         try:
-            maintenance = Maintenance.objects.create(
-                bus_id=request.POST.get('bus'),
-                maintenance_type=request.POST.get('maintenance_type'),
-                date=request.POST.get('date'),
-                cost=Decimal(request.POST.get('cost', '0')),
-                workshop=request.POST.get('workshop'),
-                mileage_at_maintenance=request.POST.get('mileage') or None,
-                description=request.POST.get('description', ''),
-                next_maintenance_due=request.POST.get('next_due') or None,
-                invoice_file=request.FILES.get('invoice_file'),
-                created_by=request.user,
+            bus_post_id = request.POST.get('bus')
+            if not bus_post_id:
+                raise ValidationError("Debe seleccionar un bus.")
+
+            maintenance_bus = get_object_or_404(Bus, pk=bus_post_id)
+
+            mileage_raw = request.POST.get('mileage')
+            if mileage_raw in (None, ''):
+                raise ValidationError("Debe ingresar el kilometraje de la mantención.")
+
+            mileage = int(mileage_raw)
+            if mileage < 0:
+                raise ValidationError("El kilometraje no puede ser negativo.")
+
+            # Compatibilidad con el template actual:
+            # acepta next_due y también next_maintenance_km.
+            next_km_raw = (
+                request.POST.get('next_maintenance_km')
+                or request.POST.get('next_due')
+                or 0
             )
-            messages.success(request, f'Mantenimiento registrado para {maintenance.bus.plate}.')
+            next_maintenance_km = int(next_km_raw)
+
+            cost_raw = request.POST.get('cost') or '0'
+            cost = Decimal(cost_raw)
+
+            with transaction.atomic():
+                maintenance = Maintenance.objects.create(
+                    bus=maintenance_bus,
+                    maintenance_type=request.POST.get('maintenance_type'),
+                    date=request.POST.get('date'),
+                    mileage=mileage,
+                    description=request.POST.get('description', ''),
+                    cost=cost,
+                    workshop=request.POST.get('workshop', ''),
+                    next_maintenance_km=next_maintenance_km,
+                    technician=request.POST.get('technician', ''),
+                    notes=request.POST.get('notes', ''),
+                    created_by=request.user,
+                )
+
+                # Sincronizar el kilometraje actual sólo si el registro
+                # informa un valor superior al que ya tiene el bus.
+                update_fields = []
+
+                if mileage > (maintenance_bus.current_mileage or 0):
+                    maintenance_bus.current_mileage = mileage
+                    update_fields.append('current_mileage')
+
+                # La mantención más reciente define los datos resumidos del bus.
+                latest = (
+                    Maintenance.objects
+                    .filter(bus=maintenance_bus)
+                    .order_by('-date', '-created_at')
+                    .first()
+                )
+
+                if latest and latest.pk == maintenance.pk:
+                    maintenance_bus.last_maintenance = maintenance.date
+                    maintenance_bus.last_maintenance_mileage = maintenance.mileage
+                    maintenance_bus.next_maintenance_mileage = maintenance.next_maintenance_km
+                    update_fields.extend([
+                        'last_maintenance',
+                        'last_maintenance_mileage',
+                        'next_maintenance_mileage',
+                    ])
+
+                if update_fields:
+                    maintenance_bus.save(
+                        update_fields=list(dict.fromkeys(update_fields))
+                    )
+
+            messages.success(
+                request,
+                f'Mantenimiento registrado para {maintenance.bus.plate}.'
+            )
             return redirect('coordinator:maintenance_list')
+
+        except (ValueError, TypeError):
+            messages.error(
+                request,
+                'Kilometraje, próximo mantenimiento o costo tienen un formato inválido.'
+            )
+        except ValidationError as e:
+            messages.error(request, str(e))
         except Exception as e:
             messages.error(request, f'Error: {str(e)}')
 
-    buses = Bus.objects.filter(is_active=True)
-    context = {'buses': buses, 'selected_bus': bus}
-    return render(request, 'coordinator/maintenance_form.html', context)
+    buses = Bus.objects.filter(is_active=True).order_by('plate')
+    context = {
+        'buses': buses,
+        'selected_bus': bus,
+    }
+    return render(
+        request,
+        'coordinator/maintenance_form.html',
+        context,
+    )
 
 
 @login_required
 @coordinator_required
 def maintenance_edit(request, pk):
-    maintenance = get_object_or_404(Maintenance, pk=pk)
+    """
+    Edita una mantención y vuelve a sincronizar el resumen de mantenimiento
+    del bus con el registro más reciente.
+    """
+    maintenance = get_object_or_404(
+        Maintenance.objects.select_related('bus'),
+        pk=pk,
+    )
+
     if request.method == 'POST':
         try:
-            maintenance.bus_id = request.POST.get('bus')
-            maintenance.maintenance_type = request.POST.get('maintenance_type')
-            maintenance.date = request.POST.get('date')
-            maintenance.cost = Decimal(request.POST.get('cost', '0'))
-            maintenance.workshop = request.POST.get('workshop')
-            maintenance.mileage_at_maintenance = request.POST.get('mileage') or None
-            maintenance.description = request.POST.get('description', '')
-            maintenance.next_maintenance_due = request.POST.get('next_due') or None
-            if request.FILES.get('invoice_file'):
-                maintenance.invoice_file = request.FILES['invoice_file']
-            maintenance.save()
+            bus_post_id = request.POST.get('bus')
+            if not bus_post_id:
+                raise ValidationError("Debe seleccionar un bus.")
+
+            old_bus = maintenance.bus
+            maintenance_bus = get_object_or_404(Bus, pk=bus_post_id)
+
+            mileage_raw = request.POST.get('mileage')
+            if mileage_raw in (None, ''):
+                raise ValidationError("Debe ingresar el kilometraje de la mantención.")
+
+            mileage = int(mileage_raw)
+            if mileage < 0:
+                raise ValidationError("El kilometraje no puede ser negativo.")
+
+            next_km_raw = (
+                request.POST.get('next_maintenance_km')
+                or request.POST.get('next_due')
+                or 0
+            )
+            next_maintenance_km = int(next_km_raw)
+
+            cost = Decimal(request.POST.get('cost') or '0')
+
+            with transaction.atomic():
+                maintenance.bus = maintenance_bus
+                maintenance.maintenance_type = request.POST.get('maintenance_type')
+                maintenance.date = request.POST.get('date')
+                maintenance.mileage = mileage
+                maintenance.description = request.POST.get('description', '')
+                maintenance.cost = cost
+                maintenance.workshop = request.POST.get('workshop', '')
+                maintenance.next_maintenance_km = next_maintenance_km
+                maintenance.technician = request.POST.get('technician', '')
+                maintenance.notes = request.POST.get('notes', '')
+                maintenance.save()
+
+                # Si cambió de bus, recalcular también el bus anterior.
+                buses_to_sync = {old_bus.pk: old_bus, maintenance_bus.pk: maintenance_bus}
+
+                for bus_obj in buses_to_sync.values():
+                    latest = (
+                        Maintenance.objects
+                        .filter(bus=bus_obj)
+                        .order_by('-date', '-created_at')
+                        .first()
+                    )
+
+                    if latest:
+                        bus_obj.last_maintenance = latest.date
+                        bus_obj.last_maintenance_mileage = latest.mileage
+                        bus_obj.next_maintenance_mileage = latest.next_maintenance_km
+
+                        if latest.mileage > (bus_obj.current_mileage or 0):
+                            bus_obj.current_mileage = latest.mileage
+
+                        bus_obj.save(update_fields=[
+                            'last_maintenance',
+                            'last_maintenance_mileage',
+                            'next_maintenance_mileage',
+                            'current_mileage',
+                        ])
+                    else:
+                        bus_obj.last_maintenance = None
+                        bus_obj.last_maintenance_mileage = 0
+                        bus_obj.next_maintenance_mileage = 0
+                        bus_obj.save(update_fields=[
+                            'last_maintenance',
+                            'last_maintenance_mileage',
+                            'next_maintenance_mileage',
+                        ])
+
             messages.success(request, 'Mantenimiento actualizado.')
             return redirect('coordinator:maintenance_list')
+
+        except (ValueError, TypeError):
+            messages.error(
+                request,
+                'Kilometraje, próximo mantenimiento o costo tienen un formato inválido.'
+            )
+        except ValidationError as e:
+            messages.error(request, str(e))
         except Exception as e:
             messages.error(request, f'Error: {str(e)}')
-    buses = Bus.objects.filter(is_active=True)
-    context = {'maintenance': maintenance, 'buses': buses}
-    return render(request, 'coordinator/maintenance_form.html', context)
+
+    buses = Bus.objects.filter(is_active=True).order_by('plate')
+    context = {
+        'maintenance': maintenance,
+        'buses': buses,
+    }
+    return render(
+        request,
+        'coordinator/maintenance_form.html',
+        context,
+    )
 
 
 @login_required
@@ -2329,51 +3156,247 @@ def maintenance_delete(request, pk):
 @login_required
 @coordinator_required
 def fuel_list(request):
+    """
+    Lista las cargas de combustible y calcula rendimiento sólo cuando
+    existen dos cargas cronológicamente consecutivas del mismo bus
+    con kilometraje creciente.
+    """
     bus_id = request.GET.get('bus')
-    records = FuelRecord.objects.select_related('bus', 'created_by').order_by('-date')
-    if bus_id:
-        records = records.filter(bus_id=bus_id)
-    buses = Bus.objects.filter(is_active=True)
-    context = {
-        'records': records,
-        'buses': buses,
-        'bus_filter': bus_id,
-    }
-    return render(request, 'coordinator/fuel_list.html', context)
 
+    qs = FuelRecord.objects.select_related('bus', 'created_by')
+    if bus_id:
+        qs = qs.filter(bus_id=bus_id)
+
+    records_asc = list(
+        qs.order_by('bus_id', 'date', 'created_at', 'id')
+    )
+
+    previous_by_bus = {}
+    efficiencies = []
+    total_liters = Decimal('0')
+    total_cost = Decimal('0')
+
+    for record in records_asc:
+        record.distance_since_previous = None
+        record.efficiency_kml = None
+        record.cost_per_km = None
+
+        liters = record.liters or Decimal('0')
+        cost = record.cost or Decimal('0')
+
+        total_liters += liters
+        total_cost += cost
+
+        previous = previous_by_bus.get(record.bus_id)
+
+        if previous:
+            distance = record.mileage - previous.mileage
+
+            # Nunca calcular con un retroceso o kilometraje repetido.
+            if distance > 0 and liters > 0:
+                record.distance_since_previous = distance
+                record.efficiency_kml = round(
+                    Decimal(distance) / liters,
+                    2,
+                )
+                record.cost_per_km = round(
+                    cost / Decimal(distance),
+                    2,
+                )
+                efficiencies.append(record.efficiency_kml)
+
+        previous_by_bus[record.bus_id] = record
+
+    # Mostrar lo más reciente primero.
+    records = sorted(
+        records_asc,
+        key=lambda r: (r.date, r.created_at, r.id),
+        reverse=True,
+    )
+
+    avg_efficiency = (
+        round(
+            sum(efficiencies, Decimal('0')) / Decimal(len(efficiencies)),
+            2,
+        )
+        if efficiencies else None
+    )
+
+    buses = Bus.objects.filter(is_active=True).order_by('plate')
+
+    return render(
+        request,
+        'coordinator/fuel_list.html',
+        {
+            'records': records,
+            'buses': buses,
+            'bus_filter': bus_id,
+            'total_liters': total_liters,
+            'total_cost': total_cost,
+            'avg_efficiency': avg_efficiency,
+            'records_count': len(records),
+        },
+    )
 
 @login_required
 @coordinator_required
 def fuel_create(request):
+    """
+    Registra una carga de combustible protegiendo la integridad
+    del kilometraje del bus.
+    """
     if request.method == 'POST':
         try:
-            bus = Bus.objects.get(pk=request.POST.get('bus'))
-            record = FuelRecord.objects.create(
-                bus=bus,
-                date=request.POST.get('date'),
-                liters=Decimal(request.POST.get('liters', '0')),
-                cost=Decimal(request.POST.get('cost', '0')),
-                mileage=int(request.POST.get('mileage', 0)),
-                created_by=request.user,
+            bus_id = request.POST.get('bus')
+            if not bus_id:
+                raise ValidationError("Debe seleccionar un bus.")
+
+            liters_raw = request.POST.get('liters')
+            cost_raw = request.POST.get('cost')
+            mileage_raw = request.POST.get('mileage')
+            date_raw = request.POST.get('date')
+
+            if not date_raw:
+                raise ValidationError("Debe ingresar la fecha.")
+            if liters_raw in (None, ''):
+                raise ValidationError("Debe ingresar los litros cargados.")
+            if cost_raw in (None, ''):
+                raise ValidationError("Debe ingresar el costo de la carga.")
+            if mileage_raw in (None, ''):
+                raise ValidationError("Debe ingresar el kilometraje actual.")
+
+            liters = Decimal(liters_raw)
+            cost = Decimal(cost_raw)
+            mileage = int(mileage_raw)
+
+            if liters <= 0:
+                raise ValidationError("Los litros deben ser mayores que 0.")
+            if cost < 0:
+                raise ValidationError("El costo no puede ser negativo.")
+            if mileage < 0:
+                raise ValidationError("El kilometraje no puede ser negativo.")
+
+            with transaction.atomic():
+                bus = get_object_or_404(
+                    Bus.objects.select_for_update(),
+                    pk=bus_id,
+                )
+
+                # Tomamos como piso el MAYOR kilometraje conocido del bus,
+                # no sólo current_mileage. Esto recupera protección incluso
+                # si un registro antiguo ya bajó current_mileage por error.
+                fuel_max = (
+                    FuelRecord.objects
+                    .filter(bus=bus)
+                    .aggregate(max_km=Max('mileage'))
+                    .get('max_km')
+                    or 0
+                )
+
+                maintenance_max = (
+                    Maintenance.objects
+                    .filter(bus=bus)
+                    .aggregate(max_km=Max('mileage'))
+                    .get('max_km')
+                    or 0
+                )
+
+                minimum_allowed = max(
+                    bus.current_mileage or 0,
+                    bus.last_maintenance_mileage or 0,
+                    fuel_max,
+                    maintenance_max,
+                )
+
+                if mileage < minimum_allowed:
+                    raise ValidationError(
+                        f"Kilometraje inválido. El mayor kilometraje conocido "
+                        f"del bus {bus.plate} es {minimum_allowed:,} km. "
+                        "La nueva carga no puede registrar un valor inferior."
+                    )
+
+                record = FuelRecord.objects.create(
+                    bus=bus,
+                    date=date_raw,
+                    liters=liters,
+                    cost=cost,
+                    mileage=mileage,
+                    created_by=request.user,
+                )
+
+                # Sincronizar siempre hacia arriba, nunca hacia abajo.
+                if mileage > (bus.current_mileage or 0):
+                    bus.current_mileage = mileage
+                    bus.save(update_fields=['current_mileage'])
+
+            messages.success(
+                request,
+                f'Carga de combustible registrada para {record.bus.plate}.'
             )
-            bus.current_mileage = record.mileage
-            bus.save(update_fields=['current_mileage'])
-            messages.success(request, f'Carga de combustible registrada para {bus.plate}.')
             return redirect('coordinator:fuel_list')
+
+        except ValidationError as e:
+            messages.error(request, str(e))
+        except (ValueError, TypeError):
+            messages.error(
+                request,
+                'Litros, costo o kilometraje tienen un formato inválido.'
+            )
         except Exception as e:
             messages.error(request, f'Error: {str(e)}')
-    buses = Bus.objects.filter(is_active=True)
-    return render(request, 'coordinator/fuel_form.html', {'buses': buses})
 
+    buses = Bus.objects.filter(is_active=True).order_by('plate')
+    return render(
+        request,
+        'coordinator/fuel_form.html',
+        {'buses': buses},
+    )
 
 @login_required
 @coordinator_required
 def fuel_delete(request, pk):
-    record = get_object_or_404(FuelRecord, pk=pk)
-    record.delete()
+    """
+    Elimina un registro de combustible y vuelve a dejar el kilometraje
+    operacional del bus al menos en el mayor kilometraje histórico conocido.
+    """
+    record = get_object_or_404(
+        FuelRecord.objects.select_related('bus'),
+        pk=pk,
+    )
+
+    with transaction.atomic():
+        bus = Bus.objects.select_for_update().get(pk=record.bus_id)
+        record.delete()
+
+        fuel_max = (
+            FuelRecord.objects
+            .filter(bus=bus)
+            .aggregate(max_km=Max('mileage'))
+            .get('max_km')
+            or 0
+        )
+
+        maintenance_max = (
+            Maintenance.objects
+            .filter(bus=bus)
+            .aggregate(max_km=Max('mileage'))
+            .get('max_km')
+            or 0
+        )
+
+        highest_known = max(
+            bus.current_mileage or 0,
+            bus.last_maintenance_mileage or 0,
+            fuel_max,
+            maintenance_max,
+        )
+
+        if highest_known != (bus.current_mileage or 0):
+            bus.current_mileage = highest_known
+            bus.save(update_fields=['current_mileage'])
+
     messages.success(request, 'Registro de combustible eliminado.')
     return redirect('coordinator:fuel_list')
-
 
 @login_required
 @coordinator_required

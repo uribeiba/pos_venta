@@ -51,17 +51,55 @@
                 <tbody>
                     {% for m in maintenances %}
                     <tr>
-                        <td><a href="{% url 'coordinator:bus_maintenance_history' m.bus.id %}">{{ m.bus.plate }}</a></td>
+                        <td>
+                            <span class="fw-semibold">{{ m.bus.plate }}</span>
+                        </td>
+                        
                         <td>{{ m.date|date:"d/m/Y" }}</td>
-                        <td>{% if m.maintenance_type == 'preventive' %}<span class="badge bg-info">Preventivo</span>{% else %}<span class="badge bg-warning">Correctivo</span>{% endif %}</td>
+                        
+                        <td>
+                            {% if m.maintenance_type == 'preventive' %}
+                                <span class="badge bg-info">Preventivo</span>
+                            {% else %}
+                                <span class="badge bg-warning">Correctivo</span>
+                            {% endif %}
+                        </td>
+                        
                         <td>{{ m.mileage|intcomma }} km</td>
+                        
                         <td>{{ m.description|truncatechars:50 }}</td>
+                        
                         <td>$ {{ m.cost|intcomma }}</td>
-                        <td>{{ m.next_maintenance_km|default:"—" }}</td>
-                        <td><a href="{% url 'coordinator:bus_maintenance_history' m.bus.id %}" class="btn btn-sm btn-outline-info">Historial</a></td>
+                        
+                        <td>
+                            {% if m.next_maintenance_km %}
+                                {{ m.next_maintenance_km|intcomma }} km
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        
+                        <td class="text-nowrap">
+                            <a href="{% url 'coordinator:maintenance_edit' m.id %}"
+                               class="btn btn-sm btn-outline-primary"
+                               title="Editar">
+                                <i class="fas fa-pen"></i>
+                            </a>
+                        
+                            <a href="{% url 'coordinator:maintenance_delete' m.id %}"
+                               class="btn btn-sm btn-outline-danger"
+                               title="Eliminar">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="8" class="text-center">No hay mantenimientos registrados.</td></tr>
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-screwdriver-wrench fa-2x mb-3 d-block"></i>
+                            No hay mantenimientos registrados.
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>

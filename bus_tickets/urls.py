@@ -108,6 +108,6 @@ if settings.DEBUG:
 # ERROR HANDLING PERSONALIZADO
 # ============================================================================
 # Manejadores de error personalizados (descomentar si existen las vistas)
-# handler404 = 'booking.views.error_404'
+handler404 = 'bus_tickets.views.custom_404'
 # handler500 = 'booking.views.error_500'
 # handler403 = 'booking.views.error_403'

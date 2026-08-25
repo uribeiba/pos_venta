@@ -6,7 +6,11 @@
 {% block content %}
 <div class="container-fluid px-4">
     <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
-        <h3><i class="fas fa-wrench me-2"></i> Nuevo mantenimiento</h3>
+        <div>
+            <div class="text-uppercase text-muted small fw-bold mb-1">Flota · Mantenimiento</div>
+            <h3 class="mb-1"><i class="fas fa-wrench me-2 text-primary"></i>{% if maintenance %}Editar mantenimiento{% else %}Nuevo mantenimiento{% endif %}</h3>
+            <div class="text-muted small">Registra kilometraje, trabajo realizado y próxima mantención programada.</div>
+        </div>
         <a href="{% url 'coordinator:maintenance_list' %}" class="btn btn-secondary">Volver</a>
     </div>
 
@@ -20,51 +24,51 @@
                         <select name="bus" class="form-select" required>
                             <option value="">-- Seleccionar bus --</option>
                             {% for b in buses %}
-                            <option value="{{ b.id }}" {% if selected_bus and selected_bus.id == b.id %}selected{% endif %}>{{ b.plate }} - {{ b.model|default:"-" }}</option>
+                            <option value="{{ b.id }}" {% if selected_bus and selected_bus.id == b.id or maintenance and maintenance.bus.id == b.id %}selected{% endif %}>{{ b.plate }} - {{ b.model|default:"-" }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Tipo</label>
                         <select name="maintenance_type" class="form-select" required>
-                            <option value="preventive">Preventivo</option>
-                            <option value="corrective">Correctivo</option>
+                            <option value="preventive" {% if maintenance and maintenance.maintenance_type == 'preventive' %}selected{% endif %}>Preventivo</option>
+                            <option value="corrective" {% if maintenance and maintenance.maintenance_type == 'corrective' %}selected{% endif %}>Correctivo</option>
                         </select>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Fecha</label>
-                        <input type="date" name="date" class="form-control" required>
+                        <input type="date" name="date" class="form-control" value="{% if maintenance %}{{ maintenance.date|date:'Y-m-d' }}{% endif %}" required>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Kilometraje actual</label>
-                        <input type="number" name="mileage" class="form-control" required>
+                        <input type="number" min="0" name="mileage" class="form-control" value="{% if maintenance %}{{ maintenance.mileage }}{% endif %}" required>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Próximo mantenimiento (km)</label>
-                        <input type="number" name="next_maintenance_km" class="form-control" value="0">
+                        <input type="number" min="0" name="next_maintenance_km" class="form-control" value="{% if maintenance %}{{ maintenance.next_maintenance_km }}{% else %}0{% endif %}"><div class="form-text">Kilometraje objetivo en que corresponde realizar la próxima mantención.</div>
                     </div>
                     <div class="col-12">
                         <label class="form-label">Descripción del trabajo</label>
-                        <textarea name="description" class="form-control" rows="3" required></textarea>
+                        <textarea name="description" class="form-control" rows="3" required>{% if maintenance %}{{ maintenance.description }}{% endif %}</textarea>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Costo</label>
-                        <input type="number" step="100" name="cost" class="form-control" value="0">
+                        <input type="number" min="0" step="1" name="cost" class="form-control" value="{% if maintenance %}{{ maintenance.cost|floatformat:0 }}{% else %}0{% endif %}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Taller</label>
-                        <input type="text" name="workshop" class="form-control">
+                        <input type="text" name="workshop" class="form-control" value="{% if maintenance %}{{ maintenance.workshop }}{% endif %}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Técnico responsable</label>
-                        <input type="text" name="technician" class="form-control">
+                        <input type="text" name="technician" class="form-control" value="{% if maintenance %}{{ maintenance.technician }}{% endif %}">
                     </div>
                     <div class="col-12">
                         <label class="form-label">Notas adicionales</label>
-                        <textarea name="notes" class="form-control" rows="2"></textarea>
+                        <textarea name="notes" class="form-control" rows="2">{% if maintenance %}{{ maintenance.notes }}{% endif %}</textarea>
                     </div>
                     <div class="col-12">
-                        <button type="submit" class="btn btn-primary">Guardar mantenimiento</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>{% if maintenance %}Guardar cambios{% else %}Guardar mantenimiento{% endif %}</button>
                     </div>
                 </div>
             </form>

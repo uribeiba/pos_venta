@@ -1,7 +1,7 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
 
-{% block title %}Generar Viajes Recurrentes - Cejer{% endblock %}
+{% block title %}Generar Viajes Recurrentes {% endblock %}
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
@@ -146,13 +146,14 @@
                             <label><input type="checkbox" name="weekdays" value="7"> Domingo</label>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100 mt-2">
-                            <i class="fas fa-sync-alt me-2"></i> Generar viajes
+                        <input type="hidden" name="action" id="formAction" value="preview">
+                        <button type="submit" id="previewBtn" class="btn btn-primary w-100 mt-2">
+                            <i class="fas fa-magnifying-glass me-2"></i> Revisar programación
                         </button>
                     </form>
                     <div class="alert alert-info mt-3 small">
-                        <i class="fas fa-info-circle"></i> Se crearán viajes para cada día seleccionado en el rango de fechas, a la misma hora.
-                        Si ya existe un viaje con el mismo bus en horario cercano (±1 hora), se omitirá.
+                        <i class="fas fa-info-circle"></i> Primero revisaremos todas las fechas seleccionadas.
+                        Ningún viaje se creará hasta que confirmes la programación.
                     </div>
                 </div>
             </div>
@@ -172,6 +173,73 @@
                 <div class="card-body">
                     <div id="calendar"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vista previa de programación -->
+    <div id="previewSection" class="card shadow-sm border-0 rounded-4 mb-4 d-none">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="mb-1 fw-semibold">
+                    <i class="fas fa-clipboard-check me-2 text-primary"></i>
+                    Vista previa de programación
+                </h5>
+                <small class="text-muted" id="previewSummary"></small>
+            </div>
+            <button type="button" id="cancelPreviewBtn" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-pen me-1"></i> Modificar
+            </button>
+        </div>
+        <div class="card-body">
+            <div id="pageAlert"></div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-3">
+                    <div class="border rounded-3 p-3 h-100">
+                        <div class="text-muted small">Analizados</div>
+                        <div class="fs-4 fw-bold" id="statTotal">0</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded-3 p-3 h-100">
+                        <div class="text-muted small">Disponibles</div>
+                        <div class="fs-4 fw-bold text-success" id="statAvailable">0</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded-3 p-3 h-100">
+                        <div class="text-muted small">Ya existen</div>
+                        <div class="fs-4 fw-bold text-secondary" id="statExisting">0</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="border rounded-3 p-3 h-100">
+                        <div class="text-muted small">Conflictos</div>
+                        <div class="fs-4 fw-bold text-danger" id="statConflicts">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Salida</th>
+                            <th>Llegada</th>
+                            <th>Estado</th>
+                            <th>Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewTableBody"></tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" id="confirmCreateBtn" class="btn btn-success">
+                    <i class="fas fa-check me-2"></i> Confirmar y crear viajes disponibles
+                </button>
             </div>
         </div>
     </div>
@@ -213,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
         locale: 'es',
         firstDay: 1,
         headerToolbar: false,
-        events: '/coordinador/api/trips-calendar/',
+        events: "{% url 'coordinator:api_trips_calendar' %}",
         eventClick: function(info) {
             const trip = info.event.extendedProps;
             currentDeleteTrip = trip;
@@ -240,10 +308,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Confirmar eliminación de viaje
     document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
         if (!currentDeleteTrip) return;
-        fetch('/coordinador/delete-trip-by-date/', {
+        fetch("{% url 'coordinator:delete_trip_by_date' %}", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRFToken': getCookie('csrftoken')
             },
             body: new URLSearchParams({
@@ -255,51 +324,165 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 calendar.refetchEvents();
                 bootstrap.Modal.getInstance(document.getElementById('deleteTripModal')).hide();
-                alert(data.message);
+                showPageAlert('success', data.message);
             } else {
-                alert('Error: ' + data.error);
+                showPageAlert('danger', 'Error: ' + data.error);
             }
         })
-        .catch(err => alert('Error al eliminar: ' + err));
+        .catch(err => showPageAlert('danger', 'Error al eliminar: ' + err));
     });
 
-    // Envío del formulario de creación recurrente (control robusto de errores asíncronos)
+    // ===== Alertas Bootstrap dentro de la página =====
+    function showPageAlert(type, message) {
+        const container = document.getElementById('pageAlert');
+        if (!container) return;
+
+        const icon = type === 'success'
+            ? 'fa-circle-check'
+            : type === 'warning'
+                ? 'fa-triangle-exclamation'
+                : 'fa-circle-exclamation';
+
+        container.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                <i class="fas ${icon} me-2"></i>${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+            </div>`;
+    }
+
+    function badgeForStatus(status, label) {
+        const classes = {
+            available: 'text-bg-success',
+            existing: 'text-bg-secondary',
+            bus_conflict: 'text-bg-danger',
+            driver_conflict: 'text-bg-warning'
+        };
+        return `<span class="badge ${classes[status] || 'text-bg-info'}">${label}</span>`;
+    }
+
+    function renderPreview(data) {
+        const section = document.getElementById('previewSection');
+        const tbody = document.getElementById('previewTableBody');
+        const stats = data.stats || {};
+        const summary = data.summary || {};
+
+        document.getElementById('statTotal').textContent = stats.total || 0;
+        document.getElementById('statAvailable').textContent = stats.available || 0;
+        document.getElementById('statExisting').textContent = stats.existing || 0;
+        document.getElementById('statConflicts').textContent =
+            (stats.bus_conflict || 0) + (stats.driver_conflict || 0);
+
+        document.getElementById('previewSummary').textContent =
+            `${summary.route || ''} · ${summary.bus || ''} · ${summary.departure_hour || ''}`;
+
+        tbody.innerHTML = '';
+
+        (data.rows || []).forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="fw-semibold">${row.date}</td>
+                <td>${row.departure}</td>
+                <td>${row.arrival}</td>
+                <td>${badgeForStatus(row.status, row.status_label)}</td>
+                <td class="small text-muted">${row.detail || ''}</td>`;
+            tbody.appendChild(tr);
+        });
+
+        const confirmBtn = document.getElementById('confirmCreateBtn');
+        confirmBtn.disabled = !stats.available;
+        confirmBtn.innerHTML = stats.available
+            ? `<i class="fas fa-check me-2"></i> Confirmar y crear ${stats.available} viaje(s)`
+            : `<i class="fas fa-ban me-2"></i> No hay viajes disponibles`;
+
+        section.classList.remove('d-none');
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function sendRecurringForm(action) {
+        const form = document.getElementById('recurringForm');
+        const formData = new FormData(form);
+        formData.set('action', action);
+
+        const button = action === 'preview'
+            ? document.getElementById('previewBtn')
+            : document.getElementById('confirmCreateBtn');
+
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+        try {
+            const response = await fetch("{% url 'coordinator:generate_trips' %}", {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const html = await response.text();
+                console.error('Respuesta inesperada:', html);
+                throw new Error(`El servidor respondió con contenido HTML (Código ${response.status}).`);
+            }
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'No fue posible completar la operación.');
+            }
+
+            if (action === 'preview') {
+                renderPreview(data);
+                return;
+            }
+
+            showPageAlert('success', data.message);
+            calendar.refetchEvents();
+            form.reset();
+            document.getElementById('previewSection').classList.add('d-none');
+
+        } catch (error) {
+            showPageAlert('danger', error.message);
+            console.error(error);
+        } finally {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
+    }
+
+    // Revisar antes de crear
     document.getElementById('recurringForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        const formData = new FormData(this);
-        
-        fetch('/coordinador/generate-trips/', {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(async response => {
-            const contentType = response.headers.get("content-type");
-            
-            // Si el servidor nos responde con HTML en vez de JSON (ej: un error 500 o redirección del login)
-            if (!contentType || !contentType.includes("application/json")) {
-                const errorHtml = await response.text();
-                console.error("Respuesta inesperada del servidor (no es JSON):", errorHtml);
-                throw new Error(`El servidor respondió con contenido HTML (Código ${response.status}). Revisa los registros de Django o la consola.`);
-            }
-            
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                alert(`✅ ${data.message}`);
-                calendar.refetchEvents(); // actualizar calendario
-                this.reset(); // limpiar el formulario
-            } else {
-                alert(`❌ Error: ${data.error}`);
-            }
-        })
-        .catch(err => {
-            alert('Error al generar viajes: ' + err.message);
-            console.error(err);
+
+        if (!this.checkValidity()) {
+            this.reportValidity();
+            return;
+        }
+
+        const weekdaysChecked = this.querySelectorAll('input[name="weekdays"]:checked');
+        if (!weekdaysChecked.length) {
+            document.getElementById('previewSection').classList.remove('d-none');
+            showPageAlert('warning', 'Selecciona al menos un día de la semana.');
+            return;
+        }
+
+        sendRecurringForm('preview');
+    });
+
+    // Confirmar creación después de revisar
+    document.getElementById('confirmCreateBtn').addEventListener('click', function() {
+        sendRecurringForm('create');
+    });
+
+    // Volver a modificar parámetros
+    document.getElementById('cancelPreviewBtn').addEventListener('click', function() {
+        document.getElementById('previewSection').classList.add('d-none');
+        document.getElementById('recurringForm').scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
         });
     });
 

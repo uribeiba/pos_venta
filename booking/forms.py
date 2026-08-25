@@ -253,7 +253,7 @@ class DriverForm(forms.ModelForm):
     class Meta:
         model = Driver
         fields = [
-            'full_name', 'rut', 'phone', 'email', 'license_number',
+            'full_name', 'rut', 'phone', 'email', 'license_number', 'license_expiry',
             'medical_cert_expiry', 'background_check_expiry', 'photo', 'notes', 'is_active'
         ]
         widgets = {
@@ -262,6 +262,7 @@ class DriverForm(forms.ModelForm):
             'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
             'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'conductor@empresa.cl'}),
             'license_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° licencia'}),
+            'license_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'medical_cert_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'background_check_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Observaciones (opcional)'}),
@@ -274,6 +275,7 @@ class DriverForm(forms.ModelForm):
             'phone': 'TELÉFONO',
             'email': 'CORREO ELECTRÓNICO',
             'license_number': 'Nº LICENCIA',
+            'license_expiry': 'VENCIMIENTO LICENCIA',
             'medical_cert_expiry': 'VENCIMIENTO CERT. MÉDICO',
             'background_check_expiry': 'VENCIMIENTO ANTECEDENTES',
             'photo': 'FOTO',

@@ -67,15 +67,19 @@
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.email.label }}</label>
                                 {{ form.email }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.license_number.label }}</label>
                                 {{ form.license_number }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <label class="form-label text-uppercase fw-semibold small">{{ form.license_expiry.label }}</label>
+                                {{ form.license_expiry }}
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.medical_cert_expiry.label }}</label>
                                 {{ form.medical_cert_expiry }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.background_check_expiry.label }}</label>
                                 {{ form.background_check_expiry }}
                             </div>
@@ -153,8 +157,8 @@
                             <td>{{ driver.phone|default:"—" }}</td>
                             <td>{{ driver.license_number|default:"—" }}</td>
                             <td>
-                                {% if driver.medical_cert_expiry %}
-                                    {{ driver.medical_cert_expiry|date:"d/m/Y" }}
+                                {% if driver.license_expiry %}
+                                    {{ driver.license_expiry|date:"d/m/Y" }}
                                 {% else %}
                                     —
                                 {% endif %}
@@ -169,6 +173,11 @@
                             <td>
                                 <a href="?edit={{ driver.id }}" class="btn btn-sm btn-outline-primary me-1" title="Editar">
                                     <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'coordinator:driver_documents' driver.id %}"
+                                   class="btn btn-sm btn-outline-secondary me-1"
+                                   title="Documentos">
+                                    <i class="fas fa-folder-open"></i>
                                 </a>
                                 <button type="button" class="btn btn-sm btn-outline-danger delete-driver" data-id="{{ driver.id }}" data-name="{{ driver.full_name }}">
                                     <i class="fas fa-trash-alt"></i>

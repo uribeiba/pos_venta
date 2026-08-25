@@ -84,6 +84,7 @@ class Driver(models.Model):
     email = models.EmailField("Correo electrónico", blank=True, default="")
     phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
     license_number = models.CharField("N° Licencia", max_length=30, blank=True)
+    license_expiry = models.DateField("Vencimiento licencia", null=True, blank=True)
     is_active = models.BooleanField("Activo", default=True)
 
     photo = models.ImageField("Foto", upload_to='drivers/photos/', null=True, blank=True)

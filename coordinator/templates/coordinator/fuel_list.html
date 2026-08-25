@@ -13,6 +13,55 @@
         </a>
     </div>
 
+    <!-- Resumen -->
+    <div class="row g-3 mb-3">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="small text-muted">Registros</div>
+                    <div class="fs-4 fw-bold">{{ records_count }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="small text-muted">Litros registrados</div>
+                    <div class="fs-4 fw-bold text-primary">
+                        {{ total_liters|floatformat:2 }} L
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="small text-muted">Costo registrado</div>
+                    <div class="fs-4 fw-bold">
+                        $ {{ total_cost|floatformat:0|intcomma }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="small text-muted">Rendimiento promedio</div>
+                    <div class="fs-4 fw-bold text-success">
+                        {% if avg_efficiency %}
+                            {{ avg_efficiency|floatformat:2 }} km/L
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Filtros -->
     <div class="card mb-3">
         <div class="card-body">
@@ -47,7 +96,8 @@
                             <th>Litros</th>
                             <th>Costo ($)</th>
                             <th>Kilometraje</th>
-                            <th>Rendimiento (km/l)</th>
+                            <th>Rendimiento (km/L)</th>
+                            <th>Costo/km</th>
                             <th>Registrado por</th>
                             <th>Acciones</th>
                         </tr>
@@ -57,24 +107,31 @@
                         <tr>
                             <td>{{ r.bus.plate }}<br><small>{{ r.bus.model|default:"—" }}</small></td>
                             <td>{{ r.date|date:"d/m/Y" }}</td>
-                            <td>{{ r.liters }} L</td>
+                            <td>{{ r.liters|floatformat:2 }} L</td>
                             <td>$ {{ r.cost|intcomma }}</td>
-                            <td>{{ r.mileage }} km</td>
+                            <td>{{ r.mileage|intcomma }} km</td>
                             <td>
-                                {% with consumo=r.mileage|add:"-"|add:r.bus.current_mileage|add:r.liters %} <!-- cálculo simple, se puede mejorar -->
-                                {% if forloop.counter0 < records|length|add:"-1" %}
-                                    {% with next=records|slice:forloop.counter|first %}
-                                        {% if next %}
-                                            {{ next.mileage|add:"-"|add:r.mileage|floatformat:1 }}
-                                        {% else %}
-                                            —
-                                        {% endif %}
-                                    {% endwith %}
+                                {% if r.efficiency_kml %}
+                                    <span class="fw-semibold text-success">
+                                        {{ r.efficiency_kml|floatformat:2 }} km/L
+                                    </span>
+                                    <div class="small text-muted">
+                                        {{ r.distance_since_previous|intcomma }} km recorridos
+                                    </div>
                                 {% else %}
-                                    —
+                                    <span class="text-muted"
+                                          title="Se necesitan al menos dos cargas consecutivas del mismo bus">
+                                        —
+                                    </span>
                                 {% endif %}
-                                {% endwith %}
-                             </td>
+                            </td>
+                            <td>
+                                {% if r.cost_per_km %}
+                                    $ {{ r.cost_per_km|floatformat:2 }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
                             <td>{{ r.created_by.username }}</td>
                             <td>
                                 <a href="{% url 'coordinator:fuel_delete' r.pk %}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar este registro?')">
@@ -83,11 +140,25 @@
                              </td>
                          </tr>
                         {% empty %}
-                        <tr><td colspan="8" class="text-center text-muted">No hay registros de combustible.{% endfor %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-5">
+                                <i class="fas fa-gas-pump fa-2x d-block mb-3"></i>
+                                No hay registros de combustible.
+                            </td>
+                        </tr>
+                        {% endfor %}
                     </tbody>
                  </table>
             </div>
         </div>
+    </div>
+
+    <div class="alert alert-light border mt-3 small text-muted">
+        <i class="fas fa-circle-info me-1 text-primary"></i>
+        El rendimiento se calcula como
+        <strong>kilómetros recorridos ÷ litros de la carga actual</strong>,
+        comparando dos cargas consecutivas del mismo bus.
+        Para una medición confiable conviene registrar cargas completas de forma consistente.
     </div>
 </div>
 {% endblock %}

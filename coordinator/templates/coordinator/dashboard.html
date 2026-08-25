@@ -5,100 +5,543 @@
 
 {% block extra_css %}
 <style>
+    :root {
+        --dash-blue: #2563eb;
+        --dash-blue-soft: #eff6ff;
+        --dash-green: #059669;
+        --dash-green-soft: #ecfdf5;
+        --dash-purple: #7c3aed;
+        --dash-purple-soft: #f5f3ff;
+        --dash-orange: #ea580c;
+        --dash-orange-soft: #fff7ed;
+        --dash-slate: #0f172a;
+        --dash-muted: #64748b;
+        --dash-border: #e2e8f0;
+    }
+
+    .dashboard-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+        color: #fff;
+        border-radius: 22px;
+        padding: 28px 30px;
+        margin-bottom: 24px;
+        box-shadow: 0 14px 34px rgba(37, 99, 235, .18);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .dashboard-hero::after {
+        content: "";
+        position: absolute;
+        width: 190px;
+        height: 190px;
+        border-radius: 50%;
+        background: rgba(255,255,255,.08);
+        right: -55px;
+        top: -70px;
+    }
+
+    .dashboard-hero .eyebrow {
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        opacity: .78;
+        margin-bottom: 6px;
+    }
+
+    .dashboard-hero h2 {
+        font-size: 1.85rem;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
+
+    .dashboard-hero p {
+        margin: 0;
+        color: rgba(255,255,255,.78);
+    }
+
     .stat-card {
         background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-        transition: transform 0.2s;
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, .06);
+        transition: transform .2s ease, box-shadow .2s ease;
         height: 100%;
-        border-left: 5px solid #3b82f6;
+        border: 1px solid rgba(226, 232, 240, .8);
+        position: relative;
+        overflow: hidden;
     }
+
     .stat-card:hover {
         transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .10);
     }
+
+    .stat-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 5px;
+        background: var(--accent);
+    }
+
+    .stat-card.blue   { --accent: var(--dash-blue);   --soft: var(--dash-blue-soft); }
+    .stat-card.green  { --accent: var(--dash-green);  --soft: var(--dash-green-soft); }
+    .stat-card.purple { --accent: var(--dash-purple); --soft: var(--dash-purple-soft); }
+    .stat-card.orange { --accent: var(--dash-orange); --soft: var(--dash-orange-soft); }
+
+    .stat-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--soft);
+        color: var(--accent);
+        font-size: 1.25rem;
+        flex: 0 0 auto;
+    }
+
     .stat-card .number {
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: #0f172a;
-    }
-    .stat-card .label {
-        font-size: 0.9rem;
-        color: #64748b;
-        margin-top: 4px;
-    }
-    .stat-card .icon {
-        float: right;
         font-size: 2rem;
-        opacity: 0.3;
+        line-height: 1;
+        font-weight: 850;
+        color: var(--dash-slate);
+        margin-top: 10px;
     }
-    .stat-card.green { border-left-color: #10b981; }
-    .stat-card.purple { border-left-color: #8b5cf6; }
-    .stat-card.orange { border-left-color: #f59e0b; }
+
+    .stat-card .label {
+        font-size: .88rem;
+        color: var(--dash-muted);
+        margin-top: 7px;
+        font-weight: 600;
+    }
+
+    .quick-actions-title {
+        font-size: .78rem;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        font-weight: 800;
+        color: var(--dash-muted);
+        margin-bottom: 10px;
+    }
+
+    .quick-action {
+        background: #fff;
+        border: 1px solid var(--dash-border);
+        border-radius: 14px;
+        padding: 14px 16px;
+        text-decoration: none;
+        color: var(--dash-slate);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 100%;
+        transition: .2s ease;
+        box-shadow: 0 3px 12px rgba(15, 23, 42, .04);
+    }
+
+    .quick-action:hover {
+        transform: translateY(-2px);
+        border-color: #bfdbfe;
+        box-shadow: 0 8px 20px rgba(37, 99, 235, .08);
+        color: var(--dash-blue);
+    }
+
+    .quick-action .qa-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--dash-blue-soft);
+        color: var(--dash-blue);
+        flex: 0 0 auto;
+    }
+
+    .quick-action .qa-text strong {
+        display: block;
+        font-size: .92rem;
+        line-height: 1.2;
+    }
+
+    .quick-action .qa-text span {
+        display: block;
+        color: var(--dash-muted);
+        font-size: .76rem;
+        margin-top: 3px;
+    }
+
+    .dashboard-card {
+        border: 0;
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: 0 6px 22px rgba(15, 23, 42, .06);
+    }
+
+    .dashboard-card .card-header {
+        background: #fff;
+        border-bottom: 1px solid #eef2f7;
+        padding: 18px 20px;
+    }
+
+    .dashboard-card .card-title {
+        font-weight: 800;
+        color: var(--dash-slate);
+        margin: 0;
+        font-size: 1rem;
+    }
 
     .table-viajes thead th {
-        background: #f1f5f9;
-        font-weight: 600;
-        font-size: 0.8rem;
+        background: #f8fafc;
+        font-weight: 750;
+        font-size: .72rem;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: .05em;
         color: #475569;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 12px 14px;
+        white-space: nowrap;
     }
+
     .table-viajes td {
         vertical-align: middle;
-        padding: 10px 12px;
+        padding: 13px 14px;
+        color: #334155;
+        border-color: #f1f5f9;
     }
+
+    .trip-time {
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--dash-slate);
+    }
+
+    .route-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 650;
+        color: #1e293b;
+    }
+
+    .seat-summary {
+        font-size: .83rem;
+        white-space: nowrap;
+    }
+
     .badge-estado {
-        padding: 4px 12px;
-        border-radius: 30px;
-        font-weight: 600;
-        font-size: 0.75rem;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: .72rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .empty-state {
+        padding: 48px 20px;
+        text-align: center;
+        color: var(--dash-muted);
+    }
+
+    .empty-state .empty-icon {
+        width: 62px;
+        height: 62px;
+        border-radius: 18px;
+        margin: 0 auto 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--dash-blue-soft);
+        color: var(--dash-blue);
+        font-size: 1.5rem;
+    }
+
+    .ops-panel {
+        background: #fff;
+        border-radius: 18px;
+        border: 1px solid var(--dash-border);
+        box-shadow: 0 6px 22px rgba(15, 23, 42, .05);
+        overflow: hidden;
+    }
+
+    .ops-panel-header {
+        padding: 16px 18px;
+        border-bottom: 1px solid #eef2f7;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .ops-panel-header h5 {
+        margin: 0;
+        color: var(--dash-slate);
+        font-size: 1rem;
+        font-weight: 800;
+    }
+
+    .ops-alert {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 18px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .ops-alert:last-child {
+        border-bottom: 0;
+    }
+
+    .ops-alert-icon {
+        width: 42px;
+        height: 42px;
+        min-width: 42px;
+        border-radius: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .ops-alert-danger .ops-alert-icon {
+        background: #fff1f2;
+        color: #e11d48;
+    }
+
+    .ops-alert-warning .ops-alert-icon {
+        background: #fffbeb;
+        color: #d97706;
+    }
+
+    .ops-alert-info .ops-alert-icon {
+        background: #eff6ff;
+        color: #2563eb;
+    }
+
+    .ops-alert-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .ops-alert-title {
+        font-weight: 800;
+        color: #1e293b;
+        font-size: .9rem;
+    }
+
+    .ops-alert-message {
+        color: var(--dash-muted);
+        font-size: .8rem;
+        margin-top: 2px;
+    }
+
+    .ops-clear {
+        padding: 28px 18px;
+        text-align: center;
+        color: #047857;
+        background: #f0fdf4;
+    }
+
+    @media (max-width: 767.98px) {
+        .dashboard-hero {
+            padding: 22px;
+            border-radius: 16px;
+        }
+
+        .dashboard-hero h2 {
+            font-size: 1.45rem;
+        }
+
+        .stat-card {
+            padding: 17px;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4">
-    <h3 class="mb-4"><i class="fas fa-chart-pie me-2"></i> Panel de Control</h3>
 
-    <!-- Tarjetas de resumen -->
-    <div class="row g-4 mb-5">
-        <div class="col-md-3">
-            <div class="stat-card">
-                <div class="icon"><i class="fas fa-bus"></i></div>
-                <div class="number">{{ viajes_hoy }}</div>
-                <div class="label">Viajes de hoy</div>
+    <div class="dashboard-hero">
+        <div class="eyebrow">Centro operacional</div>
+        <h2><i class="fas fa-chart-line me-2"></i>Panel de Control</h2>
+        <p>Resumen de la operación, viajes próximos y accesos rápidos de Coordinación.</p>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="stat-card blue">
+                <div class="stat-top">
+                    <div>
+                        <div class="label mt-0">Viajes de hoy</div>
+                        <div class="number">{{ viajes_hoy }}</div>
+                    </div>
+                    <div class="stat-icon"><i class="fas fa-route"></i></div>
+                </div>
             </div>
         </div>
-        <div class="col-md-3">
+
+        <div class="col-sm-6 col-xl-3">
             <div class="stat-card green">
-                <div class="icon"><i class="fas fa-truck"></i></div>
-                <div class="number">{{ buses_activos }}</div>
-                <div class="label">Buses activos (7 días)</div>
+                <div class="stat-top">
+                    <div>
+                        <div class="label mt-0">Buses activos (7 días)</div>
+                        <div class="number">{{ buses_activos }}</div>
+                    </div>
+                    <div class="stat-icon"><i class="fas fa-bus"></i></div>
+                </div>
             </div>
         </div>
-        <div class="col-md-3">
+
+        <div class="col-sm-6 col-xl-3">
             <div class="stat-card purple">
-                <div class="icon"><i class="fas fa-user"></i></div>
-                <div class="number">{{ pasajeros_hoy }}</div>
-                <div class="label">Pasajeros estimados hoy</div>
+                <div class="stat-top">
+                    <div>
+                        <div class="label mt-0">Pasajeros estimados hoy</div>
+                        <div class="number">{{ pasajeros_hoy }}</div>
+                    </div>
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                </div>
             </div>
         </div>
-        <div class="col-md-3">
+
+        <div class="col-sm-6 col-xl-3">
             <div class="stat-card orange">
-                <div class="icon"><i class="fas fa-percent"></i></div>
-                <div class="number">{{ ocupacion_promedio|default:0 }}%</div>
-                <div class="label">Ocupación promedio</div>
+                <div class="stat-top">
+                    <div>
+                        <div class="label mt-0">Ocupación promedio</div>
+                        <div class="number">{{ ocupacion_promedio|default:0 }}%</div>
+                    </div>
+                    <div class="stat-icon"><i class="fas fa-chart-pie"></i></div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Viajes próximos -->
-    <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-header bg-white py-3">
-            <h5 class="mb-0"><i class="fas fa-clock me-2"></i> Viajes próximos (próximas 24h)</h5>
+    <div class="mb-4">
+        <div class="quick-actions-title">Accesos rápidos</div>
+
+        <div class="row g-3">
+            <div class="col-md-6 col-xl-3">
+                <a href="{% url 'coordinator:trips_dashboard' %}" class="quick-action">
+                    <div class="qa-icon"><i class="fas fa-calendar-alt"></i></div>
+                    <div class="qa-text">
+                        <strong>Gestionar viajes</strong>
+                        <span>Crear, editar y revisar viajes</span>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-6 col-xl-3">
+                <a href="{% url 'coordinator:generate_trips' %}" class="quick-action">
+                    <div class="qa-icon"><i class="fas fa-calendar-week"></i></div>
+                    <div class="qa-text">
+                        <strong>Viajes recurrentes</strong>
+                        <span>Programación masiva con vista previa</span>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-6 col-xl-3">
+                <a href="{% url 'coordinator:checkin_qr_scan' %}" class="quick-action">
+                    <div class="qa-icon"><i class="fas fa-qrcode"></i></div>
+                    <div class="qa-text">
+                        <strong>Check-in QR</strong>
+                        <span>Validar pasajes desde cámara</span>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-6 col-xl-3">
+                <a href="{% url 'coordinator:buses_dashboard' %}" class="quick-action">
+                    <div class="qa-icon"><i class="fas fa-bus-alt"></i></div>
+                    <div class="qa-text">
+                        <strong>Flota</strong>
+                        <span>Administrar buses y operación</span>
+                    </div>
+                </a>
+            </div>
         </div>
+    </div>
+
+    <!-- Alertas operacionales -->
+    <div class="ops-panel mb-4">
+        <div class="ops-panel-header">
+            <h5>
+                <i class="fas fa-triangle-exclamation me-2 text-warning"></i>
+                Alertas operacionales
+            </h5>
+
+            {% if total_alertas %}
+                <span class="badge rounded-pill text-bg-danger">
+                    {{ total_alertas }}
+                </span>
+            {% else %}
+                <span class="badge rounded-pill text-bg-success">
+                    Todo al día
+                </span>
+            {% endif %}
+        </div>
+
+        {% if alertas_operacionales %}
+            {% for alerta in alertas_operacionales %}
+                <div class="ops-alert ops-alert-{{ alerta.level }}">
+                    <div class="ops-alert-icon">
+                        <i class="fas {{ alerta.icon }}"></i>
+                    </div>
+
+                    <div class="ops-alert-content">
+                        <div class="ops-alert-title">
+                            {{ alerta.title }}
+                        </div>
+                        <div class="ops-alert-message">
+                            {{ alerta.message }}
+                        </div>
+                    </div>
+
+                    <a href="{% url alerta.url_name %}"
+                       class="btn btn-sm btn-outline-secondary">
+                        {{ alerta.action }}
+                        <i class="fas fa-arrow-right ms-1"></i>
+                    </a>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="ops-clear">
+                <i class="fas fa-circle-check me-2"></i>
+                <strong>Sin alertas operacionales.</strong>
+                Documentación, mantenciones y asignaciones no presentan avisos inmediatos.
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="card dashboard-card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="card-title">
+                    <i class="fas fa-clock me-2 text-primary"></i>
+                    Viajes próximos
+                </h5>
+                <small class="text-muted">Servicios programados para las próximas 24 horas</small>
+            </div>
+
+            <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-sm btn-outline-primary">
+                Ver todos <i class="fas fa-arrow-right ms-1"></i>
+            </a>
+        </div>
+
         <div class="card-body p-0">
             {% if viajes_proximos %}
                 <div class="table-responsive">
@@ -116,16 +559,42 @@
                         <tbody>
                             {% for viaje in viajes_proximos %}
                             <tr>
-                                <td><strong>{{ viaje.hora }}</strong></td>
-                                <td>{{ viaje.ruta }}</td>
-                                <td>{{ viaje.bus }}</td>
-                                <td>{{ viaje.chofer }}</td>
+                                <td><span class="trip-time">{{ viaje.hora }}</span></td>
                                 <td>
-                                    <span class="text-success fw-semibold">{{ viaje.asientos_libres }}</span> libres /
-                                    <span class="text-secondary">{{ viaje.asientos_ocupados }}</span> ocupados
+                                    <span class="route-pill">
+                                        <i class="fas fa-location-arrow text-primary"></i>
+                                        {{ viaje.ruta }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge text-bg-light border">
+                                        <i class="fas fa-bus me-1"></i>{{ viaje.bus }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if viaje.chofer and viaje.chofer != "Sin asignar" %}
+                                        <i class="fas fa-user-circle text-secondary me-1"></i>
+                                        {{ viaje.chofer }}
+                                    {% else %}
+                                        <span class="text-muted">Sin asignar</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="seat-summary">
+                                        <span class="text-success fw-bold">{{ viaje.asientos_libres }}</span>
+                                        <span class="text-muted"> libres</span>
+                                        <span class="mx-1 text-muted">·</span>
+                                        <span class="fw-semibold">{{ viaje.asientos_ocupados }}</span>
+                                        <span class="text-muted"> ocupados</span>
+                                    </div>
                                 </td>
                                 <td>
                                     <span class="badge-estado bg-{{ viaje.estado_color }} text-white">
+                                        {% if viaje.estado == "Próximo" %}
+                                            <i class="fas fa-clock"></i>
+                                        {% else %}
+                                            <i class="fas fa-play"></i>
+                                        {% endif %}
                                         {{ viaje.estado }}
                                     </span>
                                 </td>
@@ -135,17 +604,17 @@
                     </table>
                 </div>
             {% else %}
-                <div class="text-center py-5 text-muted">
-                    <i class="fas fa-info-circle fa-2x mb-2"></i>
-                    <p>No hay viajes programados en las próximas 24 horas.</p>
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fas fa-calendar-check"></i></div>
+                    <h6 class="fw-bold text-dark mb-1">Sin salidas próximas</h6>
+                    <p class="mb-3">No hay viajes programados durante las próximas 24 horas.</p>
+                    <a href="{% url 'coordinator:generate_trips' %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus me-1"></i> Programar viajes
+                    </a>
                 </div>
             {% endif %}
         </div>
-        <div class="card-footer bg-white border-0 text-end">
-            <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-sm btn-outline-primary">
-                Ver todos los viajes <i class="fas fa-arrow-right ms-1"></i>
-            </a>
-        </div>
     </div>
+
 </div>
 {% endblock %}

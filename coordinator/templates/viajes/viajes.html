@@ -166,7 +166,22 @@
             <h5 class="mb-0 text-uppercase fw-semibold">
                 <i class="fas fa-list me-2 text-primary"></i> LISTA DE VIAJES
             </h5>
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <!-- Filtro operacional por estado (servidor) -->
+                <div class="btn-group btn-group-sm" role="group" aria-label="Filtrar viajes por estado">
+                    <a href="?estado=proximos{% if query %}&q={{ query|urlencode }}{% endif %}"
+                       class="btn {% if status_filter == 'proximos' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                        <i class="fas fa-clock me-1"></i> Próximos
+                    </a>
+                    <a href="?estado=finalizados{% if query %}&q={{ query|urlencode }}{% endif %}"
+                       class="btn {% if status_filter == 'finalizados' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                        <i class="fas fa-check-circle me-1"></i> Finalizados
+                    </a>
+                    <a href="?estado=todos{% if query %}&q={{ query|urlencode }}{% endif %}"
+                       class="btn {% if status_filter == 'todos' %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                        <i class="fas fa-list me-1"></i> Todos
+                    </a>
+                </div>
                 <!-- Filtro por mes/año (cliente) -->
                 <div class="d-flex align-items-center gap-2">
                     <input type="month" id="monthFilter" class="form-control form-control-sm" style="width: 160px;">
@@ -176,6 +191,7 @@
                 </div>
                 <!-- Buscador por texto (envía a servidor) -->
                 <form method="get" class="d-flex">
+                    <input type="hidden" name="estado" value="{{ status_filter }}">
                     <div class="input-group input-group-sm">
                         <input type="text" name="q" class="form-control" placeholder="Buscar origen, destino, patente, chofer..." value="{{ query }}">
                         <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
@@ -227,7 +243,7 @@
                                 </a>
                                 <button type="button" class="btn btn-sm btn-outline-danger delete-trip" 
                                         data-id="{{ trip.id }}" data-name="{{ trip.route }}" 
-                                        data-has-tickets="{% if trip.tickets.count > 0 %}true{% else %}false{% endif %}">
+                                        data-has-tickets="{% if trip.tickets_count > 0 %}true{% else %}false{% endif %}">
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
 
@@ -241,7 +257,7 @@
                         <tr>
                             <td colspan="9" class="text-center py-4 text-muted">
                                 <i class="fas fa-calendar-times fa-2x mb-2 d-block"></i>
-                                No hay viajes registrados. Crea uno arriba.
+                                {% if status_filter == 'proximos' %}No hay viajes próximos registrados.{% elif status_filter == 'finalizados' %}No hay viajes finalizados registrados.{% else %}No hay viajes registrados. Crea uno arriba.{% endif %}
                             </td>
                         </tr>
                         {% endfor %}

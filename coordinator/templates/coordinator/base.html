@@ -150,6 +150,116 @@
             background: #1e293b !important;
             color: #fca5a5 !important;
         }
+
+
+        /* ===== ALERTAS DEL SISTEMA ===== */
+        .system-messages {
+            margin-bottom: 18px;
+        }
+
+        .system-alert {
+            border: 0;
+            border-left: 5px solid transparent;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+            padding: 14px 48px 14px 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .system-alert .alert-icon {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1px;
+        }
+
+        .system-alert .alert-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .system-alert .alert-title {
+            display: block;
+            font-weight: 800;
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .system-alert .alert-message {
+            margin: 0;
+            line-height: 1.45;
+        }
+
+        .system-alert.alert-danger {
+            background: #fff1f2;
+            color: #9f1239;
+            border-left-color: #e11d48;
+        }
+
+        .system-alert.alert-danger .alert-icon {
+            background: #ffe4e6;
+            color: #e11d48;
+        }
+
+        .system-alert.alert-warning {
+            background: #fffbeb;
+            color: #92400e;
+            border-left-color: #f59e0b;
+        }
+
+        .system-alert.alert-warning .alert-icon {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .system-alert.alert-success {
+            background: #ecfdf5;
+            color: #166534;
+            border-left-color: #22c55e;
+        }
+
+        .system-alert.alert-success .alert-icon {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .system-alert.alert-info {
+            background: #eff6ff;
+            color: #1e40af;
+            border-left-color: #3b82f6;
+        }
+
+        .system-alert.alert-info .alert-icon {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+
+        .system-alert .btn-close {
+            top: 50%;
+            transform: translateY(-50%);
+            right: 14px;
+        }
+
+        @media (max-width: 767.98px) {
+            .sidebar {
+                min-height: auto;
+            }
+
+            .content {
+                padding: 14px;
+            }
+
+            .system-alert {
+                border-radius: 10px;
+                padding: 12px 42px 12px 12px;
+            }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -197,6 +307,7 @@
                                 <li><a href="{% url 'coordinator:generate_trips' %}" class="nav-item"><i class="fas fa-calendar-week"></i> Viajes recurrentes</a></li>
                                 <li><a href="{% url 'coordinator:parcel_list' %}" class="nav-item"><i class="fas fa-box"></i> Encomiendas</a></li>
                                 <li><a href="{% url 'coordinator:maintenance_list' %}" class="nav-item"><i class="fas fa-wrench"></i> Mantenimiento</a></li>
+                                <li><a href="{% url 'coordinator:fuel_list' %}" class="nav-item"><i class="fas fa-gas-pump"></i> Combustible</a></li>
                             </ul>
                         </li>
 
@@ -254,16 +365,76 @@
         </div>
 
         <div class="col-md-10 content">
-            <!-- ===== FILTRO DE MENSAJES MEJORADO ===== -->
+            <!-- ===== MENSAJES DEL SISTEMA / BOOTSTRAP ===== -->
             {% if messages %}
-                {% for message in messages %}
-                    {% if 'acceso denegado' not in message|lower and 'permisos' not in message|lower and 'caja' not in message|lower and 'abrir' not in message|lower %}
-                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                            {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    {% endif %}
-                {% endfor %}
+                <div class="system-messages" aria-live="polite" aria-atomic="true">
+                    {% for message in messages %}
+                        {% if 'acceso denegado' not in message|lower and 'permisos' not in message|lower and 'caja' not in message|lower and 'abrir' not in message|lower %}
+
+                            {% if message.tags == 'error' %}
+                                <div class="alert alert-danger system-alert alert-dismissible fade show" role="alert">
+                                    <div class="alert-icon">
+                                        <i class="fas fa-triangle-exclamation"></i>
+                                    </div>
+                                    <div class="alert-content">
+                                        <span class="alert-title">Conflicto o error</span>
+                                        <p class="alert-message">{{ message }}</p>
+                                    </div>
+                                    <button type="button"
+                                            class="btn-close"
+                                            data-bs-dismiss="alert"
+                                            aria-label="Cerrar"></button>
+                                </div>
+
+                            {% elif message.tags == 'warning' %}
+                                <div class="alert alert-warning system-alert alert-dismissible fade show" role="alert">
+                                    <div class="alert-icon">
+                                        <i class="fas fa-circle-exclamation"></i>
+                                    </div>
+                                    <div class="alert-content">
+                                        <span class="alert-title">Advertencia</span>
+                                        <p class="alert-message">{{ message }}</p>
+                                    </div>
+                                    <button type="button"
+                                            class="btn-close"
+                                            data-bs-dismiss="alert"
+                                            aria-label="Cerrar"></button>
+                                </div>
+
+                            {% elif message.tags == 'success' %}
+                                <div class="alert alert-success system-alert alert-dismissible fade show" role="alert">
+                                    <div class="alert-icon">
+                                        <i class="fas fa-circle-check"></i>
+                                    </div>
+                                    <div class="alert-content">
+                                        <span class="alert-title">Operación realizada</span>
+                                        <p class="alert-message">{{ message }}</p>
+                                    </div>
+                                    <button type="button"
+                                            class="btn-close"
+                                            data-bs-dismiss="alert"
+                                            aria-label="Cerrar"></button>
+                                </div>
+
+                            {% else %}
+                                <div class="alert alert-info system-alert alert-dismissible fade show" role="alert">
+                                    <div class="alert-icon">
+                                        <i class="fas fa-circle-info"></i>
+                                    </div>
+                                    <div class="alert-content">
+                                        <span class="alert-title">Información</span>
+                                        <p class="alert-message">{{ message }}</p>
+                                    </div>
+                                    <button type="button"
+                                            class="btn-close"
+                                            data-bs-dismiss="alert"
+                                            aria-label="Cerrar"></button>
+                                </div>
+                            {% endif %}
+
+                        {% endif %}
+                    {% endfor %}
+                </div>
             {% endif %}
 
             {% block content %}{% endblock %}
@@ -272,15 +443,33 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Marcar enlace activo
-    document.querySelectorAll('.sidebar a.nav-item, .sidebar > ul > li > a').forEach(link => {
-        if (link.href === window.location.href) {
-            link.classList.add('active');
+    // Marcar enlace activo según la URL actual.
+    document.querySelectorAll('.sidebar a').forEach(link => {
+        try {
+            const linkUrl = new URL(link.href);
+            if (linkUrl.pathname === window.location.pathname) {
+                link.classList.add('active');
+            }
+        } catch (e) {
+            // Ignorar enlaces que no puedan convertirse en URL.
         }
     });
 
-    // Mantener estado de collapse abierto si hay un enlace activo dentro (esto asegura que si un usuario expande manualmente, se mantenga)
-    // Pero ahora NO abrimos automáticamente porque queremos que inicie colapsado.
+    // Abrir automáticamente el grupo que contiene la opción activa.
+    // Los demás grupos permanecen colapsados.
+    document.querySelectorAll('.submenu').forEach(menu => {
+        if (menu.querySelector('a.active')) {
+            menu.classList.add('show');
+
+            const header = document.querySelector(
+                `[data-bs-target="#${menu.id}"]`
+            );
+
+            if (header) {
+                header.setAttribute('aria-expanded', 'true');
+            }
+        }
+    });
 </script>
 {% block extra_js %}{% endblock %}
 </body>
