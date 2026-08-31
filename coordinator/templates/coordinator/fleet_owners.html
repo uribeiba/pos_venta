@@ -1,0 +1,106 @@
+{% extends 'coordinator/base.html' %}
+{% block title %}Propietarios / Socios{% endblock %}
+
+{% block extra_css %}
+<style>
+.owner-hero{background:linear-gradient(135deg,#0f172a,#1d4ed8);color:#fff;border-radius:18px;padding:22px 24px;margin:18px 0 22px}
+.panel-card{border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.05);overflow:hidden;background:#fff}
+.panel-head{padding:14px 16px;border-bottom:1px solid #eef2f7;font-weight:800}
+.owner-name{font-weight:800;color:#0f172a}.owner-meta{font-size:.76rem;color:#64748b}
+.status-chip{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:.7rem;font-weight:800}
+.status-active{background:#dcfce7;color:#166534}.status-inactive{background:#fee2e2;color:#991b1b}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="owner-hero d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+            <div class="small text-uppercase fw-bold opacity-75">FASE 2.18.3-A1.1</div>
+            <h3 class="mb-1"><i class="fas fa-users me-2"></i>Propietarios / Socios</h3>
+            <div class="opacity-75">Relaciona cada socio con la empresa operadora y sus buses.</div>
+        </div>
+        <a href="{% url 'coordinator:buses_dashboard' %}" class="btn btn-light btn-sm">
+            <i class="fas fa-bus me-1"></i> Volver a buses
+        </a>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-4">
+            <div class="panel-card">
+                <div class="panel-head">{% if edit_mode %}Editar propietario{% else %}Nuevo propietario{% endif %}</div>
+                <div class="p-3">
+                    <form method="post">
+                        {% csrf_token %}
+                        {% for field in form %}
+                            {% if field.name == 'is_active' %}
+                                <div class="form-check form-switch mb-3">
+                                    {{ field }} <label class="form-check-label">{{ field.label }}</label>
+                                    {{ field.errors }}
+                                </div>
+                            {% else %}
+                                <div class="mb-3">
+                                    <label class="form-label">{{ field.label }}</label>
+                                    {{ field }}
+                                    {{ field.errors }}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" type="submit"><i class="fas fa-save me-1"></i>Guardar</button>
+                            {% if edit_mode %}
+                            <a href="{% url 'coordinator:fleet_owners_dashboard' %}" class="btn btn-outline-secondary">Cancelar edición</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-8">
+            <div class="panel-card">
+                <div class="panel-head d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                    <span>Propietarios registrados</span>
+                    <form method="get" class="d-flex">
+                        <input class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="Nombre, RUT, empresa...">
+                        <button class="btn btn-sm btn-outline-secondary ms-2"><i class="fas fa-search"></i></button>
+                    </form>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>Propietario</th><th>Empresa</th><th>RUT</th><th>Buses</th><th>Estado</th><th class="text-end">Acciones</th></tr>
+                        </thead>
+                        <tbody>
+                        {% for owner in owners %}
+                            <tr>
+                                <td><div class="owner-name">{{ owner.display_name }}</div><div class="owner-meta">{{ owner.get_owner_type_display }}</div></td>
+                                <td>{{ owner.company.name }}</td>
+                                <td>{{ owner.rut|default:"—" }}</td>
+                                <td><span class="badge bg-light text-dark">{{ owner.bus_count }}</span></td>
+                                <td>
+                                    {% if owner.is_active %}<span class="status-chip status-active">Activo</span>
+                                    {% else %}<span class="status-chip status-inactive">Inactivo</span>{% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <a href="?edit={{ owner.id }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i></a>
+                                    <form method="post" action="{% url 'coordinator:fleet_owner_delete' owner.id %}" class="d-inline" onsubmit="return confirm('¿Eliminar este propietario?');">
+                                        {% csrf_token %}
+                                        <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="6" class="text-center py-4 text-muted">No hay propietarios registrados.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if owners.has_other_pages %}
+                <div class="p-3">{% include "pagination.html" with page_obj=owners %}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -6,70 +6,344 @@
 
 {% block extra_css %}
 <style>
+    .trip-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+        color: #fff;
+        border-radius: 18px;
+        padding: 22px 24px;
+        box-shadow: 0 10px 28px rgba(37,99,235,.16);
+    }
+    .trip-hero .eyebrow {
+        font-size: .72rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        opacity: .75;
+    }
+    .trip-hero h3 { margin: 4px 0 3px; font-weight: 850; }
+    .trip-hero .sub { color: rgba(255,255,255,.78); }
+
+    .ops-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        box-shadow: 0 5px 18px rgba(15,23,42,.05);
+        overflow: hidden;
+        background: #fff;
+    }
+    .ops-card-head {
+        padding: 14px 16px;
+        border-bottom: 1px solid #eef2f7;
+        font-weight: 800;
+        color: #0f172a;
+        background: #fff;
+    }
     .occupancy-bar { height: 25px; border-radius: 12px; }
+
+    .dispatch-box {
+        border-radius: 16px;
+        padding: 16px 18px;
+        border: 1px solid;
+    }
+    .dispatch-operational { background:#f0fdf4; border-color:#bbf7d0; }
+    .dispatch-attention { background:#fffbeb; border-color:#fde68a; }
+    .dispatch-blocked { background:#fff1f2; border-color:#fecdd3; }
+    .dispatch-running { background:#eff6ff; border-color:#bfdbfe; }
+    .dispatch-completed { background:#f8fafc; border-color:#cbd5e1; }
+
+    .op-badge {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:6px 10px;
+        border-radius:999px;
+        font-size:.72rem;
+        font-weight:800;
+    }
+    .op-success { background:#dcfce7; color:#166534; }
+    .op-warning { background:#fef3c7; color:#92400e; }
+    .op-danger { background:#fee2e2; color:#991b1b; }
+    .op-primary { background:#dbeafe; color:#1d4ed8; }
+    .op-secondary { background:#e2e8f0; color:#334155; }
+
+    .reason-list { margin:8px 0 0; padding-left:18px; font-size:.82rem; }
+    .info-grid {
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+        gap:12px 22px;
+    }
+    .info-item .label {
+        font-size:.68rem;
+        text-transform:uppercase;
+        color:#64748b;
+        font-weight:800;
+        letter-spacing:.04em;
+    }
+    .info-item .value {
+        color:#0f172a;
+        font-weight:650;
+        margin-top:2px;
+    }
+    @media(max-width:767px){
+        .info-grid{grid-template-columns:1fr}
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid px-4">
-    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
-        <h3><i class="fas fa-bus me-2"></i> Viaje #{{ trip.id }}: {{ trip.route.origin.name }} → {{ trip.route.destination.name }}</h3>
+<div class="container-fluid px-4 py-3">
+
+    <div class="trip-hero mb-4 d-flex justify-content-between align-items-start gap-3 flex-wrap">
         <div>
-            <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver</a>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white fw-semibold">Información del viaje</div>
-                <div class="card-body">
-                    <p><strong>Salida:</strong> {{ trip.departure|date:"d/m/Y H:i" }}</p>
-                    <p><strong>Llegada:</strong> {{ trip.arrival|date:"d/m/Y H:i"|default:"—" }}</p>
-                    <p><strong>Bus:</strong> {{ trip.bus.plate }} ({{ trip.bus.model|default:"—" }})</p>
-                    <p><strong>Conductores:</strong> {{ trip.driver1.full_name|default:"—" }} / {{ trip.driver2.full_name|default:"—" }}</p>
-                    <p><strong>Auxiliar:</strong> {{ trip.assistant.full_name|default:"—" }}</p>
-                </div>
+            <div class="eyebrow">Operación · Viaje #{{ trip.id }}</div>
+            <h3>
+                <i class="fas fa-route me-2"></i>
+                {{ trip.route.origin.name }} → {{ trip.route.destination.name }}
+            </h3>
+            <div class="sub">
+                {{ trip.departure|date:"d/m/Y H:i" }} · Bus {{ trip.bus.plate }}
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white fw-semibold">Ocupación</div>
-                <div class="card-body">
-                    <div class="mb-2">
-                        <div class="progress occupancy-bar">
-                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ occupancy_rate }}%">{{ occupancy_rate }}%</div>
+
+        <a href="{% url 'coordinator:trips_dashboard' %}"
+           class="btn btn-light btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Volver a viajes
+        </a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- FASE 2.18 · CONTROL REAL DE DESPACHO -->
+    {% if trip.status == trip.STATUS_SCHEDULED %}
+        {% if dispatch_is_blocked %}
+            <div class="dispatch-box dispatch-blocked mb-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div>
+                        <div class="op-badge op-danger mb-2">
+                            <i class="fas fa-ban"></i> NO OPERATIVO
                         </div>
-                        <small>{{ tickets.count }} de {{ trip.seats_total }} asientos ocupados</small>
+                        <h5 class="mb-1">Despacho bloqueado</h5>
+                        <div class="text-muted small">
+                            Este viaje no puede iniciar hasta corregir las condiciones operacionales.
+                        </div>
+
+                        {% if operational.blockers %}
+                            <ul class="reason-list text-danger">
+                                {% for reason in operational.blockers %}
+                                    <li>{{ reason }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
                     </div>
-                    <p><strong>Piso 1:</strong> {{ lower_occupancy }}% &nbsp;|&nbsp; <strong>Piso 2:</strong> {{ upper_occupancy }}%</p>
-                    <p><strong>No Show (no embarcados):</strong> {{ no_show_count }}</p>
+
+                    <button class="btn btn-danger" disabled>
+                        <i class="fas fa-lock me-1"></i> Despacho bloqueado
+                    </button>
+                </div>
+            </div>
+
+        {% elif dispatch_is_attention %}
+            <div class="dispatch-box dispatch-attention mb-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div>
+                        <div class="op-badge op-warning mb-2">
+                            <i class="fas fa-triangle-exclamation"></i> ATENCIÓN
+                        </div>
+                        <h5 class="mb-1">Puede despacharse con advertencia</h5>
+                        <div class="text-muted small">{{ operational.primary_reason }}</div>
+                    </div>
+
+                    <form method="post"
+                          action="{% url 'coordinator:trip_dispatch_start' trip.id %}"
+                          onsubmit="return confirm('Este viaje tiene advertencias operacionales. ¿Confirma iniciar el despacho?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-warning">
+                            <i class="fas fa-play me-1"></i> Iniciar despacho
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        {% else %}
+            <div class="dispatch-box dispatch-operational mb-4">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div>
+                        <div class="op-badge op-success mb-2">
+                            <i class="fas fa-circle-check"></i> OPERATIVO
+                        </div>
+                        <h5 class="mb-1">Viaje habilitado para despacho</h5>
+                        <div class="text-muted small">
+                            Bus y personal cumplen las condiciones operacionales.
+                        </div>
+                    </div>
+
+                    <form method="post"
+                          action="{% url 'coordinator:trip_dispatch_start' trip.id %}"
+                          onsubmit="return confirm('¿Confirma iniciar el despacho de este viaje?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-play me-1"></i> Iniciar despacho
+                        </button>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+
+    {% elif trip.status == trip.STATUS_IN_PROGRESS %}
+        <div class="dispatch-box {% if pending_close %}dispatch-attention{% else %}dispatch-running{% endif %} mb-4">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                    {% if pending_close %}
+                        <div class="op-badge op-warning mb-2">
+                            <i class="fas fa-flag-checkered"></i> PENDIENTE DE CIERRE
+                        </div>
+                        <h5 class="mb-1">La llegada programada ya fue superada</h5>
+                        <div class="small text-muted">
+                            El sistema no finaliza automáticamente porque no dispone de GPS/telemetría.
+                            Han transcurrido aproximadamente <strong>{{ overdue_close_minutes }} min</strong>
+                            desde la llegada programada.
+                        </div>
+                    {% else %}
+                        <div class="op-badge op-primary mb-2">
+                            <i class="fas fa-bus"></i> EN VIAJE
+                        </div>
+                        <h5 class="mb-1">Viaje despachado</h5>
+                    {% endif %}
+
+                    <div class="small text-muted mt-1">
+                        Salida real:
+                        <strong>{{ trip.actual_departure|date:"d/m/Y H:i:s" }}</strong>
+                        {% if trip.dispatched_by %}
+                            · por {{ trip.dispatched_by.get_full_name|default:trip.dispatched_by.username }}
+                        {% endif %}
+                    </div>
+                </div>
+
+                <form method="post"
+                      action="{% url 'coordinator:trip_dispatch_finish' trip.id %}"
+                      onsubmit="return confirm('¿Confirma que el bus llegó a destino y desea cerrar el viaje?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn {% if pending_close %}btn-warning{% else %}btn-primary{% endif %}">
+                        <i class="fas fa-flag-checkered me-1"></i> Confirmar llegada y finalizar
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    {% else %}
+        <div class="dispatch-box dispatch-completed mb-4">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                    <div class="op-badge op-secondary mb-2">
+                        <i class="fas fa-circle-check"></i> FINALIZADO
+                    </div>
+                    <h5 class="mb-1">Viaje cerrado</h5>
+                    <div class="small text-muted">
+                        Salida real: {{ trip.actual_departure|date:"d/m/Y H:i:s"|default:"—" }}
+                        · Llegada real: {{ trip.actual_arrival|date:"d/m/Y H:i:s"|default:"—" }}
+                        {% if trip.completed_by %}
+                            · cerrado por {{ trip.completed_by.get_full_name|default:trip.completed_by.username }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="ops-card h-100">
+                <div class="ops-card-head">
+                    <i class="fas fa-circle-info me-2 text-primary"></i>
+                    Información del viaje
+                </div>
+                <div class="p-3">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="label">Salida programada</div>
+                            <div class="value">{{ trip.departure|date:"d/m/Y H:i" }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="label">Llegada programada</div>
+                            <div class="value">{{ trip.arrival|date:"d/m/Y H:i"|default:"—" }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="label">Bus</div>
+                            <div class="value">{{ trip.bus.plate }} · {{ trip.bus.model|default:"—" }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="label">Chofer principal</div>
+                            <div class="value">{{ trip.driver1.full_name|default:"—" }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="label">Segundo chofer</div>
+                            <div class="value">{{ trip.driver2.full_name|default:"—" }}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="label">Auxiliar</div>
+                            <div class="value">{{ trip.assistant.full_name|default:"—" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="ops-card h-100">
+                <div class="ops-card-head">
+                    <i class="fas fa-users me-2 text-primary"></i>
+                    Ocupación
+                </div>
+                <div class="p-3">
+                    <div class="progress occupancy-bar mb-2">
+                        <div class="progress-bar bg-success"
+                             role="progressbar"
+                             style="width: {{ occupancy_rate }}%">
+                            {{ occupancy_rate }}%
+                        </div>
+                    </div>
+                    <small>{{ tickets.count }} de {{ trip.seats_total }} asientos ocupados</small>
+                    <hr>
+                    <div class="small">
+                        <strong>Piso 1:</strong> {{ lower_occupancy }}%
+                        &nbsp;|&nbsp;
+                        <strong>Piso 2:</strong> {{ upper_occupancy }}%
+                    </div>
+                    <div class="small mt-2">
+                        <strong>No Show / no embarcados:</strong> {{ no_show_count }}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-
-    <div class="mb-3">
-
+    <div class="my-4">
         <a href="{% url 'coordinator:checkin_qr_scan' %}"
            class="btn btn-success">
-    
-            <i class="fas fa-qrcode me-2"></i>
-            Escanear pasaje QR
-    
+            <i class="fas fa-qrcode me-2"></i> Escanear pasaje QR
         </a>
-    
     </div>
 
-
-    <div class="card shadow-sm">
-        <div class="card-header bg-white fw-semibold">Lista de pasajeros</div>
-        <div class="card-body p-0">
+    <div class="ops-card">
+        <div class="ops-card-head">Lista de pasajeros</div>
+        <div class="p-0">
             <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0">
                     <thead class="table-light">
-                        <tr><th>Asiento</th><th>Pasajero</th><th>RUT</th><th>N° Ticket</th><th>Embarcado</th><th>Acción</th></tr>
+                        <tr>
+                            <th>Asiento</th>
+                            <th>Pasajero</th>
+                            <th>RUT</th>
+                            <th>N° Ticket</th>
+                            <th>Embarcado</th>
+                            <th>Acción</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for t in tickets %}
@@ -80,21 +354,31 @@
                             <td>{{ t.number }}</td>
                             <td>
                                 {% if t.checked_in %}
-                                    <span class="badge bg-success"><i class="fas fa-check-circle"></i> Sí ({{ t.checked_in_at|date:"H:i" }})</span>
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle"></i>
+                                        Sí ({{ t.checked_in_at|date:"H:i" }})
+                                    </span>
                                 {% else %}
                                     <span class="badge bg-secondary">No</span>
                                 {% endif %}
                             </td>
                             <td>
                                 {% if not t.checked_in %}
-                                    <a href="{% url 'coordinator:checkin' t.number %}" class="btn btn-sm btn-primary">Marcar embarque</a>
+                                    <a href="{% url 'coordinator:checkin' t.number %}"
+                                       class="btn btn-sm btn-primary">
+                                        Marcar embarque
+                                    </a>
                                 {% else %}
                                     —
                                 {% endif %}
-                             </td>
-                         </tr>
+                            </td>
+                        </tr>
                         {% empty %}
-                         <tr><td colspan="6" class="text-center">No hay pasajeros registrados.</td></tr>
+                        <tr>
+                            <td colspan="6" class="text-center py-4">
+                                No hay pasajeros registrados.
+                            </td>
+                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>

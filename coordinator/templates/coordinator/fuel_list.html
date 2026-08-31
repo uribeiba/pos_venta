@@ -2,72 +2,92 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}Cargas de Combustible{% endblock %}
+{% block title %}Combustible de Flota{% endblock %}
+
+{% block extra_css %}
+<style>
+    .fuel-hero{
+        background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);
+        color:#fff;border-radius:18px;padding:22px 24px;
+        box-shadow:0 12px 30px rgba(30,64,175,.14)
+    }
+    .soft-card{border:0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.06);overflow:hidden}
+    .fuel-kpi{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:15px;height:100%;position:relative;overflow:hidden}
+    .fuel-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+    .fuel-kpi.blue{--accent:#2563eb}.fuel-kpi.green{--accent:#10b981}.fuel-kpi.orange{--accent:#f59e0b}.fuel-kpi.slate{--accent:#475569}.fuel-kpi.purple{--accent:#7c3aed}
+    .kpi-label{font-size:.72rem;color:#64748b;font-weight:700}
+    .kpi-value{font-size:1.5rem;font-weight:850;color:#0f172a}
+    .table thead th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#475569;white-space:nowrap}
+    .metric-main{font-weight:800}
+    .metric-sub{font-size:.72rem;color:#64748b}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-4">
-    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
-        <h3><i class="fas fa-gas-pump me-2"></i> Cargas de Combustible</h3>
-        <a href="{% url 'coordinator:fuel_create' %}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Nueva carga
-        </a>
-    </div>
+<div class="container-fluid px-4 py-3">
 
-    <!-- Resumen -->
-    <div class="row g-3 mb-3">
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted">Registros</div>
-                    <div class="fs-4 fw-bold">{{ records_count }}</div>
-                </div>
+    <div class="fuel-hero mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="small text-uppercase fw-bold opacity-75">Flota · Control de combustible</div>
+                <h3 class="mb-1 fw-bold"><i class="fas fa-gas-pump me-2"></i>Combustible de flota</h3>
+                <div class="small opacity-75">Consumo, costos, kilometraje y rendimiento operacional por bus.</div>
             </div>
-        </div>
-
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted">Litros registrados</div>
-                    <div class="fs-4 fw-bold text-primary">
-                        {{ total_liters|floatformat:2 }} L
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted">Costo registrado</div>
-                    <div class="fs-4 fw-bold">
-                        $ {{ total_cost|floatformat:0|intcomma }}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body py-3">
-                    <div class="small text-muted">Rendimiento promedio</div>
-                    <div class="fs-4 fw-bold text-success">
-                        {% if avg_efficiency %}
-                            {{ avg_efficiency|floatformat:2 }} km/L
-                        {% else %}
-                            —
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+            <a href="{% url 'coordinator:fuel_create' %}" class="btn btn-light">
+                <i class="fas fa-plus me-1"></i>Nueva carga
+            </a>
         </div>
     </div>
 
-    <!-- Filtros -->
-    <div class="card mb-3">
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl">
+            <div class="fuel-kpi slate">
+                <div class="kpi-label">Registros</div>
+                <div class="kpi-value">{{ records_count }}</div>
+                <div class="small text-muted mt-1">Cargas mostradas</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl">
+            <div class="fuel-kpi blue">
+                <div class="kpi-label">Litros registrados</div>
+                <div class="kpi-value text-primary">{{ total_liters|floatformat:2|intcomma }} L</div>
+                <div class="small text-muted mt-1">Volumen acumulado</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl">
+            <div class="fuel-kpi orange">
+                <div class="kpi-label">Costo registrado</div>
+                <div class="kpi-value">$ {{ total_cost|floatformat:0|intcomma }}</div>
+                <div class="small text-muted mt-1">
+                    {% if avg_cost_per_liter %}$ {{ avg_cost_per_liter|floatformat:0|intcomma }}/L promedio{% else %}Sin promedio aún{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl">
+            <div class="fuel-kpi green">
+                <div class="kpi-label">Rendimiento promedio</div>
+                <div class="kpi-value text-success">
+                    {% if avg_efficiency %}{{ avg_efficiency|floatformat:2 }} km/L{% else %}—{% endif %}
+                </div>
+                <div class="small text-muted mt-1">Sólo cargas consecutivas válidas</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl">
+            <div class="fuel-kpi purple">
+                <div class="kpi-label">Costo promedio por km</div>
+                <div class="kpi-value">
+                    {% if avg_cost_per_km %}$ {{ avg_cost_per_km|floatformat:2|intcomma }}{% else %}—{% endif %}
+                </div>
+                <div class="small text-muted mt-1">{{ total_distance|intcomma }} km medidos</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card soft-card mb-4">
         <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Bus</label>
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-6">
+                    <label class="form-label small fw-bold">Bus</label>
                     <select name="bus" class="form-select">
                         <option value="">Todos</option>
                         {% for b in buses %}
@@ -77,88 +97,110 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-secondary">Filtrar</button>
+                <div class="col-lg-2 d-grid">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-filter me-1"></i>Filtrar
+                    </button>
                 </div>
+                {% if bus_filter %}
+                <div class="col-lg-2 d-grid">
+                    <a href="{% url 'coordinator:fuel_list' %}" class="btn btn-outline-secondary">Limpiar</a>
+                </div>
+                {% endif %}
             </form>
         </div>
     </div>
 
-    <!-- Tabla de registros -->
-    <div class="card shadow-sm">
+    <div class="card soft-card">
+        <div class="card-header bg-white py-3">
+            <div class="fw-bold">
+                <i class="fas fa-clock-rotate-left me-2 text-primary"></i>Historial de cargas
+            </div>
+        </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
+                <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
                             <th>Bus</th>
                             <th>Fecha</th>
                             <th>Litros</th>
-                            <th>Costo ($)</th>
+                            <th>Costo</th>
                             <th>Kilometraje</th>
-                            <th>Rendimiento (km/L)</th>
+                            <th>Recorrido</th>
+                            <th>Rendimiento</th>
                             <th>Costo/km</th>
                             <th>Registrado por</th>
-                            <th>Acciones</th>
+                            <th class="text-end">Acción</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for r in records %}
+                    {% for r in records %}
                         <tr>
-                            <td>{{ r.bus.plate }}<br><small>{{ r.bus.model|default:"—" }}</small></td>
-                            <td>{{ r.date|date:"d/m/Y" }}</td>
-                            <td>{{ r.liters|floatformat:2 }} L</td>
-                            <td>$ {{ r.cost|intcomma }}</td>
-                            <td>{{ r.mileage|intcomma }} km</td>
                             <td>
-                                {% if r.efficiency_kml %}
-                                    <span class="fw-semibold text-success">
-                                        {{ r.efficiency_kml|floatformat:2 }} km/L
-                                    </span>
-                                    <div class="small text-muted">
-                                        {{ r.distance_since_previous|intcomma }} km recorridos
-                                    </div>
-                                {% else %}
-                                    <span class="text-muted"
-                                          title="Se necesitan al menos dos cargas consecutivas del mismo bus">
-                                        —
-                                    </span>
+                                <a href="{% url 'coordinator:bus_detail' r.bus.id %}" class="fw-bold text-decoration-none">
+                                    {{ r.bus.plate }}
+                                </a>
+                                <div class="small text-muted">{{ r.bus.model|default:"—" }}</div>
+                            </td>
+                            <td>{{ r.date|date:"d/m/Y" }}</td>
+                            <td>
+                                <div class="metric-main">{{ r.liters|floatformat:2 }} L</div>
+                                {% if r.cost_per_liter %}
+                                    <div class="metric-sub">$ {{ r.cost_per_liter|floatformat:0|intcomma }}/L</div>
                                 {% endif %}
                             </td>
+                            <td>$ {{ r.cost|floatformat:0|intcomma }}</td>
+                            <td>{{ r.mileage|intcomma }} km</td>
                             <td>
-                                {% if r.cost_per_km %}
-                                    $ {{ r.cost_per_km|floatformat:2 }}
+                                {% if r.distance_since_previous != None %}
+                                    {{ r.distance_since_previous|intcomma }} km
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>
+                                {% if r.efficiency_kml %}
+                                    <span class="fw-bold text-success">{{ r.efficiency_kml|floatformat:2 }} km/L</span>
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}
                             </td>
-                            <td>{{ r.created_by.username }}</td>
                             <td>
-                                <a href="{% url 'coordinator:fuel_delete' r.pk %}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar este registro?')">
-                                    <i class="fas fa-trash-alt"></i>
-                                </a>
-                             </td>
-                         </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="9" class="text-center text-muted py-5">
-                                <i class="fas fa-gas-pump fa-2x d-block mb-3"></i>
-                                No hay registros de combustible.
+                                {% if r.cost_per_km %}
+                                    $ {{ r.cost_per_km|floatformat:2|intcomma }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>{{ r.created_by.username|default:"—" }}</td>
+                            <td class="text-end">
+                                <form method="post"
+                                      action="{% url 'coordinator:fuel_delete' r.pk %}"
+                                      class="d-inline"
+                                      onsubmit="return confirm('¿Eliminar esta carga? El kilometraje operacional nunca retrocederá.');">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger" title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
                             </td>
                         </tr>
-                        {% endfor %}
+                    {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center py-5 text-muted">
+                                <i class="fas fa-gas-pump fa-2x mb-3 d-block"></i>
+                                No hay cargas de combustible para los filtros seleccionados.
+                            </td>
+                        </tr>
+                    {% endfor %}
                     </tbody>
-                 </table>
+                </table>
             </div>
         </div>
     </div>
 
-    <div class="alert alert-light border mt-3 small text-muted">
-        <i class="fas fa-circle-info me-1 text-primary"></i>
-        El rendimiento se calcula como
-        <strong>kilómetros recorridos ÷ litros de la carga actual</strong>,
-        comparando dos cargas consecutivas del mismo bus.
-        Para una medición confiable conviene registrar cargas completas de forma consistente.
+    <div class="alert alert-info border-0 mt-3 small">
+        <i class="fas fa-circle-info me-1"></i>
+        El rendimiento se calcula comparando cargas consecutivas del mismo bus:
+        <strong>kilómetros recorridos ÷ litros de la carga actual</strong>.
+        Si el kilometraje no aumenta, el sistema no calcula rendimiento para evitar resultados incorrectos.
     </div>
 </div>
 {% endblock %}

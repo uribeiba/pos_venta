@@ -19,10 +19,17 @@
 
     <div class="card shadow-sm border-0 rounded-4 mb-4">
         <div class="card-header bg-white py-3 border-0">
-            <h5 class="mb-0 text-uppercase fw-semibold">
-                <i class="fas fa-bus me-2 text-primary"></i>
-                {% if edit_mode %}EDITAR BUS{% else %}REGISTRAR BUS{% endif %}
-            </h5>
+            <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <h5 class="mb-0 text-uppercase fw-semibold">
+                    <i class="fas fa-bus me-2 text-primary"></i>
+                    {% if edit_mode %}EDITAR BUS{% else %}REGISTRAR BUS{% endif %}
+                </h5>
+                {% if user.profile.role == 'admin' %}
+                <a href="{% url 'coordinator:fleet_owners_dashboard' %}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-users me-1"></i> Propietarios / socios
+                </a>
+                {% endif %}
+            </div>
         </div>
         <div class="card-body">
             <form method="post" id="busForm">
@@ -65,7 +72,15 @@
                             <div class="col-md-6"><label class="form-label">{{ form.plate.label }}</label>{{ form.plate }}</div>
                             <div class="col-md-6"><label class="form-label">{{ form.model.label }}</label>{{ form.model }}</div>
                             <div class="col-md-6"><label class="form-label">{{ form.year.label }}</label>{{ form.year }}</div>
-                            <div class="col-md-6"><label class="form-label">{{ form.owner_first_name.label }}</label>{{ form.owner_first_name }}</div>
+                            <div class="col-12">
+                                <label class="form-label">{{ form.owner.label }}</label>
+                                {{ form.owner }}
+                                <div class="form-text">Este propietario se usará para estadísticas, permisos y futuras liquidaciones.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.owner_first_name.label }}</label>{{ form.owner_first_name }}
+                                <div class="form-text">Campo histórico; se mantiene temporalmente.</div>
+                            </div>
                             <div class="col-md-6"><label class="form-label">{{ form.owner_last_name.label }}</label>{{ form.owner_last_name }}</div>
                             <div class="col-md-6"><label class="form-label">{{ form.circulation_card.label }}</label>{{ form.circulation_card }}</div>
                             <div class="col-md-6"><label class="form-label">{{ form.vehicle_class.label }}</label>{{ form.vehicle_class }}</div>
@@ -162,7 +177,15 @@
                         <tr>
                             <td>{{ bus.company.name }}</td><td class="fw-semibold">{{ bus.plate }}</td>
                             <td>{{ bus.model|default:"—" }}</td>
-                            <td>{{ bus.owner_first_name }} {{ bus.owner_last_name }}</td>
+                            <td>
+                                {% if bus.owner %}
+                                    <div class="fw-semibold">{{ bus.owner.display_name }}</div>
+                                    <small class="text-muted">{{ bus.owner.rut|default:"Sin RUT" }}</small>
+                                {% else %}
+                                    {{ bus.owner_first_name }} {{ bus.owner_last_name }}
+                                    {% if not bus.owner_first_name and not bus.owner_last_name %}—{% endif %}
+                                {% endif %}
+                            </td>
                             <td>{{ bus.brand|default:"—" }}</td>
                             <td>{{ bus.year|default:"—" }}</td>
                             <td>{{ bus.vehicle_class|default:"—" }}</td>

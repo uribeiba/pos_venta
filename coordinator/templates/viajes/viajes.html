@@ -1,302 +1,168 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
 
-{% block title %}Viajes - Cejer{% endblock %}
+{% block title %}Viajes {% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/viajes.css' %}">
 <style>
-    /* Mejoras adicionales */
-    .filter-bar {
-        background: #f8fafc;
-        border-radius: 12px;
-        padding: 12px 16px;
-        margin-bottom: 20px;
-    }
-    .filter-bar .form-label {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        font-weight: 600;
-        color: #475569;
-        margin-bottom: 4px;
-    }
-    .badge-status {
-        font-size: 0.7rem;
-        padding: 4px 8px;
-        border-radius: 20px;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        width: fit-content;
-    }
-    .badge-futuro { background: #dbeafe; color: #1e40af; }
-    .badge-pasado { background: #f1f5f9; color: #475569; }
-    .badge-hoy { background: #dcfce7; color: #166534; }
-    th.sortable {
-        cursor: pointer;
-        user-select: none;
-    }
-    th.sortable:hover {
-        background-color: #e2e8f0;
-    }
-    th.sortable i {
-        margin-left: 5px;
-        font-size: 0.7rem;
-        opacity: 0.5;
-    }
-    th.sortable.asc i { opacity: 1; transform: rotate(0deg); }
-    th.sortable.desc i { opacity: 1; transform: rotate(180deg); }
-    .loading-spinner {
-        display: none;
-        width: 1rem;
-        height: 1rem;
-        border: 2px solid #f3f3f3;
-        border-top: 2px solid #3b82f6;
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-        margin-left: 8px;
-    }
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
+.trips-page{padding:24px}.trip-hero{background:linear-gradient(120deg,#172554,#2563eb);color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 10px 28px rgba(30,64,175,.18);margin-bottom:18px}.trip-hero .eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.8}.trip-hero h2{margin:2px 0 4px;font-size:1.55rem;font-weight:800}.trip-hero p{margin:0;font-size:.82rem;opacity:.9}.trip-panel{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 6px 20px rgba(15,23,42,.05);overflow:hidden;margin-bottom:18px}.trip-panel-header{padding:15px 18px;border-bottom:1px solid #eef2f7;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.trip-panel-header .title{display:flex;align-items:center;gap:10px}.trip-panel-header .icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#eff6ff;color:#2563eb}.trip-panel-header h5{margin:0;font-size:1rem;font-weight:800;color:#0f172a}.trip-panel-header small{color:#64748b}.trip-form-body{padding:18px}.field-label{font-size:.68rem;text-transform:uppercase;font-weight:800;color:#475569;letter-spacing:.04em;margin-bottom:5px}.trip-form-body .form-control,.trip-form-body .form-select{min-height:40px;border-radius:9px;border-color:#cbd5e1;font-size:.82rem}.trip-form-body .form-control:focus,.trip-form-body .form-select:focus{border-color:#3b82f6;box-shadow:0 0 0 .18rem rgba(59,130,246,.12)}.form-help{font-size:.72rem;color:#64748b;margin-top:4px}.trip-actions{padding-top:4px;border-top:1px solid #eef2f7;margin-top:16px}.trip-actions .btn{border-radius:9px;font-weight:700;font-size:.8rem}.operational-alert{border-radius:10px;font-size:.76rem;margin-top:8px}.filters-wrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.filters-wrap .btn,.filters-wrap .form-control{font-size:.74rem;border-radius:8px}.trip-table{margin:0;font-size:.76rem}.trip-table thead th{background:#f8fafc;color:#475569;font-size:.67rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid #e2e8f0;padding:10px 12px;white-space:nowrap}.trip-table tbody td{padding:10px 12px;vertical-align:middle;border-color:#eef2f7}.trip-table tbody tr:hover{background:#f8fbff}.route-main{font-weight:800;color:#0f172a}.bus-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border-radius:7px;background:#f1f5f9;border:1px solid #e2e8f0;font-weight:700;color:#334155;white-space:nowrap}.badge-status{font-size:.68rem;padding:4px 8px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;font-weight:800;white-space:nowrap}.badge-futuro{background:#dbeafe;color:#1e40af}.badge-pasado{background:#f1f5f9;color:#475569}.badge-hoy{background:#dcfce7;color:#166534}.table-actions{display:flex;align-items:center;gap:5px;white-space:nowrap}.table-actions .btn{width:30px;height:30px;display:inline-grid;place-items:center;padding:0;border-radius:7px}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{background-color:#e2e8f0}th.sortable i{margin-left:4px;font-size:.66rem;opacity:.45}.loading-spinner{display:none;width:1rem;height:1rem;border:2px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:spin .8s linear infinite;margin-left:8px}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:900px){.trips-page{padding:14px}.trip-hero{padding:18px}.trip-table{font-size:.72rem}}
+
+.trip-op-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:12px 18px;border-bottom:1px solid #eef2f7;background:#fbfdff}
+.trip-op-card{border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.trip-op-card .label{font-size:.68rem;font-weight:800;text-transform:uppercase;color:#64748b}
+.trip-op-card .value{font-size:1.05rem;font-weight:900}
+.trip-op-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:.67rem;font-weight:800;white-space:nowrap}
+.trip-op-operational{background:#dcfce7;color:#166534}
+.trip-op-attention{background:#fef3c7;color:#92400e}
+.trip-op-no-operational{background:#fee2e2;color:#991b1b}
+.trip-op-reason{font-size:.66rem;color:#64748b;margin-top:4px;max-width:210px;line-height:1.25}
+@media(max-width:900px){.trip-op-summary{grid-template-columns:1fr}}
+
+
+.badge-danger{background:#fee2e2;color:#991b1b}
+
+.badge-warning{background:#fef3c7;color:#92400e}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid px-4">
-    <!-- Breadcrumb mejorado -->
-    <nav aria-label="breadcrumb" class="mt-3">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Inicio</a></li>
-            <li class="breadcrumb-item"><a href="#">Flota</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Viajes</li>
-        </ol>
-    </nav>
+<div class="trips-page">
+<nav aria-label="breadcrumb" class="mb-3"><ol class="breadcrumb mb-0 small"><li class="breadcrumb-item"><a href="{% url 'coordinator:dashboard' %}">Inicio</a></li><li class="breadcrumb-item"><a href="{% url 'coordinator:bus_list' %}">Flota</a></li><li class="breadcrumb-item active">Viajes</li></ol></nav>
 
-    <!-- Formulario de creación/edición -->
-    <div class="card shadow-sm border-0 rounded-4 mb-4">
-        <div class="card-header bg-white py-3 border-0">
-            <h5 class="mb-0 text-uppercase fw-semibold">
-                <i class="fas fa-calendar-alt me-2 text-primary"></i>
-                {% if edit_mode %}EDITAR VIAJE{% else %}CREAR NUEVO VIAJE{% endif %}
-            </h5>
-        </div>
-        <div class="card-body">
-            <form method="post" id="tripForm" novalidate>
-                {% csrf_token %}
+<section class="trip-hero">
+<div class="eyebrow">Flota · Operación</div>
+<h2><i class="fas fa-route me-2"></i>Gestión de viajes</h2>
+<p>Crear, programar, editar y controlar servicios con validación operacional de buses.</p>
+</section>
 
-                {% if form.errors %}
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <strong><i class="fas fa-exclamation-triangle"></i> Error al guardar:</strong> Por favor corrige los siguientes errores:
-                    <ul class="mb-0 mt-2">
-                    {% for field, errors in form.errors.items %}
-                        <li><strong>{{ field }}:</strong> {{ errors|join:", " }}</li>
-                    {% endfor %}
-                    </ul>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-                {% endif %}
+<section class="trip-panel">
+<div class="trip-panel-header">
+<div class="title"><div class="icon"><i class="fas {% if edit_mode %}fa-pen-to-square{% else %}fa-calendar-plus{% endif %}"></i></div><div><h5>{% if edit_mode %}Editar viaje{% else %}Crear nuevo viaje{% endif %}</h5><small>{% if edit_mode %}Actualiza la programación manteniendo la integridad del viaje.{% else %}Selecciona ruta, bus, personal y horarios del servicio.{% endif %}</small></div></div>
+{% if edit_mode %}<a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-xmark me-1"></i>Cancelar edición</a>{% endif %}
+</div>
+<div class="trip-form-body">
+<form method="post" id="tripForm" novalidate>
+{% csrf_token %}
+{% if form.errors %}<div class="alert alert-danger alert-dismissible fade show small"><strong><i class="fas fa-triangle-exclamation me-1"></i>Error al guardar.</strong><ul class="mb-0 mt-2">{% for field, errors in form.errors.items %}<li><strong>{{ field }}:</strong> {{ errors|join:", " }}</li>{% endfor %}</ul><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
 
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.route.label }}</label>
-                        {{ form.route }}
-                        {% if form.route.help_text %}<small class="text-muted">{{ form.route.help_text }}</small>{% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.bus.label }}</label>
-                        {{ form.bus }}
-                        <div id="busLoadSpinner" class="loading-spinner"></div>
-                        {% if form.bus.help_text %}<small class="text-muted">{{ form.bus.help_text }}</small>{% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.driver1.label }}</label>
-                        {{ form.driver1 }}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.driver2.label }}</label>
-                        {{ form.driver2 }}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.assistant.label }}</label>
-                        {{ form.assistant }}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.departure.label }}</label>
-                        {{ form.departure }}
-                        <small class="text-muted d-block">Formato: AAAA-MM-DD HH:MM</small>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.arrival.label }}</label>
-                        {{ form.arrival }}
-                        <small class="text-muted" id="arrivalHelp">{{ form.arrival.help_text }}</small>
-                        <div id="dateWarning" class="text-danger small mt-1" style="display:none;">⚠️ La fecha de llegada debe ser posterior a la salida.</div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.seats_total.label }}</label>
-                        {{ form.seats_total }}
-                        <small class="text-muted">{{ form.seats_total.help_text }}</small>
-                    </div>
-                    <!-- ===== NUEVO CAMPO: CORTE DE VENTA WEB ===== -->
-                    <div class="col-md-6">
-                        <label class="form-label text-uppercase fw-semibold small">{{ form.cutoff_minutes.label }}</label>
-                        {{ form.cutoff_minutes }}
-                        <small class="text-muted">{{ form.cutoff_minutes.help_text }}</small>
-                    </div>
-                </div>
-
-                <div class="mt-4 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary px-4">
-                        <i class="fas fa-save me-2"></i>{% if edit_mode %}Actualizar{% else %}Guardar Viaje{% endif %}
-                    </button>
-                    {% if edit_mode %}
-                        <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-secondary px-4">
-                            <i class="fas fa-times me-2"></i>Cancelar
-                        </a>
-                    {% endif %}
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Filtros y listado -->
-    <div class="card shadow-sm border-0 rounded-4">
-        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <h5 class="mb-0 text-uppercase fw-semibold">
-                <i class="fas fa-list me-2 text-primary"></i> LISTA DE VIAJES
-            </h5>
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                <!-- Filtro operacional por estado (servidor) -->
-                <div class="btn-group btn-group-sm" role="group" aria-label="Filtrar viajes por estado">
-                    <a href="?estado=proximos{% if query %}&q={{ query|urlencode }}{% endif %}"
-                       class="btn {% if status_filter == 'proximos' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                        <i class="fas fa-clock me-1"></i> Próximos
-                    </a>
-                    <a href="?estado=finalizados{% if query %}&q={{ query|urlencode }}{% endif %}"
-                       class="btn {% if status_filter == 'finalizados' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
-                        <i class="fas fa-check-circle me-1"></i> Finalizados
-                    </a>
-                    <a href="?estado=todos{% if query %}&q={{ query|urlencode }}{% endif %}"
-                       class="btn {% if status_filter == 'todos' %}btn-dark{% else %}btn-outline-dark{% endif %}">
-                        <i class="fas fa-list me-1"></i> Todos
-                    </a>
-                </div>
-                <!-- Filtro por mes/año (cliente) -->
-                <div class="d-flex align-items-center gap-2">
-                    <input type="month" id="monthFilter" class="form-control form-control-sm" style="width: 160px;">
-                    <button id="clearMonthFilter" class="btn btn-sm btn-outline-secondary" type="button">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <!-- Buscador por texto (envía a servidor) -->
-                <form method="get" class="d-flex">
-                    <input type="hidden" name="estado" value="{{ status_filter }}">
-                    <div class="input-group input-group-sm">
-                        <input type="text" name="q" class="form-control" placeholder="Buscar origen, destino, patente, chofer..." value="{{ query }}">
-                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
-                    </div>
-                </form>
-            </div>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" id="tripsTable">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="sortable" data-sort="route">RUTA <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="bus">BUS <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="driver">CHOFER PRINCIPAL <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="departure">SALIDA <i class="fas fa-sort"></i></th>
-                            <th class="sortable" data-sort="arrival">LLEGADA <i class="fas fa-sort"></i></th>
-                            <th>ASIENTOS</th>
-                            <th>CORTE (min)</th>
-                            <th>ESTADO</th>
-                            <th>ACCIONES</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for trip in trips %}
-                        <tr data-departure="{{ trip.departure|date:'Y-m-d' }}">
-                            <td class="route-cell">{{ trip.route }}</td>
-                            <td class="bus-cell">{{ trip.bus.plate }} ({{ trip.bus.model|default:"-" }})</td>
-                            <td class="driver-cell">{{ trip.driver1.full_name|default:"-" }}</td>
-                            <td class="departure-cell" data-date="{{ trip.departure|date:'Y-m-d H:i' }}">{{ trip.departure|date:"d/m/Y H:i" }}</td>
-                            <td class="arrival-cell" data-date="{{ trip.arrival|date:'Y-m-d H:i' }}">{{ trip.arrival|date:"d/m/Y H:i"|default:"-" }}</td>
-                            <td>{{ trip.seats_total }}</td>
-                            <td>{{ trip.cutoff_minutes }}</td>
-                            <td>
-                                {% now "U" as now_timestamp %}
-                                {% with departure_ts=trip.departure|date:"U" arrival_ts=trip.arrival|date:"U" %}
-                                    {% if departure_ts > now_timestamp %}
-                                        <span class="badge-status badge-futuro"><i class="fas fa-clock"></i> Próximo</span>
-                                    {% elif departure_ts <= now_timestamp and arrival_ts >= now_timestamp %}
-                                        <span class="badge-status badge-hoy"><i class="fas fa-play"></i> En curso</span>
-                                    {% else %}
-                                        <span class="badge-status badge-pasado"><i class="fas fa-check-circle"></i> Finalizado</span>
-                                    {% endif %}
-                                {% endwith %}
-                            </td>
-                            <td>
-                                <a href="?edit={{ trip.id }}" class="btn btn-sm btn-outline-primary me-1" title="Editar viaje">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <button type="button" class="btn btn-sm btn-outline-danger delete-trip" 
-                                        data-id="{{ trip.id }}" data-name="{{ trip.route }}" 
-                                        data-has-tickets="{% if trip.tickets_count > 0 %}true{% else %}false{% endif %}">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-
-                                <a href="{% url 'coordinator:trip_detail' trip.id %}" class="btn btn-sm btn-info me-1" title="Detalle">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="9" class="text-center py-4 text-muted">
-                                <i class="fas fa-calendar-times fa-2x mb-2 d-block"></i>
-                                {% if status_filter == 'proximos' %}No hay viajes próximos registrados.{% elif status_filter == 'finalizados' %}No hay viajes finalizados registrados.{% else %}No hay viajes registrados. Crea uno arriba.{% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% if trips.has_other_pages %}
-            <div class="d-flex justify-content-center mt-4 pb-3">
-                {% include "pagination.html" with page_obj=trips %}
-            </div>
-            {% endif %}
-        </div>
-    </div>
+<div class="row g-3">
+<div class="col-lg-6"><label class="field-label">{{ form.route.label }}</label>{{ form.route }}{% if form.route.help_text %}<div class="form-help">{{ form.route.help_text }}</div>{% endif %}</div>
+<div class="col-lg-6"><label class="field-label">{{ form.bus.label }}</label>{{ form.bus }}<div id="busLoadSpinner" class="loading-spinner"></div><div id="busOperationalAlert" class="alert operational-alert py-2 px-3 mb-0 d-none"></div>{% if form.bus.help_text %}<div class="form-help">{{ form.bus.help_text }}</div>{% endif %}</div>
+<div class="col-lg-4"><label class="field-label">{{ form.driver1.label }}</label>{{ form.driver1 }}</div>
+<div class="col-lg-4"><label class="field-label">{{ form.driver2.label }}</label>{{ form.driver2 }}</div>
+<div class="col-lg-4">
+<label class="field-label">{{ form.assistant.label }}</label>
+{{ form.assistant }}
+<div id="assistantOperationalAlert" class="alert operational-alert py-2 px-3 mb-0 d-none"></div>
+</div>
+<div class="col-lg-4"><label class="field-label">{{ form.departure.label }}</label>{{ form.departure }}<div class="form-help">Fecha y hora programada de salida.</div></div>
+<div class="col-lg-4"><label class="field-label">{{ form.arrival.label }}</label>{{ form.arrival }}<div class="form-help" id="arrivalHelp">{{ form.arrival.help_text }}</div><div id="dateWarning" class="text-danger small mt-1" style="display:none;"><i class="fas fa-triangle-exclamation me-1"></i>La llegada debe ser posterior a la salida.</div></div>
+<div class="col-lg-2 col-md-6"><label class="field-label">{{ form.seats_total.label }}</label>{{ form.seats_total }}<div class="form-help">{{ form.seats_total.help_text }}</div></div>
+<div class="col-lg-2 col-md-6"><label class="field-label">{{ form.cutoff_minutes.label }}</label>{{ form.cutoff_minutes }}<div class="form-help">Cierre de venta web.</div></div>
 </div>
 
-<!-- Modal de eliminación mejorado -->
+<div class="trip-actions d-flex gap-2 pt-3">
+<button type="submit" class="btn btn-primary px-4"><i class="fas fa-floppy-disk me-2"></i>{% if edit_mode %}Actualizar viaje{% else %}Guardar viaje{% endif %}</button>
+{% if edit_mode %}<a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-outline-secondary px-4">Cancelar</a>{% endif %}
+</div>
+</form>
+</div>
+</section>
+
+<section class="trip-panel">
+<div class="trip-panel-header">
+<div class="title"><div class="icon"><i class="fas fa-list"></i></div><div><h5>Viajes registrados</h5><small>Consulta, filtra y administra la programación operacional.</small></div></div>
+<div class="filters-wrap">
+<div class="btn-group btn-group-sm">
+<a href="?estado=proximos{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn {% if status_filter == 'proximos' %}btn-primary{% else %}btn-outline-primary{% endif %}"><i class="fas fa-clock me-1"></i>Próximos</a>
+<a href="?estado=finalizados{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn {% if status_filter == 'finalizados' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"><i class="fas fa-circle-check me-1"></i>Finalizados</a>
+<a href="?estado=todos{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn {% if status_filter == 'todos' %}btn-dark{% else %}btn-outline-dark{% endif %}"><i class="fas fa-list me-1"></i>Todos</a>
+</div>
+<input type="month" id="monthFilter" class="form-control form-control-sm" style="width:150px;">
+<button id="clearMonthFilter" class="btn btn-sm btn-outline-secondary" type="button"><i class="fas fa-xmark"></i></button>
+<form method="get" class="d-flex"><input type="hidden" name="estado" value="{{ status_filter }}"><div class="input-group input-group-sm"><input type="text" name="q" class="form-control" placeholder="Ruta, patente o chofer" value="{{ query }}"><button class="btn btn-outline-secondary" type="submit"><i class="fas fa-magnifying-glass"></i></button></div></form>
+</div>
+</div>
+
+<div class="trip-op-summary">
+<div class="trip-op-card">
+<div><div class="label">Operativos</div><div class="small text-muted">Sin restricciones</div></div>
+<div class="value text-success">{{ trip_operational_counts.operational }}</div>
+</div>
+<div class="trip-op-card">
+<div><div class="label">Atención</div><div class="small text-muted">Puede operar con advertencias</div></div>
+<div class="value text-warning">{{ trip_operational_counts.attention }}</div>
+</div>
+<div class="trip-op-card">
+<div><div class="label">No operativos</div><div class="small text-muted">Requieren corrección antes de despacho</div></div>
+<div class="value text-danger">{{ trip_operational_counts.no_operational }}</div>
+</div>
+</div>
+
+<div class="table-responsive">
+<table class="table trip-table align-middle" id="tripsTable">
+<thead><tr><th class="sortable">Ruta <i class="fas fa-sort"></i></th><th class="sortable">Bus <i class="fas fa-sort"></i></th><th class="sortable">Chofer principal <i class="fas fa-sort"></i></th><th class="sortable">Salida <i class="fas fa-sort"></i></th><th class="sortable">Llegada <i class="fas fa-sort"></i></th><th>Asientos</th><th>Corte</th><th>Operación</th><th>Estado</th><th class="text-end">Acciones</th></tr></thead>
+<tbody>
+{% for trip in trips %}
+<tr data-departure="{{ trip.departure|date:'Y-m-d' }}">
+<td class="route-cell"><div class="route-main">{{ trip.route }}</div></td>
+<td class="bus-cell"><span class="bus-pill"><i class="fas fa-bus"></i>{{ trip.bus.plate }}</span><div class="text-muted small mt-1">{{ trip.bus.model|default:"-" }}</div></td>
+<td class="driver-cell">{{ trip.driver1.full_name|default:"-" }}</td>
+<td class="departure-cell" data-date="{{ trip.departure|date:'Y-m-d H:i' }}"><strong>{{ trip.departure|date:"d/m/Y" }}</strong><div class="text-muted">{{ trip.departure|date:"H:i" }}</div></td>
+<td class="arrival-cell" data-date="{{ trip.arrival|date:'Y-m-d H:i' }}">{% if trip.arrival %}<strong>{{ trip.arrival|date:"d/m/Y" }}</strong><div class="text-muted">{{ trip.arrival|date:"H:i" }}</div>{% else %}—{% endif %}</td>
+<td>{{ trip.seats_total }}</td><td>{{ trip.cutoff_minutes }} min</td>
+<td>
+{% if trip.operational_key == 'operational' %}
+<span class="trip-op-badge trip-op-operational"><i class="fas {{ trip.operational_icon }}"></i>{{ trip.operational_label }}</span>
+{% elif trip.operational_key == 'attention' %}
+<span class="trip-op-badge trip-op-attention"><i class="fas {{ trip.operational_icon }}"></i>{{ trip.operational_label }}</span>
+{% else %}
+<span class="trip-op-badge trip-op-no-operational"><i class="fas {{ trip.operational_icon }}"></i>{{ trip.operational_label }}</span>
+{% endif %}
+<div class="trip-op-reason" title="{{ trip.operational_reason }}">{{ trip.operational_reason }}</div>
+</td>
+<td>
+{% if trip.status == 'in_progress' and trip.pending_close %}
+    <span class="badge-status badge-warning"><i class="fas fa-flag-checkered"></i>Pendiente cierre</span>
+    <div class="trip-op-reason">Llegada programada {{ trip.arrival|date:"H:i" }}</div>
+{% elif trip.status == 'in_progress' %}
+    <span class="badge-status badge-hoy"><i class="fas fa-bus"></i>En viaje</span>
+    {% if trip.actual_departure %}
+        <div class="trip-op-reason">Salida real {{ trip.actual_departure|date:"H:i:s" }}</div>
+    {% endif %}
+{% elif trip.status == 'completed' %}
+    <span class="badge-status badge-pasado"><i class="fas fa-circle-check"></i>Finalizado</span>
+    {% if trip.actual_arrival %}
+        <div class="trip-op-reason">Llegada real {{ trip.actual_arrival|date:"H:i:s" }}</div>
+    {% endif %}
+{% else %}
+    {% now "U" as now_timestamp %}
+    {% with departure_ts=trip.departure|date:"U" %}
+        {% if departure_ts > now_timestamp %}
+            <span class="badge-status badge-futuro"><i class="fas fa-clock"></i>Próximo</span>
+        {% else %}
+            <span class="badge-status badge-danger"><i class="fas fa-triangle-exclamation"></i>Pendiente despacho</span>
+        {% endif %}
+    {% endwith %}
+{% endif %}
+</td>
+<td><div class="table-actions justify-content-end"><a href="?edit={{ trip.id }}" class="btn btn-sm btn-outline-primary" title="Editar"><i class="fas fa-pen"></i></a><a href="{% url 'coordinator:trip_detail' trip.id %}" class="btn btn-sm btn-outline-info" title="Detalle"><i class="fas fa-eye"></i></a><button type="button" class="btn btn-sm btn-outline-danger delete-trip" data-id="{{ trip.id }}" data-name="{{ trip.route }}" data-has-tickets="{% if trip.tickets_count > 0 %}true{% else %}false{% endif %}" title="Eliminar"><i class="fas fa-trash"></i></button></div></td>
+</tr>
+{% empty %}<tr><td colspan="10" class="text-center py-5 text-muted"><i class="fas fa-calendar-xmark fa-2x mb-2 d-block"></i>No hay viajes registrados.</td></tr>{% endfor %}
+</tbody>
+</table>
+</div>
+{% if trips.has_other_pages %}<div class="d-flex justify-content-center py-3">{% include "pagination.html" with page_obj=trips %}</div>{% endif %}
+</section>
+</div>
+
 <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="fas fa-trash-alt me-2"></i>Confirmar eliminación</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>¿Estás seguro de eliminar el viaje <strong id="deleteTripName"></strong>?</p>
-                <div id="ticketsWarning" class="alert alert-warning d-none">
-                    <i class="fas fa-exclamation-triangle"></i> Este viaje tiene tickets vendidos asociados. No se puede eliminar.
-                </div>
-                <small class="text-muted">Se eliminarán también los bloques temporales (holds) asociados.</small>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form method="post" action="{% url 'coordinator:trip_delete' 0 %}" id="deleteForm">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-danger" id="confirmDeleteBtn">Eliminar viaje</button>
-                </form>
-            </div>
-        </div>
-    </div>
+<div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
+<div class="modal-header bg-danger text-white"><h5 class="modal-title"><i class="fas fa-trash me-2"></i>Confirmar eliminación</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><p>¿Deseas eliminar el viaje <strong id="deleteTripName"></strong>?</p><div id="ticketsWarning" class="alert alert-warning d-none"><i class="fas fa-triangle-exclamation me-1"></i>Este viaje tiene tickets vendidos asociados y no puede eliminarse.</div><small class="text-muted">Los bloqueos temporales asociados también serán eliminados.</small></div>
+<div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><form method="post" action="{% url 'coordinator:trip_delete' 0 %}" id="deleteForm">{% csrf_token %}<button type="submit" class="btn btn-danger" id="confirmDeleteBtn">Eliminar viaje</button></form></div>
+</div></div>
 </div>
 
 <script>
@@ -342,6 +208,63 @@
         if (busSelect) {
             busSelect.addEventListener('change', updateSeatsTotal);
             updateSeatsTotal();
+        }
+
+        // FASE 2.13 · estado operacional
+        const busOperationalAlert = document.getElementById('busOperationalAlert');
+        function applyBusOperationalState() {
+            if (!busSelect || !busOperationalAlert) return;
+            const option = busSelect.options[busSelect.selectedIndex];
+            if (!option || !option.value) { busOperationalAlert.className='alert py-2 px-3 mt-2 mb-0 small d-none'; return; }
+            const t=option.textContent||'';
+            if(t.includes('NO OPERATIVO')){
+                busOperationalAlert.className='alert alert-danger py-2 px-3 mt-2 mb-0 small';
+                busOperationalAlert.innerHTML='<strong>NO OPERATIVO.</strong> No puede utilizarse en una nueva asignación.';
+            } else if(t.includes('ATENCIÓN')){
+                busOperationalAlert.className='alert alert-warning py-2 px-3 mt-2 mb-0 small';
+                busOperationalAlert.innerHTML='<strong>ATENCIÓN.</strong> Puede operar, pero tiene una advertencia pendiente.';
+            } else {
+                busOperationalAlert.className='alert alert-success py-2 px-3 mt-2 mb-0 small';
+                busOperationalAlert.innerHTML='<strong>OPERATIVO.</strong> Sin restricciones para nuevas asignaciones.';
+            }
+        }
+        if(busSelect){ busSelect.addEventListener('change',applyBusOperationalState); applyBusOperationalState(); }
+
+
+        // ===== FASE 2.15 · Estado operacional del auxiliar =====
+        const assistantSelect = document.getElementById('id_assistant');
+        const assistantOperationalAlert = document.getElementById('assistantOperationalAlert');
+
+        function applyAssistantOperationalState() {
+            if (!assistantSelect || !assistantOperationalAlert) return;
+
+            const option = assistantSelect.options[assistantSelect.selectedIndex];
+
+            if (!option || !option.value) {
+                assistantOperationalAlert.className =
+                    'alert operational-alert py-2 px-3 mb-0 d-none';
+                assistantOperationalAlert.textContent = '';
+                return;
+            }
+
+            const text = option.textContent || '';
+
+            if (text.includes('NO OPERATIVO')) {
+                assistantOperationalAlert.className =
+                    'alert alert-danger operational-alert py-2 px-3 mb-0';
+                assistantOperationalAlert.innerHTML =
+                    '<strong>NO OPERATIVO.</strong> Este auxiliar no puede utilizarse en una nueva asignación.';
+            } else {
+                assistantOperationalAlert.className =
+                    'alert alert-success operational-alert py-2 px-3 mb-0';
+                assistantOperationalAlert.innerHTML =
+                    '<strong>OPERATIVO.</strong> Auxiliar disponible para asignación.';
+            }
+        }
+
+        if (assistantSelect) {
+            assistantSelect.addEventListener('change', applyAssistantOperationalState);
+            applyAssistantOperationalState();
         }
 
         // ========== 2. Validación de fechas (salida < llegada) ==========
@@ -394,11 +317,10 @@
 
         if (monthFilter) {
             monthFilter.addEventListener('change', filterByMonth);
-            // Siempre aplicar el filtro del mes actual al cargar la página
-            const today = new Date();
-            const currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-            monthFilter.value = currentMonth;
-            filterByMonth();
+            // FASE 2.13.2:
+            // No filtrar automáticamente por el mes actual.
+            // El servidor ya entrega Próximos / Finalizados / Todos antes de paginar.
+            monthFilter.value = '';
         }
 
         if (clearMonthBtn) {

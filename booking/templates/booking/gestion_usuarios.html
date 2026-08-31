@@ -8,7 +8,7 @@
   .gu-wrapper{max-width:1200px;margin:0 auto}
   .gu-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
   .gu-header h1{font-size:22px;font-weight:700;color:#111827}
-  .stats-cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+  .stats-cards{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-bottom:16px}
   .stat-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;text-align:center}
   .stat-number{font-size:20px;font-weight:800;color:#111827}
   .stat-label{font-size:12px;color:#6b7280;margin-top:4px}
@@ -56,6 +56,14 @@
       <div class="stat-label">Vendedores</div>
     </div>
     <div class="stat-card">
+      <div class="stat-number">{{ coordinadores_count|default:0 }}</div>
+      <div class="stat-label">Coordinadores</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ owners_count|default:0 }}</div>
+      <div class="stat-label">Propietarios / Socios</div>
+    </div>
+    <div class="stat-card">
       <div class="stat-number">{{ activos_count|default:0 }}</div>
       <div class="stat-label">Usuarios Activos</div>
     </div>
@@ -81,6 +89,8 @@
           <th>Nombre</th>
           <th>Email</th>
           <th>Rol</th>
+          <th>Empresa</th>
+          <th>Alcance</th>
           <th>Terminal</th>
           <th>Estado</th>
           <th style="width:140px">Acciones</th>
@@ -97,6 +107,23 @@
                 <span class="badge role-chip">{{ u.profile.role|default:"—" }}</span>
               {% else %}
                 <span class="badge role-chip">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.profile and u.profile.company %}
+                {{ u.profile.company.name }}
+              {% else %}
+                <span style="color:#9ca3af">Sin empresa</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.profile and u.profile.fleet_owner %}
+                <strong>{{ u.profile.fleet_owner.display_name }}</strong>
+                <div style="font-size:12px;color:#6b7280">Solo sus buses</div>
+              {% elif u.profile and u.profile.company %}
+                <span style="color:#374151">Empresa completa</span>
+              {% else %}
+                —
               {% endif %}
             </td>
             <td>
@@ -125,7 +152,7 @@
             </td>
           </tr>
         {% empty %}
-          <tr><td colspan="7" style="text-align:center;color:#6b7280">No hay usuarios</td></tr>
+          <tr><td colspan="9" style="text-align:center;color:#6b7280">No hay usuarios</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -224,7 +224,7 @@
                 <!-- Configuración del Perfil -->
                 <div class="form-group">
                     <label class="form-label">Rol *</label>
-                    <select name="role" class="form-select" required>
+                    <select name="role" id="id_role" class="form-select" required>
                         <option value="">Seleccionar rol...</option>
                         {% for role_value, role_label in roles %}
                         <option value="{{ role_value }}"
@@ -245,6 +245,40 @@
                     {% endif %}
                 </div>
                 
+
+                <div class="form-group">
+                    <label class="form-label">Empresa operadora *</label>
+                    <select name="company" id="id_company" class="form-select" required>
+                        <option value="">Seleccionar empresa...</option>
+                        {% for company in companies %}
+                        <option value="{{ company.id }}"
+                            {% if selected_company_id|stringformat:"s" == company.id|stringformat:"s" %}selected{% endif %}>
+                            {{ company.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-help">
+                        Define a qué empresa pertenecen los datos y permisos de este usuario.
+                    </div>
+                </div>
+
+                <div class="form-group" id="fleet-owner-group">
+                    <label class="form-label">Propietario / Socio asociado</label>
+                    <select name="fleet_owner" id="id_fleet_owner" class="form-select">
+                        <option value="">-- Sin propietario asociado --</option>
+                        {% for owner in fleet_owners %}
+                        <option value="{{ owner.id }}"
+                                data-company="{{ owner.company_id }}"
+                                {% if selected_owner_id|stringformat:"s" == owner.id|stringformat:"s" %}selected{% endif %}>
+                            {{ owner.display_name }} — {{ owner.company.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-help" id="owner-help">
+                        Obligatorio únicamente para el rol Propietario / Socio.
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Terminal Asignada</label>
                     <select name="terminal" class="form-select">
@@ -411,5 +445,58 @@
             }
         });
     });
+
+    // FASE 2.18.3-A2.2 — alcance Empresa → Propietario
+    const roleSelect = document.getElementById('id_role');
+    const companySelect = document.getElementById('id_company');
+    const ownerSelect = document.getElementById('id_fleet_owner');
+    const ownerGroup = document.getElementById('fleet-owner-group');
+
+    function filterOwnersByCompany() {
+        if (!companySelect || !ownerSelect) return;
+
+        const companyId = companySelect.value;
+        const current = ownerSelect.value;
+        let currentValid = false;
+
+        Array.from(ownerSelect.options).forEach((opt, index) => {
+            if (index === 0) {
+                opt.hidden = false;
+                opt.disabled = false;
+                return;
+            }
+            const match = !!companyId && opt.dataset.company === companyId;
+            opt.hidden = !match;
+            opt.disabled = !match;
+            if (match && opt.value === current) currentValid = true;
+        });
+
+        if (current && !currentValid) {
+            ownerSelect.value = '';
+        }
+    }
+
+    function updateOwnerRequirement() {
+        if (!roleSelect || !ownerSelect) return;
+        const isOwner = roleSelect.value === 'owner';
+        ownerSelect.required = isOwner;
+        if (ownerGroup) {
+            ownerGroup.style.opacity = isOwner ? '1' : '.82';
+        }
+        if (!isOwner) {
+            ownerSelect.value = '';
+        }
+    }
+
+    if (companySelect) {
+        companySelect.addEventListener('change', filterOwnersByCompany);
+    }
+    if (roleSelect) {
+        roleSelect.addEventListener('change', updateOwnerRequirement);
+    }
+
+    filterOwnersByCompany();
+    updateOwnerRequirement();
+
 </script>
 {% endblock %}

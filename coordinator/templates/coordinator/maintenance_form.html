@@ -1,75 +1,125 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
+{% load humanize %}
 
-{% block title %}Registrar Mantenimiento{% endblock %}
+{% block title %}{% if maintenance %}Editar mantención{% else %}Nueva mantención{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-hero{background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 12px 30px rgba(30,64,175,.14)}
+    .form-card{border:0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
+    .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:800}
+    .info-box{background:#eff6ff;border:1px solid #dbeafe;color:#1e3a8a;border-radius:12px;padding:12px 14px;font-size:.82rem}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-4">
-    <div class="d-flex justify-content-between align-items-center mt-3 mb-4">
-        <div>
-            <div class="text-uppercase text-muted small fw-bold mb-1">Flota · Mantenimiento</div>
-            <h3 class="mb-1"><i class="fas fa-wrench me-2 text-primary"></i>{% if maintenance %}Editar mantenimiento{% else %}Nuevo mantenimiento{% endif %}</h3>
-            <div class="text-muted small">Registra kilometraje, trabajo realizado y próxima mantención programada.</div>
+<div class="container-fluid px-4 py-3">
+
+    <div class="form-hero mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="small text-uppercase fw-bold opacity-75">Flota · Mantenimiento</div>
+                <h3 class="mb-1 fw-bold">
+                    <i class="fas fa-screwdriver-wrench me-2"></i>
+                    {% if maintenance %}Editar mantención{% else %}Registrar mantención{% endif %}
+                </h3>
+                <div class="small opacity-75">Actualiza kilometraje, trabajo realizado y próxima programación técnica.</div>
+            </div>
+            <a href="{% url 'coordinator:maintenance_list' %}" class="btn btn-outline-light">
+                <i class="fas fa-arrow-left me-1"></i>Volver
+            </a>
         </div>
-        <a href="{% url 'coordinator:maintenance_list' %}" class="btn btn-secondary">Volver</a>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-body">
+    <div class="card form-card">
+        <div class="card-body p-4">
             <form method="post">
                 {% csrf_token %}
-                <div class="row g-3">
+
+                <div class="section-label mb-2">Identificación</div>
+                <div class="row g-3 mb-4">
                     <div class="col-md-6">
-                        <label class="form-label">Bus</label>
+                        <label class="form-label fw-semibold">Bus</label>
                         <select name="bus" class="form-select" required>
                             <option value="">-- Seleccionar bus --</option>
                             {% for b in buses %}
-                            <option value="{{ b.id }}" {% if selected_bus and selected_bus.id == b.id or maintenance and maintenance.bus.id == b.id %}selected{% endif %}>{{ b.plate }} - {{ b.model|default:"-" }}</option>
+                            <option value="{{ b.id }}"
+                                {% if selected_bus and selected_bus.id == b.id or maintenance and maintenance.bus.id == b.id %}selected{% endif %}>
+                                {{ b.plate }} - {{ b.model|default:"-" }} · {{ b.current_mileage|default:0|intcomma }} km
+                            </option>
                             {% endfor %}
                         </select>
                     </div>
+
                     <div class="col-md-6">
-                        <label class="form-label">Tipo</label>
+                        <label class="form-label fw-semibold">Tipo</label>
                         <select name="maintenance_type" class="form-select" required>
                             <option value="preventive" {% if maintenance and maintenance.maintenance_type == 'preventive' %}selected{% endif %}>Preventivo</option>
                             <option value="corrective" {% if maintenance and maintenance.maintenance_type == 'corrective' %}selected{% endif %}>Correctivo</option>
                         </select>
                     </div>
+                </div>
+
+                <div class="section-label mb-2">Programación por kilometraje</div>
+                <div class="row g-3 mb-4">
                     <div class="col-md-4">
-                        <label class="form-label">Fecha</label>
-                        <input type="date" name="date" class="form-control" value="{% if maintenance %}{{ maintenance.date|date:'Y-m-d' }}{% endif %}" required>
+                        <label class="form-label fw-semibold">Fecha</label>
+                        <input type="date" name="date" class="form-control"
+                               value="{% if maintenance %}{{ maintenance.date|date:'Y-m-d' }}{% endif %}" required>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Kilometraje actual</label>
-                        <input type="number" min="0" name="mileage" class="form-control" value="{% if maintenance %}{{ maintenance.mileage }}{% endif %}" required>
+                        <label class="form-label fw-semibold">Kilometraje al realizar la mantención</label>
+                        <input type="number" min="0" name="mileage" class="form-control"
+                               value="{% if maintenance %}{{ maintenance.mileage }}{% endif %}" required>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Próximo mantenimiento (km)</label>
-                        <input type="number" min="0" name="next_maintenance_km" class="form-control" value="{% if maintenance %}{{ maintenance.next_maintenance_km }}{% else %}0{% endif %}"><div class="form-text">Kilometraje objetivo en que corresponde realizar la próxima mantención.</div>
+                        <label class="form-label fw-semibold">Próxima mantención (km)</label>
+                        <input type="number" min="0" name="next_maintenance_km" class="form-control"
+                               value="{% if maintenance %}{{ maintenance.next_maintenance_km }}{% else %}0{% endif %}">
+                        <div class="form-text">Debe ser mayor al kilometraje de esta mantención.</div>
                     </div>
+                </div>
+
+                <div class="info-box mb-4">
+                    <i class="fas fa-circle-info me-1"></i>
+                    Al guardar, el sistema sincroniza automáticamente la última mantención y el próximo kilometraje del bus.
+                    El dashboard marcará como <strong>próxima</strong> una mantención cuando falten 1.000 km o menos.
+                </div>
+
+                <div class="section-label mb-2">Trabajo realizado</div>
+                <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label">Descripción del trabajo</label>
+                        <label class="form-label fw-semibold">Descripción</label>
                         <textarea name="description" class="form-control" rows="3" required>{% if maintenance %}{{ maintenance.description }}{% endif %}</textarea>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Costo</label>
-                        <input type="number" min="0" step="1" name="cost" class="form-control" value="{% if maintenance %}{{ maintenance.cost|floatformat:0 }}{% else %}0{% endif %}">
+                        <label class="form-label fw-semibold">Costo</label>
+                        <input type="number" min="0" step="1" name="cost" class="form-control"
+                               value="{% if maintenance %}{{ maintenance.cost|floatformat:0 }}{% else %}0{% endif %}">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Taller</label>
-                        <input type="text" name="workshop" class="form-control" value="{% if maintenance %}{{ maintenance.workshop }}{% endif %}">
+                        <label class="form-label fw-semibold">Taller</label>
+                        <input type="text" name="workshop" class="form-control"
+                               value="{% if maintenance %}{{ maintenance.workshop }}{% endif %}">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Técnico responsable</label>
-                        <input type="text" name="technician" class="form-control" value="{% if maintenance %}{{ maintenance.technician }}{% endif %}">
+                        <label class="form-label fw-semibold">Técnico responsable</label>
+                        <input type="text" name="technician" class="form-control"
+                               value="{% if maintenance %}{{ maintenance.technician }}{% endif %}">
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Notas adicionales</label>
+                        <label class="form-label fw-semibold">Notas adicionales</label>
                         <textarea name="notes" class="form-control" rows="2">{% if maintenance %}{{ maintenance.notes }}{% endif %}</textarea>
                     </div>
-                    <div class="col-12">
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>{% if maintenance %}Guardar cambios{% else %}Guardar mantenimiento{% endif %}</button>
-                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-4 pt-3 border-top">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="fas fa-save me-1"></i>
+                        {% if maintenance %}Guardar cambios{% else %}Guardar mantención{% endif %}
+                    </button>
+                    <a href="{% url 'coordinator:maintenance_list' %}" class="btn btn-outline-secondary px-4">Cancelar</a>
                 </div>
             </form>
         </div>

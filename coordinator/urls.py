@@ -14,6 +14,7 @@ urlpatterns = [
     path('buses/editar/<int:bus_id>/', views.bus_editor, name='bus_editor'),
     path('buses/duplicar/<int:bus_id>/', views.bus_duplicate, name='bus_duplicate'),
     path('buses/eliminar/<int:bus_id>/', views.bus_delete, name='bus_delete'),
+    path('buses/estado/<int:bus_id>/', views.bus_toggle_active, name='bus_toggle_active'),
     path('buses/eliminar-masivo/', views.bus_delete_massive, name='bus_delete_massive'),
     path('buses/api/<int:bus_id>/', views.api_bus_data, name='api_bus_data'),
 
@@ -75,6 +76,9 @@ urlpatterns = [
     path('rutas/dashboard/', views.routes_dashboard, name='routes_dashboard'),
     path('ciudades/dashboard/', views.cities_dashboard, name='cities_dashboard'),
     path('buses/dashboard/', views.buses_dashboard, name='buses_dashboard'),
+    # FASE 2.18.3-A1.1 — propietarios / socios
+    path('propietarios/', views.fleet_owners_dashboard, name='fleet_owners_dashboard'),
+    path('propietarios/eliminar/<int:owner_id>/', views.fleet_owner_delete, name='fleet_owner_delete'),
     path('agencias/dashboard/', views.agencies_dashboard, name='agencies_dashboard'),
     path('agencias/eliminar/<int:agency_id>/', views.agency_delete, name='agency_delete'),
     path('viajes/dashboard/', views.trips_dashboard, name='trips_dashboard'),
@@ -87,6 +91,17 @@ urlpatterns = [
 
     # ----- Detalles y reportes -----
     path('viajes/detalle/<int:trip_id>/', views.trip_detail, name='trip_detail'),
+    # FASE 2.18 — despacho real del viaje
+    path(
+        'viajes/detalle/<int:trip_id>/despachar/',
+        views.trip_dispatch_start,
+        name='trip_dispatch_start',
+    ),
+    path(
+        'viajes/detalle/<int:trip_id>/finalizar/',
+        views.trip_dispatch_finish,
+        name='trip_dispatch_finish',
+    ),
     path('buses/detalle/<int:bus_id>/', views.bus_detail, name='bus_detail'),
     path('reportes/ocupacion/', views.occupancy_report, name='occupancy_report'),
     path('checkin/scan/',views.checkin_qr_scan,name='checkin_qr_scan'),
@@ -96,15 +111,30 @@ urlpatterns = [
     path('encomiendas/', views.parcel_list, name='parcel_list'),
     path('encomiendas/entregar/<int:parcel_id>/', views.parcel_deliver, name='parcel_deliver'),
 
-    # ----- Mantenimiento y combustible -----
+    # ----- Mantenimiento y combustible ----
     path('mantenimiento/', views.maintenance_list, name='maintenance_list'),
     path('mantenimiento/nuevo/', views.maintenance_create, name='maintenance_create'),
-    path('mantenimiento/nuevo/<int:bus_id>/', views.maintenance_create, name='maintenance_create_for_bus'),
-    path('mantenimiento/editar/<int:pk>/', views.maintenance_edit, name='maintenance_edit'),
-    path('mantenimiento/eliminar/<int:pk>/', views.maintenance_delete, name='maintenance_delete'),
+    path('mantenimiento/nuevo/<int:bus_id>/',views.maintenance_create, name='maintenance_create_for_bus'),
+    path('mantenimiento/editar/<int:pk>/',views.maintenance_edit, name='maintenance_edit'),
+    path('mantenimiento/eliminar/<int:pk>/',views.maintenance_delete, name='maintenance_delete'),
+
+    # Historial técnico por bus
+    path('mantenimiento/historial/<int:bus_id>/',views.bus_maintenance_history,name='bus_maintenance_history'),
+
+
+    # ----- Combustible -----
     path('combustible/', views.fuel_list, name='fuel_list'),
     path('combustible/nuevo/', views.fuel_create, name='fuel_create'),
-    path('combustible/eliminar/<int:pk>/', views.fuel_delete, name='fuel_delete'),
+    path(
+        'combustible/nuevo/<int:bus_id>/',
+        views.fuel_create,
+        name='fuel_create_for_bus'
+    ),
+    path(
+        'combustible/eliminar/<int:pk>/',
+        views.fuel_delete,
+        name='fuel_delete'
+    ),
     
     # ===== SEGURIDAD - LEY 21.719 =====
     path('seguridad/', views.seguridad_dashboard, name='seguridad_dashboard'),  # <--- Panel principal

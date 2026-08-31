@@ -1,119 +1,332 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
+{% load humanize %}
 
-
-{% block title %}Listado de Buses - Editor de asientos{% endblock %}
+{% block title %}Flota de buses{% endblock %}
 
 {% block extra_css %}
-<!-- Font Awesome 6 (si no está ya en base.html) -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
-    .table-hover tbody tr:hover {
-        background-color: #f8fafc;
-        transition: 0.2s;
+    .fleet-hero {
+        background: linear-gradient(110deg, #172554 0%, #1d4ed8 100%);
+        border-radius: 18px;
+        color: #fff;
+        padding: 22px;
+        box-shadow: 0 10px 28px rgba(30, 64, 175, .16);
     }
-    .btn-sm i {
-        margin-right: 5px;
+    .metric-card {
+        border: 0;
+        border-radius: 14px;
+        box-shadow: 0 5px 16px rgba(15, 23, 42, .06);
     }
-    .badge-piso {
-        background-color: #e2e8f0;
-        color: #1e293b;
-        padding: 4px 8px;
-        border-radius: 30px;
-        font-size: 12px;
-        font-weight: 500;
+    .bus-row.inactive-bus {
+        opacity: .68;
+        background: #f8fafc;
     }
-    .badge-asientos {
-        background-color: #dbeafe;
-        color: #1e40af;
+    .bus-name {
+        font-weight: 700;
+        color: #0f172a;
     }
-    .card-header i {
-        margin-right: 8px;
+    .bus-sub {
+        color: #64748b;
+        font-size: .78rem;
     }
-    .table th {
-        background-color: #f1f5f9;
-        border-bottom: 2px solid #e2e8f0;
-    }
-    .action-buttons {
+    .action-group {
         display: flex;
-        gap: 6px;
         flex-wrap: wrap;
+        gap: 5px;
     }
+    .action-group .btn {
+        white-space: nowrap;
+    }
+
+    .operational-badge{
+        display:inline-flex;
+        align-items:center;
+        gap:5px;
+        font-size:.72rem;
+        font-weight:800;
+    }
+    .operational-note{
+        font-size:.69rem;
+        color:#64748b;
+        margin-top:3px;
+        max-width:220px;
+    }
+
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center bg-white">
-        <h3 class="mb-0"><i class="fa-solid fa-bus"></i> Buses Registrados</h3>
-        <div>
-            <a href="{% url 'coordinator:bus_new' %}" class="btn btn-primary">
-                <i class="fa-solid fa-plus"></i> Nuevo Bus
+<div class="container-fluid px-3 px-lg-4 py-3">
+
+    <div class="fleet-hero mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <div class="text-uppercase small fw-bold opacity-75">Flota</div>
+                <h3 class="mb-1 fw-bold">
+                    <i class="fas fa-bus me-2"></i>Administración de buses
+                </h3>
+                <div class="small opacity-75">
+                    Datos, plano de asientos, documentos, mantenimiento y combustible desde un solo lugar.
+                </div>
+            </div>
+            <a href="{% url 'coordinator:bus_new' %}" class="btn btn-light fw-semibold">
+                <i class="fas fa-plus me-1"></i> Nuevo bus
             </a>
-            <button id="deleteSelectedBtn" class="btn btn-danger" style="display:none;">
-                <i class="fa-solid fa-trash-can"></i> Eliminar seleccionados
-            </button>
         </div>
     </div>
-    <div class="card-body p-0">
+
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-xl">
+            <div class="card metric-card h-100"><div class="card-body">
+                <div class="small text-muted">Buses mostrados</div>
+                <div class="fs-4 fw-bold">{{ total_buses }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card metric-card h-100"><div class="card-body">
+                <div class="small text-muted">Activos</div>
+                <div class="fs-4 fw-bold text-success">{{ active_count }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card metric-card h-100"><div class="card-body">
+                <div class="small text-muted">Inactivos</div>
+                <div class="fs-4 fw-bold text-secondary">{{ inactive_count }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card metric-card h-100"><div class="card-body">
+                <div class="small text-muted">Asientos físicos</div>
+                <div class="fs-4 fw-bold text-primary">{{ total_seats }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card metric-card h-100"><div class="card-body">
+                <div class="small text-muted">Viajes futuros</div>
+                <div class="fs-4 fw-bold">{{ future_trips }}</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-7">
+                    <label class="form-label small fw-semibold">Buscar</label>
+                    <input type="search"
+                           class="form-control"
+                           name="q"
+                           value="{{ query }}"
+                           placeholder="Patente, modelo, marca o empresa">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Estado</label>
+                    <select name="status" class="form-select">
+                        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Todos</option>
+                        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Activos</option>
+                        <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactivos</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary">
+                        <i class="fas fa-filter me-1"></i> Filtrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2 py-3">
+            <div class="fw-bold">
+                <i class="fas fa-list me-2 text-primary"></i>Flota registrada
+            </div>
+            <button id="deleteSelectedBtn"
+                    class="btn btn-sm btn-outline-danger"
+                    style="display:none;">
+                <i class="fas fa-trash me-1"></i>Eliminar seleccionados sin historial
+            </button>
+        </div>
+
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
                     <tr>
-                        <th style="width: 40px;"><input type="checkbox" id="selectAll"></th>
-                        <th><i class="fa-solid fa-building"></i> Empresa</th>
-                        <th><i class="fa-solid fa-plate-wheat"></i> Patente</th>
-                        <th><i class="fa-solid fa-truck"></i> Modelo</th>
-                        <th><i class="fa-solid fa-layer-group"></i> Pisos</th>
-                        <th><i class="fa-solid fa-chair"></i> Asientos</th>
-                        <th><i class="fa-solid fa-gear"></i> Acciones</th>
+                        <th style="width:35px;"></th>
+                        <th>Bus</th>
+                        <th>Capacidad</th>
+                        <th>Operación</th>
+                        <th>Mantenimiento</th>
+                        <th>Estado</th>
+                        <th style="min-width:430px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for bus in buses %}
-                    <tr>
-                        <td><input type="checkbox" class="bus-select" value="{{ bus.id }}"></td>
-                        <td>{{ bus.company.name }}</td>
-                        <td><strong>{{ bus.plate }}</strong></td>
-                        <td>{{ bus.model|default:"—" }}</td>
+                {% for bus in buses %}
+                    <tr class="bus-row {% if not bus.is_active %}inactive-bus{% endif %}">
                         <td>
-                            {% if bus.floors == 1 %}
-                                <span class="badge-piso"><i class="fa-solid fa-arrow-down"></i> 1 piso</span>
+                            {% if not bus.has_history %}
+                                <input type="checkbox"
+                                       class="form-check-input bus-select"
+                                       value="{{ bus.id }}">
                             {% else %}
-                                <span class="badge-piso"><i class="fa-solid fa-arrow-up"></i> 2 pisos</span>
+                                <i class="fas fa-shield-halved text-muted"
+                                   title="Tiene historial operacional; no puede eliminarse"></i>
                             {% endif %}
                         </td>
-                        <td>
-                            <span class="badge-piso badge-asientos">
-                                <i class="fa-solid fa-chair"></i> {{ bus.rows_lower }}x{{ bus.cols }}
-                                {% if bus.floors == 2 %} + {{ bus.rows_upper }}x{{ bus.cols }}{% endif %}
-                            </span>
-                        </td>
-                        <td class="action-buttons">
-                            <a href="{% url 'coordinator:bus_editor' bus.id %}" class="btn btn-sm btn-warning" title="Editar">
-                                <i class="fa-solid fa-pencil"></i> Editar
-                            </a>
-                            <a href="{% url 'coordinator:bus_duplicate' bus.id %}" class="btn btn-sm btn-secondary" title="Duplicar">
-                                <i class="fa-solid fa-copy"></i> Duplicar
-                            </a>
-                            <a href="{% url 'coordinator:trip_new' %}?bus={{ bus.id }}" class="btn btn-sm btn-success" title="Crear viaje">
-                                <i class="fa-solid fa-calendar-plus"></i> Viaje
-                            </a>
 
-                            <a href="{% url 'coordinator:bus_documents' bus.id %}" class="btn btn-sm btn-info">Documentos</a> 
-                            <button class="btn btn-sm btn-danger delete-single" data-id="{{ bus.id }}" data-plate="{{ bus.plate }}" title="Eliminar bus">
-                                <i class="fa-solid fa-trash-can"></i> Eliminar
-                            </button>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div>
+                                    <div class="bus-name">{{ bus.plate }}</div>
+                                    <div class="bus-sub">
+                                        {{ bus.company.name }} · {{ bus.model|default:"Sin modelo" }}
+                                        {% if bus.year %} · {{ bus.year }}{% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>
+                            <div class="fw-semibold">
+                                <i class="fas fa-chair text-primary me-1"></i>
+                                {{ bus.real_seat_count }} asientos
+                            </div>
+                            <div class="bus-sub">
+                                {{ bus.floors }} piso{% if bus.floors != 1 %}s{% endif %}
+                                · {{ bus.rows_lower }} filas inf.
+                                {% if bus.floors == 2 %}· {{ bus.rows_upper }} sup.{% endif %}
+                            </div>
+                        </td>
+
+                        <td>
+                            <div>
+                                <span class="badge bg-primary-subtle text-primary">
+                                    {{ bus.future_trip_count }} próximos
+                                </span>
+                                <span class="badge bg-light text-dark border">
+                                    {{ bus.trip_count }} históricos
+                                </span>
+                            </div>
+                            <div class="bus-sub mt-1">
+                                {{ bus.ticket_count }} ticket(s)
+                            </div>
+                        </td>
+
+                        <td>
+                            {% if bus.maintenance_status == 'danger' %}
+                                <span class="badge bg-danger">{{ bus.maintenance_label }}</span>
+                            {% elif bus.maintenance_status == 'warning' %}
+                                <span class="badge bg-warning text-dark">{{ bus.maintenance_label }}</span>
+                            {% elif bus.maintenance_status == 'success' %}
+                                <span class="badge bg-success">{{ bus.maintenance_label }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary">{{ bus.maintenance_label }}</span>
+                            {% endif %}
+                            <div class="bus-sub mt-1">
+                                {{ bus.current_mileage|intcomma }} km actuales
+                            </div>
+                        </td>
+
+                        <td>
+                            {% if bus.is_active %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-circle-check me-1"></i>Activo
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="fas fa-circle-minus me-1"></i>Inactivo
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            <div class="action-group">
+                                <a href="{% url 'coordinator:buses_dashboard' %}?edit={{ bus.id }}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Datos administrativos">
+                                    <i class="fas fa-id-card me-1"></i>Datos
+                                </a>
+
+                                <a href="{% url 'coordinator:bus_editor' bus.id %}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Plano de asientos">
+                                    <i class="fas fa-chair me-1"></i>Asientos
+                                </a>
+
+                                <a href="{% url 'coordinator:bus_documents' bus.id %}"
+                                   class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-folder-open me-1"></i>Documentos
+                                </a>
+
+                                <a href="{% url 'coordinator:maintenance_create_for_bus' bus.id %}"
+                                   class="btn btn-sm btn-outline-warning">
+                                    <i class="fas fa-screwdriver-wrench me-1"></i>Mantención
+                                </a>
+
+                                <a href="{% url 'coordinator:fuel_create_for_bus' bus.id %}"
+                                   class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-gas-pump me-1"></i>Combustible
+                                </a>
+
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-dark dropdown-toggle"
+                                            type="button"
+                                            data-bs-toggle="dropdown">
+                                        Más
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <a class="dropdown-item"
+                                               href="{% url 'coordinator:trip_new' %}?bus={{ bus.id }}">
+                                                <i class="fas fa-calendar-plus me-2"></i>Crear viaje
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item"
+                                               href="{% url 'coordinator:bus_duplicate' bus.id %}">
+                                                <i class="fas fa-copy me-2"></i>Duplicar bus
+                                            </a>
+                                        </li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <button type="button"
+                                                    class="dropdown-item toggle-active"
+                                                    data-id="{{ bus.id }}"
+                                                    data-plate="{{ bus.plate }}"
+                                                    data-active="{% if bus.is_active %}1{% else %}0{% endif %}">
+                                                {% if bus.is_active %}
+                                                    <i class="fas fa-circle-pause me-2 text-warning"></i>Desactivar
+                                                {% else %}
+                                                    <i class="fas fa-circle-play me-2 text-success"></i>Activar
+                                                {% endif %}
+                                            </button>
+                                        </li>
+                                        {% if not bus.has_history %}
+                                        <li>
+                                            <button type="button"
+                                                    class="dropdown-item text-danger delete-single"
+                                                    data-id="{{ bus.id }}"
+                                                    data-plate="{{ bus.plate }}">
+                                                <i class="fas fa-trash me-2"></i>Eliminar definitivamente
+                                            </button>
+                                        </li>
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                            </div>
                         </td>
                     </tr>
-                    {% empty %}
+                {% empty %}
                     <tr>
                         <td colspan="7" class="text-center py-5">
-                            <i class="fa-regular fa-circle-xmark fa-2x text-muted"></i>
-                            <p class="mt-2">No hay buses registrados. <a href="{% url 'coordinator:bus_new' %}">Crea uno nuevo</a></p>
+                            <i class="fas fa-bus fa-2x text-muted mb-2"></i>
+                            <div class="fw-semibold">No hay buses para mostrar.</div>
+                            <div class="text-muted small">Cambia los filtros o crea un nuevo bus.</div>
                         </td>
                     </tr>
-                    {% endfor %}
+                {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -121,93 +334,125 @@
 </div>
 
 <script>
-    function getCsrfToken() {
-        return document.cookie.split('; ').find(row => row.startsWith('csrftoken'))?.split('=')[1];
-    }
+function getCsrfToken() {
+    const item = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrftoken='));
+    return item ? item.split('=')[1] : '';
+}
 
-    // Seleccionar todos
-    const selectAll = document.getElementById('selectAll');
-    const checkboxes = document.querySelectorAll('.bus-select');
-    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+const checkboxes = document.querySelectorAll('.bus-select');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 
-    function updateDeleteButtonVisibility() {
-        const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
-        deleteSelectedBtn.style.display = anyChecked ? 'inline-block' : 'none';
-    }
+function refreshDeleteButton() {
+    if (!deleteSelectedBtn) return;
+    const selected = [...checkboxes].filter(cb => cb.checked);
+    deleteSelectedBtn.style.display = selected.length ? 'inline-block' : 'none';
+}
 
-    if (selectAll) {
-        selectAll.addEventListener('change', function() {
-            checkboxes.forEach(cb => cb.checked = this.checked);
-            updateDeleteButtonVisibility();
-        });
-    }
+checkboxes.forEach(cb => cb.addEventListener('change', refreshDeleteButton));
 
-    checkboxes.forEach(cb => {
-        cb.addEventListener('change', updateDeleteButtonVisibility);
-    });
+document.querySelectorAll('.toggle-active').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        const plate = this.dataset.plate;
+        const active = this.dataset.active === '1';
 
-    // Eliminar individual con cascada
-    async function deleteBus(busId, plate, cascade = false) {
-        const formData = new FormData();
-        if (cascade) formData.append('cascade', 'true');
-        
-        const response = await fetch(`/coordinador/buses/eliminar/${busId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCsrfToken() },
-            body: formData
-        });
-        const data = await response.json();
-        
-        if (data.success) {
-            location.reload();
-        } else if (data.protected) {
-            const msg = data.message || `El bus ${plate} tiene viajes y tickets asociados.`;
-            const confirmCascade = confirm(
-                `${msg}\n\n¿Eliminar también todos sus viajes y tickets? (No se puede deshacer)`
-            );
-            if (confirmCascade) {
-                await deleteBus(busId, plate, true);
+        const action = active ? 'desactivar' : 'activar';
+
+        if (!confirm(`¿Deseas ${action} el bus ${plate}?`)) return;
+
+        const response = await fetch(
+            `/coordinador/buses/estado/${id}/`,
+            {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrfToken()}
             }
-        } else {
-            alert(data.error || data.message || 'Error desconocido al eliminar');
-        }
-    }
-
-    document.querySelectorAll('.delete-single').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const busId = this.dataset.id;
-            const plate = this.dataset.plate;
-            if (confirm(`¿Eliminar bus ${plate}? Se perderán los viajes asociados.`)) {
-                deleteBus(busId, plate, false);
-            }
-        });
-    });
-
-    // Eliminar seleccionados (masivo)
-    deleteSelectedBtn.addEventListener('click', async function() {
-        const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-        if (selected.length === 0) return;
-        
-        const confirmCascade = confirm(
-            `¿Eliminar ${selected.length} bus(es)?\n` +
-            `Si tienen viajes asociados, se te preguntará por cada uno.`
         );
-        
-        const response = await fetch('/coordinador/buses/eliminar-masivo/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-            body: JSON.stringify({ ids: selected, cascade: confirmCascade })
-        });
+
         const data = await response.json();
-        
+
         if (data.success) {
             location.reload();
-        } else if (data.partial) {
-            alert(`Se eliminaron ${data.deleted} buses.\nErrores: ${data.errors.join(', ')}`);
-            location.reload();
-        } else {
-            alert(data.error || 'Error al eliminar buses');
+            return;
         }
+
+        alert(data.message || 'No fue posible cambiar el estado del bus.');
     });
+});
+
+document.querySelectorAll('.delete-single').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        const plate = this.dataset.plate;
+
+        if (!confirm(
+            `¿Eliminar definitivamente el bus ${plate}?\\n\\n` +
+            `Esta opción sólo funciona si el bus no tiene historial operacional.`
+        )) return;
+
+        const response = await fetch(
+            `/coordinador/buses/eliminar/${id}/`,
+            {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrfToken()}
+            }
+        );
+
+        const data = await response.json();
+
+        if (data.success) {
+            location.reload();
+            return;
+        }
+
+        alert(data.message || data.error || 'No fue posible eliminar el bus.');
+    });
+});
+
+if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener('click', async function() {
+        const ids = [...checkboxes]
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+
+        if (!ids.length) return;
+
+        if (!confirm(
+            `¿Eliminar definitivamente ${ids.length} bus(es) sin historial?`
+        )) return;
+
+        const response = await fetch(
+            '/coordinador/buses/eliminar-masivo/',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ids})
+            }
+        );
+
+        const data = await response.json();
+
+        if (data.success || data.partial) {
+            if (data.errors?.length) {
+                alert(
+                    `Eliminados: ${data.deleted}\\n` +
+                    `No eliminados:\\n${data.errors.join('\\n')}`
+                );
+            }
+            location.reload();
+            return;
+        }
+
+        alert(
+            data.errors?.join('\\n')
+            || data.error
+            || 'No fue posible eliminar los buses.'
+        );
+    });
+}
 </script>
 {% endblock %}

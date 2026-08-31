@@ -91,9 +91,13 @@
                         <select name="bus" required>
                             <option value="">-- Seleccionar bus --</option>
                             {% for bus in buses %}
-                            <option value="{{ bus.id }}">{{ bus.plate }} - {{ bus.model|default:"Sin modelo" }}</option>
+                            <option value="{{ bus.id }}" data-status="{{ bus.dispatch_key }}" data-reason="{{ bus.dispatch_reason }}"
+                                    {% if not bus.dispatch_can_assign %}disabled{% endif %}>
+                                {{ bus.plate }} - {{ bus.model|default:"Sin modelo" }} — {{ bus.dispatch_label|upper }}
+                            </option>
                             {% endfor %}
                         </select>
+                        <div class="small text-muted mb-2">Los buses NO OPERATIVOS aparecen bloqueados. Los buses en ATENCIÓN pueden utilizarse.</div>
 
                         <!-- Chofer principal -->
                         <label>CHOFER PRINCIPAL</label>

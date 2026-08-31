@@ -34,10 +34,12 @@ from core.decorators import role_required, admin_required, supervisor_required, 
 from .models import (
     City, Parcel, Promotion, Route, Trip, Bus, Seat, Ticket, SeatHold,
     Terminal, UserProfile, CashRegister, DailyReport,
-    Customer, BusLayout, Driver, CompanyContract, ContractEmployee, AuditLog
+    Customer, BusLayout, Driver, Company, FleetOwner,
+    CompanyContract, ContractEmployee, AuditLog
 )
 from .forms import DriverForm
 from booking.utils import validate_chilean_rut
+from booking.access import tickets_for_user
 from .models import Season, Promotion
 from booking.models import Parcel
 from django.core.cache import cache
@@ -77,6 +79,61 @@ def _get_role_choices():
         ('cajero', 'Cajero'),
         ('convenio', 'Gestor de Convenios'),
     )
+
+
+def _resolve_user_profile_scope(request):
+    """
+    FASE 2.18.3-A2.2
+
+    Valida el alcance empresarial enviado desde Crear/Editar Usuario.
+
+    Reglas:
+    - Todo usuario operativo debe quedar asociado a una empresa.
+    - role='owner' exige propietario/socio.
+    - El propietario debe estar activo y pertenecer a la misma empresa.
+    - Para otros roles fleet_owner se limpia para evitar alcances ambiguos.
+    """
+    role = (request.POST.get("role") or "").strip()
+    company_id = (request.POST.get("company") or "").strip()
+    fleet_owner_id = (request.POST.get("fleet_owner") or "").strip()
+
+    valid_roles = {value for value, _label in _get_role_choices()}
+    if role not in valid_roles:
+        raise ValidationError("Debe seleccionar un rol válido.")
+
+    if not company_id:
+        raise ValidationError("Debe seleccionar una empresa operadora.")
+
+    company = Company.objects.filter(pk=company_id).first()
+    if not company:
+        raise ValidationError("La empresa operadora seleccionada no existe.")
+
+    fleet_owner = None
+
+    if role == "owner":
+        if not fleet_owner_id:
+            raise ValidationError(
+                "El rol Propietario / Socio requiere seleccionar un propietario asociado."
+            )
+
+        fleet_owner = (
+            FleetOwner.objects
+            .filter(
+                pk=fleet_owner_id,
+                company=company,
+                is_active=True,
+            )
+            .first()
+        )
+
+        if not fleet_owner:
+            raise ValidationError(
+                "El propietario / socio no pertenece a la empresa seleccionada "
+                "o se encuentra inactivo."
+            )
+
+    return role, company, fleet_owner
+
 
 def _check_terminal_permission(request, trip):
     profile = getattr(request.user, 'profile', None)
@@ -155,7 +212,7 @@ def pos_home(request):
 
         # ✅ CORREGIDO: Anotaciones usando Subquery en lugar de F('bus__seats__count')
         from django.db.models import Subquery, OuterRef
-        
+
         trips = trips.annotate(
             sold_count=Count('tickets', distinct=True),
             hold_count=Count('holds', filter=Q(holds__active=True), distinct=True),
@@ -861,14 +918,14 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
     from django.contrib import messages
     from django.conf import settings
     from django.db import transaction
-    
+
     print("=" * 60)
     print("🚀 POS_CHECKOUT - Iniciando proceso de venta")
     print(f"📌 trip_id: {trip_id}")
     print(f"📌 Método: {request.method}")
     print(f"📌 POST data recibida: {request.POST}")
     print("=" * 60)
-    
+
     # ===== VALIDACIÓN 1: Método POST =====
     if request.method != "POST":
         print("❌ Error: Método no POST")
@@ -891,7 +948,7 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
         status='open',
         opening_date__date=today
     ).first()
-    
+
     if not cash_register:
         # En desarrollo, crear caja automáticamente
         if settings.DEBUG:
@@ -940,7 +997,7 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
     # ===== VALIDACIÓN 7: Parsear asientos =====
     raw_seats = request.POST.get("seats", "").strip()
     print(f"📌 Raw seats: {raw_seats}")
-    
+
     try:
         chosen = json.loads(raw_seats) if raw_seats else []
         print(f"📌 Asientos parseados: {chosen}")
@@ -987,7 +1044,7 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
             passenger_rut = item.get("passenger_rut", "").strip()
             passenger_name = item.get("passenger_name", "").strip()
             passenger_phone = item.get("passenger_phone", "").strip()
-            
+
             print(f"🔍 Procesando asiento {idx+1}/{len(chosen)}: {number} (deck {deck}) - Pasajero: {passenger_name}")
         except (ValueError, TypeError) as e:
             print(f"❌ Error parseando item: {e}")
@@ -1024,7 +1081,7 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
             seat=seat,
             active=True
         ).exclude(user=request.user).first()
-        
+
         if active_hold:
             print(f"❌ Asiento reservado por otro usuario: {number}")
             skipped.append(number)
@@ -1053,10 +1110,13 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
                     print(f"❌ Error creando cliente: {e}")
                     customer = None
 
-            # ✅ CREAR EL TICKET DIRECTAMENTE
+            # =========================================================
+            # FASE 2.18.3-A2.3.2
+            # Emisión centralizada para congelar revenue_bus/revenue_owner
+            # =========================================================
             ticket_number = get_next_ticket_number()
-            
-            ticket = Ticket.objects.create(
+
+            ticket = Ticket.create_for_sale(
                 trip=trip,
                 seat=seat,
                 number=ticket_number,
@@ -1066,12 +1126,10 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
                 created_by=request.user,
                 payment_method=payment_method,
                 customer=customer,
-                checked_in=False,
             )
-            
             created_tickets.append(ticket)
             print(f"✅ Ticket creado: {ticket.number} - Asiento {number} - Precio: ${ticket.price}")
-            
+
         except Exception as e:
             print(f"❌ Error creando ticket para asiento {number}: {e}")
             import traceback
@@ -1084,7 +1142,7 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
         print(f"❌ {error_msg}")
         messages.error(request, error_msg)
         return redirect("pos_trip", trip_id=trip.id)
-    
+
     print(f"✅ Paso 8: {len(created_tickets)} tickets creados exitosamente")
 
     # ===== LIMPIAR HOLDS =====
@@ -1193,12 +1251,12 @@ def pos_confirmation(request, trip_id):
 def calculate_final_price(trip, discount_code=None, total_amount=None):
     """Calcula el precio final con caching."""
     base_price = trip.route.base_price
-    
+
     # ✅ CACHE PARA SEASON
     today = timezone.now().date()
     cache_key_season = f"season_{today.isoformat()}"
     season = cache.get(cache_key_season)
-    
+
     if season is None:
         season = Season.objects.filter(
             start_date__lte=today,
@@ -1206,7 +1264,7 @@ def calculate_final_price(trip, discount_code=None, total_amount=None):
             is_active=True
         ).first()
         cache.set(cache_key_season, season, 3600)  # Cache por 1 hora
-    
+
     if season:
         base_price = base_price * season.multiplier
 
@@ -1215,13 +1273,13 @@ def calculate_final_price(trip, discount_code=None, total_amount=None):
     if discount_code:
         cache_key_promo = f"promo_{discount_code}_{today.isoformat()}"
         promotion = cache.get(cache_key_promo)
-        
+
         if promotion is None:
             promotion = Promotion.objects.filter(
                 code=discount_code,
                 is_active=True
             ).first()
-            
+
             if promotion:
                 # Validar condiciones
                 if promotion.valid_from and promotion.valid_from > today:
@@ -1232,7 +1290,7 @@ def calculate_final_price(trip, discount_code=None, total_amount=None):
                     promotion = None
                 elif total_amount is not None and total_amount < promotion.min_purchase_amount:
                     promotion = None
-            
+
             # Cache por 5 minutos (por si cambia el uso)
             cache.set(cache_key_promo, promotion, 300)
 
@@ -1417,7 +1475,7 @@ def pos_caja(request):
 
     # ===== MÉTRICAS GENERALES =====
     metrics = ventas_hoy.aggregate(
-        total=Sum('price'), 
+        total=Sum('price'),
         total_count=Count('id')
     )
     total_ventas = metrics['total'] or Decimal('0.00')
@@ -1429,16 +1487,16 @@ def pos_caja(request):
     efectivo_hoy = ventas_hoy.filter(payment_method='cash').aggregate(
         total=Sum('price')
     )['total'] or Decimal('0.00')
-    
+
     tarjeta_hoy = ventas_hoy.filter(payment_method='card').aggregate(
         total=Sum('price')
     )['total'] or Decimal('0.00')
-    
+
     # Transferencia - si existe en tus choices, sino usar 'transfer'
     transferencia_hoy = ventas_hoy.filter(payment_method='transfer').aggregate(
         total=Sum('price')
     )['total'] or Decimal('0.00')
-    
+
     # Crédito Convenio
     convenio_hoy = ventas_hoy.filter(payment_method='credit').aggregate(
         total=Sum('price')
@@ -1457,7 +1515,7 @@ def pos_caja(request):
         ventas_ayer = Ticket.objects.filter(created_at__date=ayer, created_by=request.user)
 
     metrics_ayer = ventas_ayer.aggregate(
-        total=Sum('price'), 
+        total=Sum('price'),
         total_count=Count('id')
     )
     total_ventas_ayer = metrics_ayer['total'] or Decimal('0.00')
@@ -1534,14 +1592,14 @@ def abrir_caja(request):
 def cerrar_caja(request):
     try:
         fecha_hoy = timezone.now().date()
-        
+
         # ✅ Verificar permisos
         es_admin_o_supervisor = (
             request.user.is_superuser or
-            (hasattr(request.user, 'profile') and 
+            (hasattr(request.user, 'profile') and
              request.user.profile.role in ['admin', 'supervisor'])
         )
-        
+
         # ✅ Solo permitir cerrar caja propia o si es admin/supervisor
         if es_admin_o_supervisor:
             caja = CashRegister.objects.select_for_update().get(
@@ -1617,118 +1675,453 @@ def cerrar_caja(request):
 @login_required
 @supervisor_required
 def pos_reportes(request):
-    fecha_inicio_str = request.GET.get('fecha_inicio', '')
-    fecha_fin_str = request.GET.get('fecha_fin', '')
-    usuario_id = request.GET.get('usuario', '')
+    """
+    FASE 2.18.3-A2.3.3-B
+
+    Reportes POS respetando el alcance empresarial del usuario.
+
+    - Superusuario:
+        acceso global.
+
+    - Admin / Supervisor normal:
+        sólo tickets pertenecientes a su empresa económica.
+
+    - La fuente económica se obtiene mediante tickets_for_user(),
+      que utiliza revenue_bus / revenue_owner cuando corresponde.
+
+    IMPORTANTE:
+    Los filtros posteriores (usuario, fecha, vendedor, etc.)
+    se aplican SIEMPRE sobre el queryset ya autorizado.
+    """
+
+    fecha_inicio_str = request.GET.get(
+        'fecha_inicio',
+        ''
+    )
+    fecha_fin_str = request.GET.get(
+        'fecha_fin',
+        ''
+    )
+    usuario_id = request.GET.get(
+        'usuario',
+        ''
+    )
+
+    # ============================================================
+    # RANGO DE FECHAS
+    # ============================================================
 
     if not fecha_inicio_str or not fecha_fin_str:
         fecha_fin = timezone.now().date()
-        fecha_inicio = fecha_fin - timedelta(days=7)
+        fecha_inicio = (
+            fecha_fin - timedelta(days=7)
+        )
     else:
         try:
-            fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d').date()
-            fecha_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date()
+            fecha_inicio = datetime.strptime(
+                fecha_inicio_str,
+                '%Y-%m-%d'
+            ).date()
+
+            fecha_fin = datetime.strptime(
+                fecha_fin_str,
+                '%Y-%m-%d'
+            ).date()
+
         except ValueError:
             fecha_fin = timezone.now().date()
-            fecha_inicio = fecha_fin - timedelta(days=7)
+            fecha_inicio = (
+                fecha_fin - timedelta(days=7)
+            )
 
-    es_admin_o_supervisor = (
-        request.user.is_superuser or
-        (hasattr(request.user, 'profile') and request.user.profile.role in ['admin', 'supervisor'])
+    # ============================================================
+    # PERFIL / ROL
+    # ============================================================
+
+    user_profile = getattr(
+        request.user,
+        'profile',
+        None,
     )
 
-    if es_admin_o_supervisor:
-        ventas = Ticket.objects.filter(created_at__date__range=[fecha_inicio, fecha_fin]).select_related(
-            'trip__route__origin', 'trip__route__destination', 'created_by')
-        if usuario_id and usuario_id != 'todos':
-            ventas = ventas.filter(created_by_id=usuario_id)
-    else:
-        ventas = Ticket.objects.filter(
-            created_at__date__range=[fecha_inicio, fecha_fin], created_by=request.user
-        ).select_related('trip__route__origin', 'trip__route__destination')
+    es_admin_o_supervisor = (
+        request.user.is_superuser
+        or (
+            user_profile
+            and user_profile.role
+            in ['admin', 'supervisor']
+        )
+    )
 
-    stats = ventas.aggregate(total_ventas=Sum('price'), total_boletos=Count('id'), ticket_promedio=Avg('price'))
-    total_ventas = stats['total_ventas'] or Decimal('0.00')
-    total_boletos = stats['total_boletos'] or 0
-    ticket_promedio_general = stats['ticket_promedio'] or Decimal('0.00')
+    # ============================================================
+    # QUERYSET BASE
+    # ============================================================
+    # MUY IMPORTANTE:
+    # Primero construimos el queryset por fecha.
+    #
+    # Después tickets_for_user() aplica el alcance autorizado.
+    #
+    # Todo filtro posterior se deriva de este queryset.
+    # ============================================================
 
-    dias_rango = (fecha_fin - fecha_inicio).days + 1
-    promedio_diario = total_ventas / dias_rango if dias_rango > 0 else Decimal('0.00')
+    ventas_base = Ticket.objects.filter(
+        created_at__date__range=[
+            fecha_inicio,
+            fecha_fin,
+        ]
+    ).select_related(
+        'trip__route__origin',
+        'trip__route__destination',
+        'created_by',
+        'revenue_bus',
+        'revenue_owner',
+    )
 
-    ventas_por_dia = ventas.annotate(fecha=TruncDate('created_at')).values('fecha').annotate(
-        total=Sum('price'), cantidad=Count('id')).order_by('fecha')
+    ventas = tickets_for_user(
+        request.user,
+        ventas_base,
+    )
 
-    ventas_por_dia_procesadas = [{
-        'fecha': v['fecha'],
-        'total': v['total'],
-        'cantidad': v['cantidad'],
-        'promedio': (v['total'] / v['cantidad']) if v['cantidad'] > 0 else Decimal('0.00')
-    } for v in ventas_por_dia]
+    # ============================================================
+    # FILTRO POR VENDEDOR
+    # ============================================================
 
-    rutas_populares = ventas.values(
-        'trip__route__origin__name', 'trip__route__destination__name'
-    ).annotate(total=Sum('price'), cantidad=Count('id'), promedio=Avg('price')).order_by('-total')[:10]
+    if usuario_id and usuario_id != 'todos':
+        ventas = ventas.filter(
+            created_by_id=usuario_id
+        )
 
-    ventas_por_hora = ventas.annotate(hora=ExtractHour('created_at')).values('hora').annotate(
-        total=Sum('price'), cantidad=Count('id'), promedio=Avg('price')).order_by('hora')
+    # ============================================================
+    # MÉTRICAS GENERALES
+    # ============================================================
+
+    stats = ventas.aggregate(
+        total_ventas=Sum('price'),
+        total_boletos=Count('id'),
+        ticket_promedio=Avg('price'),
+    )
+
+    total_ventas = (
+        stats['total_ventas']
+        or Decimal('0.00')
+    )
+
+    total_boletos = (
+        stats['total_boletos']
+        or 0
+    )
+
+    ticket_promedio_general = (
+        stats['ticket_promedio']
+        or Decimal('0.00')
+    )
+
+    dias_rango = (
+        fecha_fin - fecha_inicio
+    ).days + 1
+
+    promedio_diario = (
+        total_ventas / dias_rango
+        if dias_rango > 0
+        else Decimal('0.00')
+    )
+
+    # ============================================================
+    # VENTAS POR DÍA
+    # ============================================================
+
+    ventas_por_dia = (
+        ventas
+        .annotate(
+            fecha=TruncDate('created_at')
+        )
+        .values('fecha')
+        .annotate(
+            total=Sum('price'),
+            cantidad=Count('id'),
+        )
+        .order_by('fecha')
+    )
+
+    ventas_por_dia_procesadas = [
+        {
+            'fecha': item['fecha'],
+            'total': item['total'],
+            'cantidad': item['cantidad'],
+            'promedio': (
+                item['total']
+                / item['cantidad']
+                if item['cantidad'] > 0
+                else Decimal('0.00')
+            ),
+        }
+        for item in ventas_por_dia
+    ]
+
+    # ============================================================
+    # RUTAS POPULARES
+    # ============================================================
+
+    rutas_populares = (
+        ventas
+        .values(
+            'trip__route__origin__name',
+            'trip__route__destination__name',
+        )
+        .annotate(
+            total=Sum('price'),
+            cantidad=Count('id'),
+            promedio=Avg('price'),
+        )
+        .order_by('-total')[:10]
+    )
+
+    # ============================================================
+    # VENTAS POR HORA
+    # ============================================================
+
+    ventas_por_hora = (
+        ventas
+        .annotate(
+            hora=ExtractHour('created_at')
+        )
+        .values('hora')
+        .annotate(
+            total=Sum('price'),
+            cantidad=Count('id'),
+            promedio=Avg('price'),
+        )
+        .order_by('hora')
+    )
+
+    # ============================================================
+    # VENTAS POR VENDEDOR
+    # ============================================================
+    # IMPORTANTE:
+    # Ya NO usamos Ticket.objects.filter(...) nuevamente.
+    #
+    # Se parte del queryset autorizado para evitar mezclar
+    # vendedores/tickets de otras empresas.
+    # ============================================================
 
     ventas_por_vendedor = []
-    if es_admin_o_supervisor:
-        ventas_por_vendedor = Ticket.objects.filter(created_at__date__range=[fecha_inicio, fecha_fin]).values(
-            'created_by__id', 'created_by__username', 'created_by__first_name', 'created_by__last_name'
-        ).annotate(total=Sum('price'), cantidad=Count('id'), promedio=Avg('price')).order_by('-total')
 
-    user_profile = getattr(request.user, 'profile', None)
-    user_role = user_profile.get_role_display() if user_profile else "Vendedor"
+    if es_admin_o_supervisor:
+
+        ventas_vendedor_base = (
+            Ticket.objects
+            .filter(
+                created_at__date__range=[
+                    fecha_inicio,
+                    fecha_fin,
+                ]
+            )
+        )
+
+        ventas_vendedor_base = tickets_for_user(
+            request.user,
+            ventas_vendedor_base,
+        )
+
+        ventas_por_vendedor = (
+            ventas_vendedor_base
+            .values(
+                'created_by__id',
+                'created_by__username',
+                'created_by__first_name',
+                'created_by__last_name',
+            )
+            .annotate(
+                total=Sum('price'),
+                cantidad=Count('id'),
+                promedio=Avg('price'),
+            )
+            .order_by('-total')
+        )
+
+    # ============================================================
+    # USUARIOS DISPONIBLES PARA FILTRO
+    # ============================================================
+    # Sólo aparecen usuarios que tengan tickets dentro del
+    # alcance autorizado.
+    # ============================================================
 
     usuarios_lista = []
-    if es_admin_o_supervisor:
-        usuarios_lista = User.objects.filter(
-            is_staff=True, tickets_sold__created_at__date__range=[fecha_inicio, fecha_fin]
-        ).distinct().order_by('username')
 
-    usuario_filtrado_obj = User.objects.filter(id=usuario_id).first() if usuario_id and usuario_id != 'todos' else None
+    if es_admin_o_supervisor:
+
+        tickets_usuarios = (
+            Ticket.objects
+            .filter(
+                created_at__date__range=[
+                    fecha_inicio,
+                    fecha_fin,
+                ]
+            )
+        )
+
+        tickets_usuarios = tickets_for_user(
+            request.user,
+            tickets_usuarios,
+        )
+
+        usuarios_ids = (
+            tickets_usuarios
+            .exclude(created_by_id__isnull=True)
+            .values_list(
+                'created_by_id',
+                flat=True,
+            )
+            .distinct()
+        )
+
+        usuarios_lista = (
+            User.objects
+            .filter(
+                id__in=usuarios_ids
+            )
+            .order_by('username')
+        )
+
+    # ============================================================
+    # USUARIO SELECCIONADO
+    # ============================================================
+
+    usuario_filtrado_obj = None
+
+    if usuario_id and usuario_id != 'todos':
+
+        # Seguridad adicional:
+        # sólo aceptar un usuario presente dentro del alcance
+        # autorizado.
+        usuario_filtrado_obj = (
+            User.objects
+            .filter(
+                id=usuario_id,
+                id__in=usuarios_lista.values_list(
+                    'id',
+                    flat=True,
+                ),
+            )
+            .first()
+        )
+
+    user_role = (
+        user_profile.get_role_display()
+        if user_profile
+        else "Vendedor"
+    )
+
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
 
     context = {
         'title': 'POS — Reportes Detallados',
-        'fecha_inicio': fecha_inicio.strftime('%Y-%m-%d'),
-        'fecha_fin': fecha_fin.strftime('%Y-%m-%d'),
+
+        'fecha_inicio': (
+            fecha_inicio.strftime('%Y-%m-%d')
+        ),
+        'fecha_fin': (
+            fecha_fin.strftime('%Y-%m-%d')
+        ),
+
         'total_ventas': total_ventas,
         'total_boletos': total_boletos,
-        'ticket_promedio_general': ticket_promedio_general,
+        'ticket_promedio_general':
+            ticket_promedio_general,
+
         'promedio_diario': promedio_diario,
-        'ventas_por_dia': ventas_por_dia_procesadas,
-        'rutas_populares': rutas_populares,
-        'ventas_por_hora': list(ventas_por_hora),
-        'dias_rango': dias_rango,
-        'es_admin_o_supervisor': es_admin_o_supervisor,
-        'ventas_por_vendedor': ventas_por_vendedor,
-        'usuarios_lista': usuarios_lista,
-        'usuario_seleccionado': usuario_id,
-        'user_profile': user_profile,
-        'user_role': user_role,
-        'filtro_usuario_aplicado': usuario_id if usuario_id else None,
-        'usuario_filtrado': usuario_filtrado_obj.get_full_name() if usuario_filtrado_obj else None,
+
+        'ventas_por_dia':
+            ventas_por_dia_procesadas,
+
+        'rutas_populares':
+            rutas_populares,
+
+        'ventas_por_hora':
+            list(ventas_por_hora),
+
+        'dias_rango':
+            dias_rango,
+
+        'es_admin_o_supervisor':
+            es_admin_o_supervisor,
+
+        'ventas_por_vendedor':
+            ventas_por_vendedor,
+
+        'usuarios_lista':
+            usuarios_lista,
+
+        'usuario_seleccionado':
+            usuario_id,
+
+        'user_profile':
+            user_profile,
+
+        'user_role':
+            user_role,
+
+        'filtro_usuario_aplicado':
+            usuario_id if usuario_id else None,
+
+        'usuario_filtrado': (
+            usuario_filtrado_obj.get_full_name()
+            if usuario_filtrado_obj
+            else None
+        ),
     }
-    return render(request, 'booking/pos_reportes.html', context)
+
+    return render(
+        request,
+        'booking/pos_reportes.html',
+        context,
+    )
 
 # ============================================================================
 # 9. GESTIÓN ADMINISTRATIVA DE USUARIOS
 # ============================================================================
 
 @login_required
-@role_required(['admin', 'supervisor'])
+@role_required(['admin', 'supervisor', 'coordinator'])
 def gestion_usuarios(request):
-    qs = User.objects.select_related('profile').order_by('username')
+    query = (request.GET.get("q") or "").strip()
+
+    qs = (
+        User.objects
+        .select_related(
+            'profile',
+            'profile__terminal',
+            'profile__terminal__city',
+            'profile__company',
+            'profile__fleet_owner',
+        )
+        .order_by('username')
+    )
+
+    if query:
+        qs = qs.filter(
+            Q(username__icontains=query)
+            | Q(first_name__icontains=query)
+            | Q(last_name__icontains=query)
+            | Q(email__icontains=query)
+            | Q(profile__company__name__icontains=query)
+            | Q(profile__fleet_owner__first_name__icontains=query)
+            | Q(profile__fleet_owner__last_name__icontains=query)
+        ).distinct()
+
     context = {
         "title": "Gestión de Usuarios",
         "usuarios": qs,
         "total_count": qs.count(),
         "admins_count": qs.filter(profile__role="admin").count(),
         "supervisores_count": qs.filter(profile__role="supervisor").count(),
+        "coordinadores_count": qs.filter(profile__role="coordinator").count(),
         "vendedores_count": qs.filter(profile__role="vendedor").count(),
-        "cajeros_count": qs.filter(profile__role="cajero").count(),
-        "convenios_count": qs.filter(profile__role="convenio").count(),
+        "owners_count": qs.filter(profile__role="owner").count(),
+        "executives_count": qs.filter(profile__role="executive").count(),
+        "secretaries_count": qs.filter(profile__role="secretary").count(),
         "activos_count": qs.filter(profile__is_active=True).count(),
         "inactivos_count": qs.filter(profile__is_active=False).count(),
         "roles": _get_role_choices(),
@@ -1736,25 +2129,56 @@ def gestion_usuarios(request):
     }
     return render(request, "booking/gestion_usuarios.html", context)
 
+
 @login_required
-@role_required(['admin', 'supervisor'])
+@role_required(['admin', 'supervisor', 'coordinator'])
 def editar_usuario(request, user_id):
-    usuario = get_object_or_404(User, id=user_id)
+    usuario = get_object_or_404(
+        User.objects.select_related(
+            'profile',
+            'profile__company',
+            'profile__fleet_owner',
+            'profile__terminal',
+        ),
+        id=user_id,
+    )
+
     if request.method == 'POST':
         try:
+            role, company, fleet_owner = _resolve_user_profile_scope(request)
+
             with transaction.atomic():
                 usuario.first_name = request.POST.get('first_name', '').strip()
                 usuario.last_name = request.POST.get('last_name', '').strip()
                 usuario.email = request.POST.get('email', '').strip()
+
+                new_password = request.POST.get('password', '')
+                confirm_password = request.POST.get('confirm_password', '')
+
+                if new_password or confirm_password:
+                    if new_password != confirm_password:
+                        raise ValidationError("Las contraseñas no coinciden.")
+                    if len(new_password) < 8:
+                        raise ValidationError(
+                            "La nueva contraseña debe tener al menos 8 caracteres."
+                        )
+                    usuario.set_password(new_password)
+
                 usuario.save()
 
                 profile, _ = UserProfile.objects.get_or_create(user=usuario)
-                profile.role = request.POST.get('role', 'vendedor')
+                profile.role = role
+                profile.company = company
+                profile.fleet_owner = fleet_owner
                 profile.terminal_id = request.POST.get('terminal') or None
 
                 try:
-                    profile.commission_rate = Decimal(request.POST.get('commission_rate', '0') or '0')
-                    profile.max_discount = Decimal(request.POST.get('max_discount', '0') or '0')
+                    profile.commission_rate = Decimal(
+                        request.POST.get('commission_rate', '0') or '0'
+                    )
+                    profile.max_discount = Decimal(
+                        request.POST.get('max_discount', '0') or '0'
+                    )
                 except (ValueError, TypeError):
                     profile.commission_rate = Decimal('0.00')
                     profile.max_discount = Decimal('0.00')
@@ -1762,21 +2186,53 @@ def editar_usuario(request, user_id):
                 profile.is_active = 'is_active' in request.POST
                 profile.save()
 
-            messages.success(request, f"El usuario {usuario.username} ha sido actualizado con éxito.")
+            messages.success(
+                request,
+                f"El usuario {usuario.username} ha sido actualizado con éxito."
+            )
             return redirect('gestion_usuarios')
+
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
         except Exception as e:
-            messages.error(request, f"Error al procesar la actualización: {str(e)}")
+            messages.error(
+                request,
+                f"Error al procesar la actualización: {str(e)}"
+            )
+
+    profile = getattr(usuario, 'profile', None)
+
+    selected_company_id = (
+        request.POST.get('company')
+        if request.method == 'POST'
+        else (profile.company_id if profile else None)
+    )
+    selected_owner_id = (
+        request.POST.get('fleet_owner')
+        if request.method == 'POST'
+        else (profile.fleet_owner_id if profile else None)
+    )
 
     context = {
         'title': f'Editar Usuario - {usuario.username}',
         'usuario': usuario,
-        'terminales': Terminal.objects.all(),
+        'terminales': Terminal.objects.select_related('city').all(),
         'roles': _get_role_choices(),
+        'companies': Company.objects.all().order_by('name'),
+        'fleet_owners': (
+            FleetOwner.objects
+            .filter(is_active=True)
+            .select_related('company')
+            .order_by('company__name', 'first_name', 'last_name')
+        ),
+        'selected_company_id': selected_company_id,
+        'selected_owner_id': selected_owner_id,
     }
     return render(request, 'booking/editar_usuario.html', context)
 
+
 @login_required
-@role_required(['admin', 'supervisor'])
+@role_required(['admin', 'supervisor', 'coordinator'])
 @transaction.atomic
 def crear_usuario(request):
     if request.method == "POST":
@@ -1787,11 +2243,26 @@ def crear_usuario(request):
         if not username:
             messages.error(request, "El nombre de usuario es mandatorio.")
         elif User.objects.filter(username__iexact=username).exists():
-            messages.error(request, "El nombre de usuario ingresado ya se encuentra en uso.")
+            messages.error(
+                request,
+                "El nombre de usuario ingresado ya se encuentra en uso."
+            )
         elif password != confirm:
-            messages.error(request, "Las contraseñas de verificación no coinciden.")
+            messages.error(
+                request,
+                "Las contraseñas de verificación no coinciden."
+            )
+        elif len(password) < 8:
+            messages.error(
+                request,
+                "La contraseña debe tener al menos 8 caracteres."
+            )
         else:
             try:
+                # Validar alcance ANTES de crear el usuario. Así un error de
+                # empresa/propietario nunca deja una cuenta huérfana.
+                role, company, fleet_owner = _resolve_user_profile_scope(request)
+
                 user = User.objects.create_user(
                     username=username,
                     email=request.POST.get("email", "").strip(),
@@ -1801,12 +2272,18 @@ def crear_usuario(request):
                 )
 
                 profile, _ = UserProfile.objects.get_or_create(user=user)
-                profile.role = request.POST.get("role", "vendedor")
+                profile.role = role
+                profile.company = company
+                profile.fleet_owner = fleet_owner
                 profile.terminal_id = request.POST.get("terminal") or None
 
                 try:
-                    profile.commission_rate = Decimal(request.POST.get("commission_rate", '0') or '0')
-                    profile.max_discount = Decimal(request.POST.get("max_discount", '0') or '0')
+                    profile.commission_rate = Decimal(
+                        request.POST.get("commission_rate", '0') or '0'
+                    )
+                    profile.max_discount = Decimal(
+                        request.POST.get("max_discount", '0') or '0'
+                    )
                 except (ValueError, TypeError):
                     profile.commission_rate = Decimal('0.00')
                     profile.max_discount = Decimal('0.00')
@@ -1814,17 +2291,39 @@ def crear_usuario(request):
                 profile.is_active = True
                 profile.save()
 
-                messages.success(request, f"Usuario operativo {username} creado de forma exitosa.")
+                messages.success(
+                    request,
+                    f"Usuario operativo {username} creado de forma exitosa."
+                )
                 return redirect("gestion_usuarios")
+
+            except ValidationError as e:
+                # La vista completa está bajo @transaction.atomic; al no haber
+                # creado todavía el usuario cuando validamos alcance, no queda
+                # ninguna cuenta huérfana.
+                messages.error(request, "; ".join(e.messages))
             except Exception as e:
-                messages.error(request, f"Fallo al registrar usuario: {str(e)}")
+                messages.error(
+                    request,
+                    f"Fallo al registrar usuario: {str(e)}"
+                )
 
     context = {
         "title": "Crear Usuario",
         "roles": _get_role_choices(),
-        "terminales": Terminal.objects.all(),
+        "terminales": Terminal.objects.select_related('city').all(),
+        "companies": Company.objects.all().order_by('name'),
+        "fleet_owners": (
+            FleetOwner.objects
+            .filter(is_active=True)
+            .select_related('company')
+            .order_by('company__name', 'first_name', 'last_name')
+        ),
+        "selected_company_id": request.POST.get('company'),
+        "selected_owner_id": request.POST.get('fleet_owner'),
     }
     return render(request, "booking/crear_usuario.html", context)
+
 
 # ============================================================================
 # 10. CLIENTES
@@ -2104,26 +2603,699 @@ def resultados(request):
     return render(request, 'client_portal/resultados.html')
 
 @login_required
-def dashboard_redirect(request):
+def owner_dashboard(request):
+    """
+    FASE 2.18.3-A3.2
+
+    Dashboard económico del Propietario / Socio.
+
+    Alcance económico:
+    - Ticket.revenue_owner
+    - Ticket.revenue_bus
+
+    Filtros disponibles:
+    - Hoy
+    - Últimos 7 días
+    - Este mes
+    - Todo
+    - Rango personalizado
+    - Bus económico
+
+    IMPORTANTE:
+    Los filtros se aplican DESPUÉS de tickets_for_user(), por lo que
+    un propietario nunca puede consultar tickets económicos ajenos,
+    incluso manipulando manualmente los parámetros GET.
+    """
+
     user = request.user
+    profile = getattr(user, "profile", None)
+
+    # ------------------------------------------------------------------
+    # 1. VALIDACIÓN DEL PERFIL
+    # ------------------------------------------------------------------
+    if not profile:
+        messages.error(
+            request,
+            "El usuario no tiene un perfil operativo configurado."
+        )
+        return redirect("dashboard_redirect")
+
+    if not profile.is_active:
+        messages.error(
+            request,
+            "Su cuenta se encuentra desactivada."
+        )
+        logout(request)
+        return redirect("login")
+
+    # Superusuario permitido para soporte / pruebas.
+    if not user.is_superuser and profile.role != "owner":
+        raise PermissionDenied(
+            "No tiene permisos para acceder al portal del propietario."
+        )
+
+    if not user.is_superuser:
+        if not profile.company_id or not profile.fleet_owner_id:
+            messages.error(
+                request,
+                "El perfil de propietario no tiene empresa o propietario asociado."
+            )
+            return redirect("dashboard_redirect")
+
+    # ------------------------------------------------------------------
+    # 2. QUERYSET ECONÓMICO BASE
+    # ------------------------------------------------------------------
+    tickets_base = tickets_for_user(
+        user,
+        Ticket.objects.all()
+    ).select_related(
+        "revenue_bus",
+        "revenue_owner",
+        "revenue_bus__company",
+        "trip",
+        "trip__route",
+    )
+
+    # ------------------------------------------------------------------
+    # 3. BUSES DISPONIBLES PARA EL FILTRO
+    #
+    # Se obtienen desde el queryset económico autorizado.
+    # No usamos Bus.objects.all().
+    # ------------------------------------------------------------------
+    buses_disponibles = list(
+        tickets_base
+        .exclude(revenue_bus__isnull=True)
+        .values(
+            "revenue_bus_id",
+            "revenue_bus__plate",
+        )
+        .distinct()
+        .order_by("revenue_bus__plate")
+    )
+
+    # ------------------------------------------------------------------
+    # 4. PARÁMETROS GET
+    # ------------------------------------------------------------------
+    periodo = request.GET.get("period", "month").strip().lower()
+    bus_id = request.GET.get("bus", "").strip()
+
+    fecha_desde_raw = request.GET.get("date_from", "").strip()
+    fecha_hasta_raw = request.GET.get("date_to", "").strip()
+
+    periodos_validos = {
+        "today",
+        "7days",
+        "month",
+        "custom",
+        "all",
+    }
+
+    if periodo not in periodos_validos:
+        periodo = "month"
+
+    tickets = tickets_base
+
+    hoy = timezone.localdate()
+
+    fecha_desde = None
+    fecha_hasta = None
+
+    # ------------------------------------------------------------------
+    # 5. FILTRO DE FECHA
+    # ------------------------------------------------------------------
+    if periodo == "today":
+
+        fecha_desde = hoy
+        fecha_hasta = hoy
+
+        tickets = tickets.filter(
+            created_at__date=hoy
+        )
+
+    elif periodo == "7days":
+
+        fecha_desde = hoy - timedelta(days=6)
+        fecha_hasta = hoy
+
+        tickets = tickets.filter(
+            created_at__date__range=[
+                fecha_desde,
+                fecha_hasta,
+            ]
+        )
+
+    elif periodo == "month":
+
+        fecha_desde = hoy.replace(day=1)
+        fecha_hasta = hoy
+
+        tickets = tickets.filter(
+            created_at__date__range=[
+                fecha_desde,
+                fecha_hasta,
+            ]
+        )
+
+    elif periodo == "custom":
+
+        try:
+            if fecha_desde_raw:
+                fecha_desde = timezone.datetime.strptime(
+                    fecha_desde_raw,
+                    "%Y-%m-%d"
+                ).date()
+
+            if fecha_hasta_raw:
+                fecha_hasta = timezone.datetime.strptime(
+                    fecha_hasta_raw,
+                    "%Y-%m-%d"
+                ).date()
+
+        except (TypeError, ValueError):
+            fecha_desde = None
+            fecha_hasta = None
+
+            messages.warning(
+                request,
+                "El rango de fechas ingresado no es válido."
+            )
+
+        if fecha_desde and fecha_hasta:
+
+            if fecha_desde > fecha_hasta:
+                messages.warning(
+                    request,
+                    "La fecha inicial no puede ser posterior a la fecha final."
+                )
+
+                fecha_desde = None
+                fecha_hasta = None
+
+            else:
+                tickets = tickets.filter(
+                    created_at__date__range=[
+                        fecha_desde,
+                        fecha_hasta,
+                    ]
+                )
+
+        elif fecha_desde:
+
+            tickets = tickets.filter(
+                created_at__date__gte=fecha_desde
+            )
+
+        elif fecha_hasta:
+
+            tickets = tickets.filter(
+                created_at__date__lte=fecha_hasta
+            )
+
+    # periodo == "all":
+    # no se aplica filtro de fecha.
+
+    # ------------------------------------------------------------------
+    # 6. FILTRO DE BUS
+    # ------------------------------------------------------------------
+    bus_seleccionado = None
+
+    if bus_id:
+
+        try:
+            bus_id_int = int(bus_id)
+
+        except (TypeError, ValueError):
+            bus_id_int = None
+
+        if bus_id_int:
+
+            # Importante:
+            # filtramos sobre tickets_base/tickets ya autorizados.
+            tickets = tickets.filter(
+                revenue_bus_id=bus_id_int
+            )
+
+            bus_seleccionado = next(
+                (
+                    bus
+                    for bus in buses_disponibles
+                    if bus["revenue_bus_id"] == bus_id_int
+                ),
+                None,
+            )
+
+    # ------------------------------------------------------------------
+    # 7. KPIs DEL PERÍODO FILTRADO
+    # ------------------------------------------------------------------
+    resumen = tickets.aggregate(
+        total_tickets=Count("id"),
+        total_ingresos=Sum("price"),
+        ticket_promedio=Avg("price"),
+    )
+
+    total_tickets = resumen["total_tickets"] or 0
+    total_ingresos = resumen["total_ingresos"] or Decimal("0")
+    ticket_promedio = resumen["ticket_promedio"] or Decimal("0")
+
+    buses_con_ventas = (
+        tickets
+        .exclude(revenue_bus__isnull=True)
+        .values("revenue_bus_id")
+        .distinct()
+        .count()
+    )
+
+    # ------------------------------------------------------------------
+    # 8. RESUMEN POR BUS
+    # ------------------------------------------------------------------
+    ventas_por_bus = (
+        tickets
+        .exclude(revenue_bus__isnull=True)
+        .values(
+            "revenue_bus_id",
+            "revenue_bus__plate",
+        )
+        .annotate(
+            total_tickets=Count("id"),
+            total_ingresos=Sum("price"),
+            ticket_promedio=Avg("price"),
+        )
+        .order_by("-total_ingresos")
+    )
+
+    # ------------------------------------------------------------------
+    # 9. ÚLTIMAS VENTAS DEL PERÍODO
+    # ------------------------------------------------------------------
+    ultimas_ventas = tickets.order_by(
+        "-created_at",
+        "-id",
+    )[:50]
+
+    # ------------------------------------------------------------------
+    # 10. ETIQUETA DEL PERÍODO
+    # ------------------------------------------------------------------
+    etiquetas_periodo = {
+        "today": "Hoy",
+        "7days": "Últimos 7 días",
+        "month": "Este mes",
+        "custom": "Rango personalizado",
+        "all": "Todo el historial",
+    }
+
+    periodo_label = etiquetas_periodo.get(
+        periodo,
+        "Este mes",
+    )
+
+    # ------------------------------------------------------------------
+    # 11. CONTEXTO
+    # ------------------------------------------------------------------
+    context = {
+        "profile": profile,
+        "owner": getattr(profile, "fleet_owner", None),
+        "company": getattr(profile, "company", None),
+
+        # KPIs
+        "total_tickets": total_tickets,
+        "total_ingresos": total_ingresos,
+        "ticket_promedio": ticket_promedio,
+        "buses_con_ventas": buses_con_ventas,
+
+        # Datos
+        "ventas_por_bus": ventas_por_bus,
+        "ultimas_ventas": ultimas_ventas,
+        "buses_disponibles": buses_disponibles,
+
+        # Filtros
+        "periodo": periodo,
+        "periodo_label": periodo_label,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "fecha_desde_raw": fecha_desde_raw,
+        "fecha_hasta_raw": fecha_hasta_raw,
+        "bus_id": bus_id,
+        "bus_seleccionado": bus_seleccionado,
+    }
+
+    return render(
+        request,
+        "booking/owner_dashboard.html",
+        context,
+    )
+
+
+
+@login_required
+def owner_bus_detail(request, bus_id):
+    """
+    FASE 2.18.3-A3.2-D
+
+    Detalle económico de un bus para el Propietario / Socio.
+
+    La autorización se basa exclusivamente en tickets_for_user().
+    Nunca se consulta el propietario operacional actual del bus
+    para reconstruir ventas históricas.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    # --------------------------------------------------------------
+    # 1. VALIDACIÓN DEL PERFIL
+    # --------------------------------------------------------------
+    if not profile:
+        messages.error(
+            request,
+            "El usuario no tiene un perfil operativo configurado."
+        )
+        return redirect("dashboard_redirect")
+
+    if not profile.is_active:
+        messages.error(
+            request,
+            "Su cuenta se encuentra desactivada."
+        )
+        logout(request)
+        return redirect("login")
+
+    if not user.is_superuser and profile.role != "owner":
+        raise PermissionDenied(
+            "No tiene permisos para acceder al portal del propietario."
+        )
+
+    if not user.is_superuser:
+        if not profile.company_id or not profile.fleet_owner_id:
+            messages.error(
+                request,
+                "El perfil de propietario no tiene empresa o propietario asociado."
+            )
+            return redirect("dashboard_redirect")
+
+    # --------------------------------------------------------------
+    # 2. TICKETS ECONÓMICOS AUTORIZADOS
+    # --------------------------------------------------------------
+    tickets_base = tickets_for_user(
+        user,
+        Ticket.objects.all()
+    ).select_related(
+        "revenue_bus",
+        "revenue_owner",
+        "revenue_bus__company",
+        "trip",
+        "trip__route",
+    )
+
+    # --------------------------------------------------------------
+    # 3. VALIDAR ACCESO ECONÓMICO AL BUS
+    # --------------------------------------------------------------
+    bus_info = (
+        tickets_base
+        .filter(revenue_bus_id=bus_id)
+        .values(
+            "revenue_bus_id",
+            "revenue_bus__plate",
+            "revenue_bus__company__name",
+        )
+        .first()
+    )
+
+    if not bus_info:
+        raise PermissionDenied(
+            "No tiene acceso económico a este bus."
+        )
+
+    # --------------------------------------------------------------
+    # 4. FILTROS
+    # --------------------------------------------------------------
+    periodo = request.GET.get("period", "month").strip().lower()
+
+    fecha_desde_raw = request.GET.get("date_from", "").strip()
+    fecha_hasta_raw = request.GET.get("date_to", "").strip()
+
+    periodos_validos = {
+        "today",
+        "7days",
+        "month",
+        "custom",
+        "all",
+    }
+
+    if periodo not in periodos_validos:
+        periodo = "month"
+
+    tickets = tickets_base.filter(
+        revenue_bus_id=bus_id
+    )
+
+    hoy = timezone.localdate()
+
+    fecha_desde = None
+    fecha_hasta = None
+
+    if periodo == "today":
+
+        fecha_desde = hoy
+        fecha_hasta = hoy
+
+        tickets = tickets.filter(
+            created_at__date=hoy
+        )
+
+    elif periodo == "7days":
+
+        fecha_desde = hoy - timedelta(days=6)
+        fecha_hasta = hoy
+
+        tickets = tickets.filter(
+            created_at__date__range=[
+                fecha_desde,
+                fecha_hasta,
+            ]
+        )
+
+    elif periodo == "month":
+
+        fecha_desde = hoy.replace(day=1)
+        fecha_hasta = hoy
+
+        tickets = tickets.filter(
+            created_at__date__range=[
+                fecha_desde,
+                fecha_hasta,
+            ]
+        )
+
+    elif periodo == "custom":
+
+        try:
+            if fecha_desde_raw:
+                fecha_desde = datetime.strptime(
+                    fecha_desde_raw,
+                    "%Y-%m-%d"
+                ).date()
+
+            if fecha_hasta_raw:
+                fecha_hasta = datetime.strptime(
+                    fecha_hasta_raw,
+                    "%Y-%m-%d"
+                ).date()
+
+        except (TypeError, ValueError):
+            fecha_desde = None
+            fecha_hasta = None
+
+            messages.warning(
+                request,
+                "El rango de fechas ingresado no es válido."
+            )
+
+        if fecha_desde and fecha_hasta:
+
+            if fecha_desde > fecha_hasta:
+
+                messages.warning(
+                    request,
+                    "La fecha inicial no puede ser posterior a la fecha final."
+                )
+
+                fecha_desde = None
+                fecha_hasta = None
+
+            else:
+
+                tickets = tickets.filter(
+                    created_at__date__range=[
+                        fecha_desde,
+                        fecha_hasta,
+                    ]
+                )
+
+        elif fecha_desde:
+
+            tickets = tickets.filter(
+                created_at__date__gte=fecha_desde
+            )
+
+        elif fecha_hasta:
+
+            tickets = tickets.filter(
+                created_at__date__lte=fecha_hasta
+            )
+
+    # --------------------------------------------------------------
+    # 5. KPIs DEL BUS
+    # --------------------------------------------------------------
+    resumen = tickets.aggregate(
+        total_tickets=Count("id"),
+        total_ingresos=Sum("price"),
+        ticket_promedio=Avg("price"),
+    )
+
+    total_tickets = resumen["total_tickets"] or 0
+    total_ingresos = resumen["total_ingresos"] or Decimal("0")
+    ticket_promedio = resumen["ticket_promedio"] or Decimal("0")
+
+    # --------------------------------------------------------------
+    # 6. RUTAS DEL BUS
+    # --------------------------------------------------------------
+    ventas_por_ruta = (
+        tickets
+        .values(
+            "trip__route__origin",
+            "trip__route__destination",
+        )
+        .annotate(
+            total_tickets=Count("id"),
+            total_ingresos=Sum("price"),
+        )
+        .order_by("-total_ingresos")
+    )
+
+    # --------------------------------------------------------------
+    # 7. VENTAS
+    # --------------------------------------------------------------
+    ventas = tickets.order_by(
+        "-created_at",
+        "-id",
+    )[:100]
+
+    etiquetas_periodo = {
+        "today": "Hoy",
+        "7days": "Últimos 7 días",
+        "month": "Este mes",
+        "custom": "Rango personalizado",
+        "all": "Todo el historial",
+    }
+
+    periodo_label = etiquetas_periodo.get(
+        periodo,
+        "Este mes",
+    )
+
+    context = {
+        "profile": profile,
+        "owner": getattr(profile, "fleet_owner", None),
+        "company": getattr(profile, "company", None),
+
+        "bus_id": bus_id,
+        "bus_info": bus_info,
+
+        "total_tickets": total_tickets,
+        "total_ingresos": total_ingresos,
+        "ticket_promedio": ticket_promedio,
+
+        "ventas_por_ruta": ventas_por_ruta,
+        "ventas": ventas,
+
+        "periodo": periodo,
+        "periodo_label": periodo_label,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "fecha_desde_raw": fecha_desde_raw,
+        "fecha_hasta_raw": fecha_hasta_raw,
+    }
+
+    return render(
+        request,
+        "booking/owner_bus_detail.html",
+        context,
+    )
+
+
+@login_required
+def dashboard_redirect(request):
+    """
+    FASE 2.18.3-A2.2.1
+
+    Punto único de entrada después del login.
+    Cada usuario es enviado al módulo correspondiente a su rol.
+    """
+    user = request.user
+
     if user.is_superuser:
-        return redirect('admin:index')
+        return redirect("admin:index")
 
-    if hasattr(user, 'profile'):
-        role = user.profile.role
-        if role in ['admin', 'supervisor', 'coordinator']:
-            try:
-                return redirect('coordinator:dashboard')
-            except:
-                return redirect('coordinator:trips_dashboard')
-        elif role == 'cajero':
-            return redirect('pos_caja')
-        elif role == 'convenio':
-            return redirect('contract_dashboard')
-        else:
-            return redirect('pos_home')
+    profile = getattr(user, "profile", None)
 
-    return redirect('pos_home')
+    if not profile:
+        messages.error(
+            request,
+            "El usuario no tiene un perfil operativo configurado."
+        )
+        logout(request)
+        return redirect("login")
+
+    if not profile.is_active:
+        messages.error(
+            request,
+            "Su cuenta se encuentra desactivada."
+        )
+        logout(request)
+        return redirect("login")
+
+    role = profile.role
+
+    if role == "admin":
+        return redirect("gestion_usuarios")
+
+    if role == "coordinator":
+        return redirect("coordinator:dashboard")
+
+    if role == "supervisor":
+        return redirect("pos_home")
+
+    if role == "vendedor":
+        return redirect("pos_home")
+
+    if role == "cajero":
+        return redirect("pos_caja")
+
+    if role == "convenio":
+        return redirect("contract_dashboard")
+
+    if role == "owner":
+        return redirect("owner_dashboard")
+
+    if role == "executive":
+        return HttpResponse(
+            "Perfil Dueño / Gerencia configurado correctamente. "
+            "El dashboard ejecutivo será habilitado en la siguiente fase.",
+            status=200,
+        )
+
+    if role == "secretary":
+        return HttpResponse(
+            "Perfil Secretaria configurado correctamente. "
+            "Su panel operativo será habilitado en la siguiente fase.",
+            status=200,
+        )
+
+    messages.error(
+        request,
+        "El usuario tiene un rol sin página de inicio configurada."
+    )
+    logout(request)
+    return redirect("login")
 
 # ============================================================================
 # 14. MÓDULO DE CONVENIOS
@@ -2509,17 +3681,17 @@ def api_clean_all_holds(request):
     try:
         data = json.loads(request.body)
         trip_id = data.get('trip_id')
-        
+
         if not trip_id:
             return JsonResponse({'error': 'trip_id requerido'}, status=400)
-        
+
         # Limpiar TODOS los holds expirados del viaje
         count = SeatHold.objects.filter(
             trip_id=trip_id,
             active=True,
             expires_at__lt=timezone.now()
         ).update(active=False)
-        
+
         # También limpiar holds que están activos pero con usuario nulo (anónimos)
         count_anon = SeatHold.objects.filter(
             trip_id=trip_id,
@@ -2527,14 +3699,14 @@ def api_clean_all_holds(request):
             active=True,
             expires_at__lt=timezone.now()
         ).update(active=False)
-        
+
         total = count + count_anon
-        
+
         return JsonResponse({
-            'success': True, 
+            'success': True,
             'cleaned': total,
             'message': f'Se limpiaron {total} holds expirados'
         })
-        
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

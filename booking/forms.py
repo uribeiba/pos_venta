@@ -1,8 +1,8 @@
 # booking/forms.py
 from __future__ import annotations
-from datetime import timezone
+from django.utils import timezone
 from django import forms
-from .models import Bus, BusLayout
+from .models import Bus, BusLayout, FleetOwner
 from django.contrib.auth import get_user_model
 from .models import UserProfile
 import json
@@ -219,6 +219,32 @@ class UsuarioEditForm(forms.ModelForm):
 
 
 
+class FleetOwnerForm(forms.ModelForm):
+    class Meta:
+        model = FleetOwner
+        fields = [
+            'company', 'owner_type', 'first_name', 'last_name',
+            'rut', 'email', 'phone', 'notes', 'is_active',
+        ]
+        widgets = {
+            'company': forms.Select(attrs={'class': 'form-select'}),
+            'owner_type': forms.Select(attrs={'class': 'form-select'}),
+            'first_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre o razón social'}),
+            'last_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Apellidos (si corresponde)'}),
+            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12.345.678-9'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'correo@ejemplo.cl'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observaciones (opcional)'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('owner_type') == 'person' and not (cleaned.get('last_name') or '').strip():
+            self.add_error('last_name', 'Los apellidos son obligatorios para una persona natural.')
+        return cleaned
+
+
 class BusAdminForm(forms.ModelForm):
     class Meta:
         model = Bus
@@ -390,7 +416,7 @@ class BusFullForm(forms.ModelForm):
     Formulario completo para creación/edición de Buses.
     Incluye validaciones de negocio para campos críticos.
     """
-    
+
     class Meta:
         model = Bus
         fields = [
@@ -399,7 +425,7 @@ class BusFullForm(forms.ModelForm):
             'floors', 'rows_lower', 'rows_upper', 'cols',
             'prefix_lower', 'prefix_upper',
             # Propietario
-            'owner_first_name', 'owner_last_name',
+            'owner', 'owner_first_name', 'owner_last_name',
             # Documentos y registro
             'circulation_card', 'vehicle_class', 'brand', 'manufacturing_year',
             'fuel_type', 'bodywork', 'axles', 'color', 'engine_number',
@@ -421,9 +447,10 @@ class BusFullForm(forms.ModelForm):
             'cols': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 6}),
             'prefix_lower': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: A'}),
             'prefix_upper': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: B'}),
+            'owner': forms.Select(attrs={'class': 'form-select'}),
             'owner_first_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombres'}),
             'owner_last_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Apellidos'}),
-            'circulation_card': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° tarjeta'}),
+            'circulation_card': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° permiso'}),
             'vehicle_class': forms.Select(attrs={'class': 'form-select'}),
             'brand': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Marca'}),
             'manufacturing_year': forms.NumberInput(attrs={'class': 'form-control', 'min': 1900, 'max': 2030}),
@@ -443,10 +470,10 @@ class BusFullForm(forms.ModelForm):
             'total_passengers': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
             'total_seats': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
             'service_type': forms.Select(attrs={'class': 'form-select'}),
-            'technical_review_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'insurance_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'permit_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'last_maintenance': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'technical_review_expiry': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
+            'insurance_expiry': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
+            'permit_expiry': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
+            'last_maintenance': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
         }
         labels = {
@@ -460,9 +487,10 @@ class BusFullForm(forms.ModelForm):
             'cols': 'ASIENTOS POR FILA',
             'prefix_lower': 'PREFIJO INFERIOR',
             'prefix_upper': 'PREFIJO SUPERIOR',
+            'owner': 'PROPIETARIO / SOCIO',
             'owner_first_name': 'NOMBRES DEL PROPIETARIO',
             'owner_last_name': 'APELLIDOS DEL PROPIETARIO',
-            'circulation_card': 'TARJETA DE CIRCULACIÓN',
+            'circulation_card': 'PERMISO DE CIRCULACIÓN',
             'vehicle_class': 'CLASE',
             'brand': 'MARCA',
             'manufacturing_year': 'AÑO FABRICACIÓN',
@@ -499,9 +527,22 @@ class BusFullForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # FASE 2.18.3-A1.2 — propietario estructurado
+        owner_field = self.fields.get('owner')
+        if owner_field:
+            owner_field.queryset = (
+                FleetOwner.objects
+                .filter(is_active=True)
+                .select_related('company')
+                .order_by('company__name', 'first_name', 'last_name')
+            )
+            owner_field.required = False
+            owner_field.empty_label = '— Sin propietario / socio —'
+
         # Hacer campos opcionales que no son obligatorios
         optional_fields = [
-            'owner_first_name', 'owner_last_name', 'circulation_card',
+            'owner', 'owner_first_name', 'owner_last_name', 'circulation_card',
             'brand', 'manufacturing_year', 'fuel_type', 'bodywork',
             'axles', 'color', 'engine_number', 'cylinders',
             'serial_number', 'wheels_count', 'dry_weight',
@@ -514,50 +555,178 @@ class BusFullForm(forms.ModelForm):
             if field in self.fields:
                 self.fields[field].required = False
 
+        # HTML5 <input type="date"> necesita YYYY-MM-DD para mostrar
+        # correctamente fechas ya guardadas al volver a editar.
+        date_fields = (
+            'technical_review_expiry',
+            'insurance_expiry',
+            'permit_expiry',
+            'last_maintenance',
+        )
+        for field_name in date_fields:
+            if field_name in self.fields:
+                self.fields[field_name].input_formats = ['%Y-%m-%d']
+
     def clean_plate(self):
-        """Valida formato de patente chilena."""
-        plate = self.cleaned_data.get('plate', '').upper().strip()
-        if not plate:
-            raise forms.ValidationError("La patente es obligatoria.")
-        
-        # Patente chilena: ABC-123 o ABCD-12
+        """
+        Valida y normaliza una Placa Patente Única chilena.
+
+        Reglas:
+        - Bus nuevo: la patente debe cumplir formato chileno.
+        - Bus existente con patente histórica/no estándar:
+          puede conservarla si no se modifica.
+        - Si se modifica la patente de un bus existente:
+          la nueva debe cumplir formato chileno.
+        """
         import re
-        pattern = r'^[A-Z]{2,4}-\d{2,3}$'
-        if not re.match(pattern, plate):
+
+        plate = (self.cleaned_data.get('plate') or '').upper().strip()
+
+        if not plate:
             raise forms.ValidationError(
-                "Formato de patente inválido. Use ABC-123 o ABCD-12."
+                "La patente es obligatoria."
             )
-        
-        # Verificar unicidad
-        if Bus.objects.filter(plate=plate).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError("Esta patente ya está registrada.")
-        
-        return plate
+
+        normalized = re.sub(r'[\s.\-]', '', plate)
+
+        current_pattern = r'^[A-Z]{4}\d{2}$'
+        old_pattern = r'^[A-Z]{2}\d{4}$'
+
+        # FASE 2.18.3-A1.3
+        # Compatibilidad con identificadores históricos.
+        if self.instance and self.instance.pk:
+            original_plate = (
+                Bus.objects
+                .filter(pk=self.instance.pk)
+                .values_list('plate', flat=True)
+                .first()
+            )
+
+            if original_plate:
+                original_normalized = re.sub(
+                    r'[\s.\-]',
+                    '',
+                    original_plate.upper().strip()
+                )
+
+                if normalized == original_normalized:
+                    return original_plate
+
+        # Bus nuevo o patente modificada:
+        # debe cumplir formato chileno válido.
+        if not (
+            re.fullmatch(current_pattern, normalized)
+            or re.fullmatch(old_pattern, normalized)
+        ):
+            raise forms.ValidationError(
+                "Formato de patente chilena inválido. "
+                "Use ABCD12 (formato actual) "
+                "o AB1234 (formato antiguo)."
+            )
+
+        if (
+            Bus.objects
+            .filter(plate=normalized)
+            .exclude(pk=self.instance.pk)
+            .exists()
+        ):
+            raise forms.ValidationError(
+                "Esta patente ya está registrada."
+            )
+
+        return normalized
 
     def clean_serial_number(self):
-        """Valida formato VIN (17 caracteres)."""
-        vin = self.cleaned_data.get('serial_number', '').upper().strip()
-        if vin:
-            if len(vin) != 17:
-                raise forms.ValidationError(
-                    "El N° Serie (VIN) debe tener exactamente 17 caracteres."
-                )
-            # Verificar unicidad
-            if Bus.objects.filter(serial_number=vin).exclude(pk=self.instance.pk).exists():
-                raise forms.ValidationError("Este N° Serie ya está registrado.")
+        """
+        Valida el VIN cuando se informa.
+        Si queda vacío se guarda como NULL para permitir varios buses sin VIN.
+        """
+        vin = (self.cleaned_data.get('serial_number') or '').upper().strip()
+
+        if not vin:
+            return None
+
+        if len(vin) != 17:
+            raise forms.ValidationError(
+                "El N° Serie (VIN) debe tener exactamente 17 caracteres."
+            )
+
+        if Bus.objects.filter(
+            serial_number=vin
+        ).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError(
+                "Este N° Serie (VIN) ya está registrado en otro bus."
+            )
+
         return vin
 
     def clean_circulation_card(self):
-        """Valida formato de tarjeta de circulación."""
-        card = self.cleaned_data.get('circulation_card', '').upper().strip()
-        if card:
-            if Bus.objects.filter(circulation_card=card).exclude(pk=self.instance.pk).exists():
-                raise forms.ValidationError("Esta tarjeta de circulación ya está registrada.")
+        """
+        Normaliza el número del Permiso de Circulación.
+        Si queda vacío se guarda como NULL para evitar conflictos de unicidad.
+        """
+        card = (self.cleaned_data.get('circulation_card') or '').upper().strip()
+
+        if not card:
+            return None
+
+        if Bus.objects.filter(
+            circulation_card=card
+        ).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError(
+                "Este Permiso de Circulación ya está registrado en otro bus."
+            )
+
         return card
 
     def clean(self):
         """Validaciones cruzadas entre campos."""
         cleaned_data = super().clean()
+
+        # FASE 2.18.3-A1.2 — la máquina y su propietario deben pertenecer
+        # a la misma empresa operadora.
+        company = cleaned_data.get('company')
+        owner = cleaned_data.get('owner')
+        if company and owner and owner.company_id != company.id:
+            self.add_error(
+                'owner',
+                'El propietario seleccionado pertenece a otra empresa operadora.'
+            )
+
+        # La estructura física se administra exclusivamente desde el
+        # Editor de Asientos protegido. Este formulario sólo edita
+        # datos administrativos y documentales.
+        if self.instance and self.instance.pk:
+            original = Bus.objects.filter(pk=self.instance.pk).values(
+                'floors',
+                'rows_lower',
+                'rows_upper',
+                'cols',
+                'prefix_lower',
+                'prefix_upper',
+            ).first()
+
+            if original:
+                structural_fields = (
+                    'floors',
+                    'rows_lower',
+                    'rows_upper',
+                    'cols',
+                    'prefix_lower',
+                    'prefix_upper',
+                )
+
+                changed_structure = any(
+                    cleaned_data.get(field) != original.get(field)
+                    for field in structural_fields
+                )
+
+                if changed_structure:
+                    raise forms.ValidationError(
+                        "La configuración física del bus no se puede cambiar "
+                        "desde Datos del vehículo. Use el Editor de Asientos "
+                        "para modificar pisos, filas, columnas o prefijos."
+                    )
         
         floors = cleaned_data.get('floors', 1)
         rows_lower = cleaned_data.get('rows_lower', 0)
@@ -634,29 +803,26 @@ class BusFullForm(forms.ModelForm):
         return cleaned_data
 
     def save(self, commit=True):
-        """Guarda el bus y regenera asientos automáticamente."""
+        """
+        Guarda datos administrativos sin destruir asientos existentes.
+
+        - En edición: nunca regenera Seat.
+        - En creación: inicializa el layout y genera los asientos una sola vez.
+        """
         instance = super().save(commit=False)
-        
-        # Asegurar que los layouts estén sincronizados
-        if not instance.pk:
+        is_new = instance.pk is None
+
+        if is_new:
             instance.ensure_layouts()
-        
+
         if commit:
             instance.save()
-            # Regenerar asientos después de guardar
-            try:
+
+            if is_new:
                 instance.ensure_layouts()
-                created = instance.regenerate_seats()
-                # No podemos usar messages aquí, se maneja en el admin
-                print(f"✅ {created} asientos regenerados para {instance.plate}")
-            except Exception as e:
-                print(f"❌ Error regenerando asientos: {e}")
-                raise
-        
+                instance.regenerate_seats()
+
         return instance
-        
-
-
 
 class AgencyForm(forms.ModelForm):
     class Meta:
@@ -698,8 +864,8 @@ class TripForm(forms.ModelForm):
             'driver1': forms.Select(attrs={'class': 'form-select'}),
             'driver2': forms.Select(attrs={'class': 'form-select'}),
             'assistant': forms.Select(attrs={'class': 'form-select'}),
-            'departure': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
-            'arrival': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'departure': forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'arrival': forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local', 'class': 'form-control'}),
             'cutoff_minutes': forms.Select(choices=CUTOFF_CHOICES, attrs={'class': 'form-select'}),
         }
         labels = {
@@ -721,10 +887,14 @@ class TripForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # FASE 2.14.1 — datetime-local debe renderizar y aceptar YYYY-MM-DDTHH:MM
+        self.fields['departure'].input_formats = ['%Y-%m-%dT%H:%M']
+        self.fields['arrival'].input_formats = ['%Y-%m-%dT%H:%M']
+
         # Filtrar choferes y auxiliares activos
         self.fields['driver1'].queryset = Driver.objects.filter(is_active=True)
         self.fields['driver2'].queryset = Driver.objects.filter(is_active=True)
-        self.fields['assistant'].queryset = Assistant.objects.filter(is_active=True)
+        self.fields['assistant'].queryset = Assistant.objects.all().order_by('full_name')
         # Añadir opción vacía para campos opcionales
         self.fields['driver2'].empty_label = "-- Sin segundo chofer --"
         self.fields['assistant'].empty_label = "-- Sin auxiliar --"
@@ -732,3 +902,5 @@ class TripForm(forms.ModelForm):
         # ===== SI EL FORMULARIO TIENE UNA INSTANCIA (edición), MOSTRAR EL VALOR ACTUAL =====
         if self.instance and self.instance.pk and self.instance.seats_total:
             self.fields['seats_total'].initial = self.instance.seats_total
+        # FASE 2.13: conservar todos los buses para edición histórica.
+        self.fields['bus'].queryset = Bus.objects.select_related('company').all().order_by('plate')

@@ -76,6 +76,96 @@ class Company(models.Model):
 
 
 # =========================================================
+# FASE 2.18.3-A1 — Propietarios / socios de la flota
+# =========================================================
+class FleetOwner(models.Model):
+    OWNER_TYPE_CHOICES = (
+        ("person", "Persona natural"),
+        ("company", "Empresa / sociedad"),
+    )
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="fleet_owners",
+        verbose_name="Empresa operadora",
+    )
+    owner_type = models.CharField(
+        "Tipo de propietario",
+        max_length=20,
+        choices=OWNER_TYPE_CHOICES,
+        default="person",
+    )
+    first_name = models.CharField(
+        "Nombres / razón social",
+        max_length=140,
+    )
+    last_name = models.CharField(
+        "Apellidos",
+        max_length=140,
+        blank=True,
+        default="",
+    )
+    rut = models.CharField(
+        "RUT",
+        max_length=20,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+    email = models.EmailField(
+        "Correo electrónico",
+        blank=True,
+        default="",
+    )
+    phone = models.CharField(
+        "Teléfono",
+        max_length=30,
+        blank=True,
+        default="",
+    )
+    notes = models.TextField(
+        "Observaciones",
+        blank=True,
+        default="",
+    )
+    is_active = models.BooleanField(
+        "Activo",
+        default=True,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Propietario de flota"
+        verbose_name_plural = "Propietarios de flota"
+        ordering = ("company__name", "first_name", "last_name")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("company", "rut"),
+                condition=~models.Q(rut=""),
+                name="uniq_fleet_owner_company_rut",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("company", "is_active")),
+            models.Index(fields=("rut",)),
+        ]
+
+    @property
+    def display_name(self):
+        if self.owner_type == "company":
+            return self.first_name.strip()
+
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name or self.first_name
+
+    def __str__(self):
+        return f"{self.display_name} — {self.company.name}"
+
+
+# =========================================================
 # Chofer (Conductor)
 # =========================================================
 class Driver(models.Model):
@@ -196,7 +286,24 @@ class Bus(models.Model):
         verbose_name="Mapa (plantilla)"
     )
 
-    # Datos del propietario
+    # =====================================================
+    # FASE 2.18.3-A1 — Propietario real de la máquina
+    # =====================================================
+    # owner es la relación estructurada que usaremos para dashboards,
+    # permisos, estadísticas y futuras liquidaciones.
+    #
+    # Los campos owner_first_name / owner_last_name se conservan
+    # temporalmente por compatibilidad con los buses ya existentes.
+    owner = models.ForeignKey(
+        "FleetOwner",
+        on_delete=models.PROTECT,
+        related_name="buses",
+        verbose_name="Propietario / socio",
+        null=True,
+        blank=True,
+    )
+
+    # Datos históricos del propietario (compatibilidad)
     owner_first_name = models.CharField("Nombres del propietario", max_length=100, blank=True)
     owner_last_name = models.CharField("Apellidos del propietario", max_length=100, blank=True)
 
@@ -534,6 +641,57 @@ class Trip(models.Model):
     departure = models.DateTimeField("Salida")
     arrival = models.DateTimeField("Llegada")
     seats_total = models.PositiveIntegerField("Asientos totales", default=0)
+
+        # =========================================================
+    # FASE 2.18 - ESTADO OPERACIONAL / DESPACHO REAL
+    # =========================================================
+    STATUS_SCHEDULED = "scheduled"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_COMPLETED = "completed"
+
+    STATUS_CHOICES = [
+        (STATUS_SCHEDULED, "Programado"),
+        (STATUS_IN_PROGRESS, "En viaje"),
+        (STATUS_COMPLETED, "Finalizado"),
+    ]
+
+    status = models.CharField(
+        "Estado operacional",
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_SCHEDULED,
+        db_index=True,
+    )
+
+    actual_departure = models.DateTimeField(
+        "Salida real",
+        null=True,
+        blank=True,
+    )
+
+    actual_arrival = models.DateTimeField(
+        "Llegada real",
+        null=True,
+        blank=True,
+    )
+
+    dispatched_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dispatched_trips",
+        verbose_name="Despachado por",
+    )
+
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="completed_trips",
+        verbose_name="Finalizado por",
+    )
 
     cutoff_minutes = models.PositiveSmallIntegerField(
         "Corte de ventas web (min)",
@@ -971,6 +1129,42 @@ class Ticket(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="tickets_sold")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # =========================================================
+    # FASE 2.18.3-A2.3.2 — Propiedad económica congelada
+    # =========================================================
+    #
+    # revenue_bus:
+    #   Bus que originó económicamente la venta en el momento
+    #   exacto en que se emitió el boleto.
+    #
+    # revenue_owner:
+    #   Propietario / socio al que corresponde económicamente
+    #   la venta. NO debe cambiar si posteriormente el pasajero
+    #   es trasladado operacionalmente a otra máquina.
+    #
+    # Ambos admiten NULL para mantener compatibilidad con los
+    # tickets históricos hasta ejecutar el backfill.
+    # =========================================================
+    revenue_bus = models.ForeignKey(
+        Bus,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="revenue_tickets",
+        verbose_name="Bus origen de la venta",
+        editable=False,
+    )
+
+    revenue_owner = models.ForeignKey(
+        FleetOwner,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="revenue_tickets",
+        verbose_name="Propietario económico",
+        editable=False,
+    )
+
     contract = models.ForeignKey(
         'CompanyContract',
         on_delete=models.SET_NULL,
@@ -1004,6 +1198,34 @@ class Ticket(models.Model):
     def __str__(self):
         return f"{self.number} — {self.seat.number} ({self.trip})"
 
+    def save(self, *args, **kwargs):
+        """
+        FASE 2.18.3-A2.3.2
+
+        Defensa de integridad para emisiones nuevas.
+
+        Aunque una vista antigua use Ticket.objects.create() en lugar de
+        create_for_sale(), al crear el Ticket se congela automáticamente:
+
+            revenue_bus   = trip.bus
+            revenue_owner = trip.bus.owner
+
+        En actualizaciones posteriores NO recalculamos estos campos.
+        De esta forma un cambio operacional de bus no mueve el ingreso
+        histórico de un socio a otro.
+        """
+        if self._state.adding:
+            if not self.revenue_bus_id and self.trip_id:
+                # Si trip ya viene cargado evitamos una consulta innecesaria.
+                trip = self.trip
+                self.revenue_bus = trip.bus
+
+            if not self.revenue_owner_id and self.revenue_bus_id:
+                revenue_bus = self.revenue_bus
+                self.revenue_owner = getattr(revenue_bus, "owner", None)
+
+        super().save(*args, **kwargs)
+
     @staticmethod
     def _next_number() -> str:
         """
@@ -1012,7 +1234,7 @@ class Ticket(models.Model):
         """
         from django.db import connection
         import time
-        
+
         # ===== INTENTAR CON LA SECUENCIA =====
         try:
             with connection.cursor() as cursor:
@@ -1020,14 +1242,14 @@ class Ticket(models.Model):
                 # Obtener el último número usado
                 cursor.execute("SELECT COALESCE(MAX(CAST(SUBSTRING(number FROM 3) AS INTEGER)), 0) FROM booking_ticket")
                 max_num = cursor.fetchone()[0]
-                
+
                 # Reiniciar la secuencia si es necesario
                 cursor.execute(f"SELECT setval('ticket_number_seq', {max_num}, true)")
-                
+
                 # Obtener el siguiente valor
                 cursor.execute("SELECT nextval('ticket_number_seq')")
                 next_id = cursor.fetchone()[0]
-                
+
                 # Verificar que el número no exista
                 new_number = f"T-{next_id:06d}"
                 if Ticket.objects.filter(number=new_number).exists():
@@ -1038,7 +1260,7 @@ class Ticket(models.Model):
                 return new_number
         except Exception as e:
             print(f"⚠️ Error con secuencia: {e}")
-        
+
         # ===== MÉTODO ALTERNATIVO: Buscar el último número y sumar 1 =====
         try:
             # Obtener todos los números de tickets
@@ -1052,9 +1274,9 @@ class Ticket(models.Model):
                             max_num = current
                     except:
                         pass
-            
+
             next_id = max_num + 1
-            
+
             # Verificar que no exista
             new_number = f"T-{next_id:06d}"
             if Ticket.objects.filter(number=new_number).exists():
@@ -1065,7 +1287,7 @@ class Ticket(models.Model):
             return new_number
         except Exception as e:
             print(f"⚠️ Error en método alternativo: {e}")
-        
+
         # ===== ÚLTIMO RECURSO: timestamp + random =====
         import random
         timestamp = int(time.time() * 1000) % 1000000
@@ -1078,16 +1300,16 @@ class Ticket(models.Model):
 
     @classmethod
     def create_for_sale(
-        cls, 
-        *, 
+        cls,
+        *,
         trip,  # Trip
         seat,  # Seat
         buyer_name: str,
-        national_id: str, 
-        price, 
+        national_id: str,
+        price,
         created_by,  # User
         number: Optional[str] = None,
-        customer=None, 
+        customer=None,
         **kwargs
     ):
         """
@@ -1108,13 +1330,13 @@ class Ticket(models.Model):
         if contract:
             if not contract.is_active:
                 raise ValidationError("El contrato no está activo.")
-            
+
             today = timezone.now().date()
             if contract.valid_from and contract.valid_from > today:
                 raise ValidationError("El contrato aún no está vigente.")
             if contract.valid_to and contract.valid_to < today:
                 raise ValidationError("El contrato ha expirado.")
-            
+
             if not contract.can_purchase(price):
                 raise ValidationError(
                     f"Crédito insuficiente. Disponible: ${contract.available_credit:,.0f}"
@@ -1147,6 +1369,21 @@ class Ticket(models.Model):
             if is_credit:
                 payment_method = 'credit'
 
+            # =====================================================
+            # FASE 2.18.3-A2.3.2
+            # Congelar propiedad económica al momento de emitir.
+            # =====================================================
+            #
+            # Se ignora cualquier intento accidental de pasar estos
+            # campos vía **kwargs: la fuente de verdad en una emisión
+            # normal es el bus asignado al viaje en este instante.
+            # =====================================================
+            kwargs.pop('revenue_bus', None)
+            kwargs.pop('revenue_owner', None)
+
+            revenue_bus = trip.bus
+            revenue_owner = getattr(revenue_bus, "owner", None)
+
             t = cls.objects.create(
                 trip=trip,
                 seat=s,
@@ -1159,6 +1396,8 @@ class Ticket(models.Model):
                 contract=contract,
                 is_credit=is_credit,
                 payment_method=payment_method,
+                revenue_bus=revenue_bus,
+                revenue_owner=revenue_owner,
                 **kwargs,
             )
 
@@ -1176,7 +1415,7 @@ class Ticket(models.Model):
     @classmethod
     def purchase(cls, trip: Trip, seat_ids, buyer_name, national_id, user, customer=None, payment_method="cash"):
         from django.apps import apps
-        
+
         SeatHold.cleanup()
         seat_ids = list(seat_ids or [])
         if not seat_ids:
@@ -1235,7 +1474,7 @@ class Ticket(models.Model):
 
     def get_or_create_customer(self):
         from django.apps import apps
-        
+
         if self.customer:
             return self.customer
         if self.national_id:
@@ -1317,6 +1556,9 @@ class UserProfile(models.Model):
         ('vendedor', 'Vendedor'),
         ('cajero', 'Cajero'),
         ('convenio', 'Gestor de Convenios'),
+        ('owner', 'Propietario / Socio'),
+        ('executive', 'Dueño / Gerencia'),
+        ('secretary', 'Secretaria'),
     )
 
     user = models.OneToOneField(
@@ -1325,6 +1567,7 @@ class UserProfile(models.Model):
         related_name='profile',
         verbose_name='Usuario',
     )
+
     role = models.CharField(
         "Rol",
         max_length=20,
@@ -1332,14 +1575,45 @@ class UserProfile(models.Model):
         default='vendedor',
         db_index=True,
     )
+
     terminal = models.ForeignKey(
         Terminal,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
+        null=True,
+        blank=True,
         verbose_name="Terminal asignada",
         db_index=True,
     )
-    is_active = models.BooleanField("Activo", default=True, db_index=True)
+
+    # =========================================================
+    # FASE 2.18.3-A2.1 — Alcance empresarial del usuario
+    # =========================================================
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='user_profiles',
+        verbose_name='Empresa operadora',
+        db_index=True,
+    )
+
+    fleet_owner = models.ForeignKey(
+        FleetOwner,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='user_profiles',
+        verbose_name='Propietario / socio asociado',
+        db_index=True,
+    )
+
+    is_active = models.BooleanField(
+        "Activo",
+        default=True,
+        db_index=True,
+    )
+
     commission_rate = models.DecimalField(
         "Porcentaje de comisión",
         max_digits=5,
@@ -1347,6 +1621,7 @@ class UserProfile(models.Model):
         default=0.00,
         help_text="Porcentaje (%) — ej.: 2.50",
     )
+
     max_discount = models.DecimalField(
         "Descuento máximo permitido",
         max_digits=7,
@@ -1354,6 +1629,7 @@ class UserProfile(models.Model):
         default=0.00,
         help_text="Monto en CLP — ej.: 1500.00",
     )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1364,6 +1640,8 @@ class UserProfile(models.Model):
             models.Index(fields=['role']),
             models.Index(fields=['is_active']),
             models.Index(fields=['terminal']),
+            models.Index(fields=['company']),
+            models.Index(fields=['fleet_owner']),
         ]
 
     def __str__(self) -> str:
@@ -1371,7 +1649,11 @@ class UserProfile(models.Model):
             role_display = self.get_role_display()
         except Exception:
             role_display = self.role
-        return f"{getattr(self.user, 'username', 'user')} - {role_display}"
+
+        return (
+            f"{getattr(self.user, 'username', 'user')} - "
+            f"{role_display}"
+        )
 
 
 # =========================================================
@@ -1790,9 +2072,9 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.get_action_display()} - {self.user} - {self.timestamp}"
-    
-    
-    
+
+
+
     # ============================================================
 # RESERVAS WEB / ÓRDENES DE COMPRA
 # ============================================================

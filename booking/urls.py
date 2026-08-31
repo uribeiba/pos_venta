@@ -54,7 +54,20 @@ urlpatterns = [
     # ===== CIERRE DE CAJA Y LOGOUT =====
     path('cerrar-caja-salir/', views.cerrar_caja_y_logout, name='cerrar_caja_y_logout'),
     path('logout/', views.logout_view, name='logout'),
-    
+
+    # ===== PORTAL PROPIETARIO / SOCIO =====
+    path(
+    'owner/',
+    views.owner_dashboard,
+    name='owner_dashboard',
+    ),
+
+    path(
+    'owner/bus/<int:bus_id>/',
+    views.owner_bus_detail,
+    name='owner_bus_detail',
+    ),
+
     # ===== CONVENIOS =====
     path('convenio/dashboard/', views.contract_dashboard, name='contract_dashboard'),
     path('convenio/empleados/<int:contract_id>/', views.contract_employees, name='contract_employees'),

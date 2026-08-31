@@ -250,6 +250,83 @@
             </h5>
         </div>
         <div class="card-body">
+
+            {% if bus.pk %}
+            <div class="row g-3 mb-4">
+                <div class="col-sm-6 col-xl-3">
+                    <div class="card border-0 bg-light h-100">
+                        <div class="card-body py-3">
+                            <div class="small text-muted">Asientos físicos</div>
+                            <div class="fs-4 fw-bold text-primary">{{ real_seat_count }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="card border-0 bg-light h-100">
+                        <div class="card-body py-3">
+                            <div class="small text-muted">Viajes futuros</div>
+                            <div class="fs-4 fw-bold">{{ future_trips_count }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="card border-0 bg-light h-100">
+                        <div class="card-body py-3">
+                            <div class="small text-muted">Tickets asociados</div>
+                            <div class="fs-4 fw-bold">{{ ticket_count }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="card border-0 bg-light h-100">
+                        <div class="card-body py-3">
+                            <div class="small text-muted">Estado del plano</div>
+                            {% if seatmap_locked %}
+                                <span class="badge bg-warning text-dark mt-2">
+                                    <i class="fas fa-lock me-1"></i>Protegido
+                                </span>
+                            {% else %}
+                                <span class="badge bg-success mt-2">
+                                    <i class="fas fa-lock-open me-1"></i>Editable
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if seatmap_locked %}
+            <div class="alert alert-warning border-0 shadow-sm mb-4" role="alert">
+                <div class="d-flex gap-3">
+                    <i class="fas fa-shield-halved fs-4 mt-1"></i>
+                    <div>
+                        <div class="fw-bold">Plano protegido por integridad operacional</div>
+                        <div class="small mt-1">
+                            Puedes consultar el plano, pero cualquier cambio en pisos,
+                            filas, columnas, distribución, numeración o tipo de asiento
+                            será rechazado mientras existan referencias operacionales.
+                            {% if future_trips_count %}
+                                Viajes futuros: <strong>{{ future_trips_count }}</strong>.
+                            {% endif %}
+                            {% if ticket_count %}
+                                Tickets: <strong>{{ ticket_count }}</strong>.
+                            {% endif %}
+                            {% if booking_seat_count %}
+                                Asientos en reservas web: <strong>{{ booking_seat_count }}</strong>.
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-success border-0 shadow-sm mb-4" role="alert">
+                <i class="fas fa-circle-check me-2"></i>
+                El plano puede modificarse. Al guardar, los asientos físicos se
+                sincronizarán automáticamente con la distribución visual.
+            </div>
+            {% endif %}
+            {% endif %}
+
             <form method="post" id="busForm">
                 {% csrf_token %}
                 <input type="hidden" name="layout_lower" id="id_layout_lower" value='{{ layout_lower_json|default:"[]" }}'>
@@ -261,18 +338,44 @@
 
                 <div class="row mb-4">
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">Empresa</label>
-                        <select name="company" class="form-select">{% for c in companies %}<option value="{{ c.id }}" {% if bus.company_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+                        <label class="form-label fw-semibold">Empresa operadora</label>
+                        <select name="company" id="id_company" class="form-select" required>
+                            <option value="">— Seleccione empresa —</option>
+                            {% for c in companies %}
+                                <option value="{{ c.id }}"
+                                    {% if request.POST.company == c.id|stringformat:"s" or not request.POST.company and bus.company_id == c.id %}selected{% endif %}>
+                                    {{ c.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
                     </div>
+
                     <div class="col-md-3">
+                        <label class="form-label fw-semibold">Propietario / socio</label>
+                        <select name="owner" id="id_owner" class="form-select">
+                            <option value="">— Sin propietario / socio —</option>
+                            {% for owner in fleet_owners %}
+                                <option value="{{ owner.id }}"
+                                        data-company="{{ owner.company_id }}"
+                                        {% if selected_owner_id|stringformat:"s" == owner.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ owner.display_name }} · {{ owner.company.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Se muestran sólo propietarios de la empresa seleccionada.
+                        </div>
+                    </div>
+
+                    <div class="col-md-2">
                         <label class="form-label fw-semibold">Patente</label>
                         <input type="text" name="plate" value="{{ bus.plate }}" class="form-control" required>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label fw-semibold">Modelo</label>
                         <input type="text" name="model" value="{{ bus.model }}" class="form-control">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label fw-semibold">Año</label>
                         <input type="number" name="year" value="{{ bus.year }}" class="form-control">
                     </div>
@@ -342,9 +445,14 @@
                     </div>
                 </div>
 
-                <div class="mt-4 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-save"></i> Guardar Bus</button>
+                <div class="mt-4 d-flex gap-2 flex-wrap">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="fa-solid fa-save"></i> Guardar Bus
+                    </button>
                     <a href="{% url 'coordinator:bus_list' %}" class="btn btn-secondary">Cancelar</a>
+                    <a href="{% url 'coordinator:fleet_owners_dashboard' %}" class="btn btn-outline-primary ms-md-auto">
+                        <i class="fa-solid fa-users"></i> Administrar propietarios
+                    </a>
                 </div>
             </form>
         </div>
@@ -382,6 +490,47 @@
 </div>
 
 <script>
+    // =========================================================
+    // FASE 2.18.3-A1.2 — Empresa → Propietarios / socios
+    // =========================================================
+    const companySelect = document.getElementById('id_company');
+    const ownerSelect = document.getElementById('id_owner');
+
+    function filterOwnersByCompany() {
+        if (!companySelect || !ownerSelect) return;
+
+        const companyId = companySelect.value;
+        const currentOwner = ownerSelect.value;
+        let currentStillVisible = false;
+
+        Array.from(ownerSelect.options).forEach((option, index) => {
+            if (index === 0) {
+                option.hidden = false;
+                option.disabled = false;
+                return;
+            }
+
+            const matches = !!companyId && option.dataset.company === companyId;
+            option.hidden = !matches;
+            option.disabled = !matches;
+
+            if (matches && option.value === currentOwner) {
+                currentStillVisible = true;
+            }
+        });
+
+        if (!currentStillVisible && currentOwner) {
+            ownerSelect.value = '';
+        }
+
+        ownerSelect.disabled = !companyId;
+    }
+
+    if (companySelect && ownerSelect) {
+        companySelect.addEventListener('change', filterOwnersByCompany);
+        filterOwnersByCompany();
+    }
+
     function getSeatImage(service) {
         if (service === 'cama') {
             return "{% static 'img/cama.png' %}";

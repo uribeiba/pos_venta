@@ -103,9 +103,14 @@
                 <select name="new_bus" id="newBusSelect" required class="form-select" style="width: auto; display: inline-block; margin-left: 10px;">
                     <option value="">-- Seleccionar bus --</option>
                     {% for bus in buses %}
-                        <option value="{{ bus.id }}">{{ bus.company.name }} - {{ bus.plate }} ({{ bus.rows_lower }}x{{ bus.cols }})</option>
+                        <option value="{{ bus.id }}" data-status="{{ bus.dispatch_key }}" data-reason="{{ bus.dispatch_reason }}"
+                                {% if not bus.dispatch_can_assign and not bus.dispatch_is_current %}disabled{% endif %}>
+                            {{ bus.company.name }} - {{ bus.plate }} ({{ bus.rows_lower }}x{{ bus.cols }}) — {{ bus.dispatch_label|upper }}
+                            {% if bus.dispatch_is_current %} · BUS ACTUAL{% endif %}
+                        </option>
                     {% endfor %}
                 </select>
+                <div id="busStatusMessage" class="alert mt-3 mb-0 py-2 small d-none"></div>
                 <button type="button" id="loadNewBusBtn" class="btn-secondary" style="margin-left: 10px;">Cargar mapa</button>
             </div>
 

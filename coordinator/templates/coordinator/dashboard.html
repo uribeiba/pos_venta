@@ -368,6 +368,211 @@
             padding: 17px;
         }
     }
+
+    .doc-summary-wrap {
+        background: #fff;
+        border: 1px solid var(--dash-border);
+        border-radius: 18px;
+        box-shadow: 0 6px 22px rgba(15, 23, 42, .05);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+
+    .doc-summary-header {
+        padding: 16px 18px;
+        border-bottom: 1px solid #eef2f7;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .doc-summary-header h5 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--dash-slate);
+    }
+
+    .doc-kpi {
+        border-radius: 14px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        padding: 14px 15px;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .doc-kpi::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: var(--doc-accent);
+    }
+
+    .doc-kpi.danger  { --doc-accent: #ef4444; }
+    .doc-kpi.warning { --doc-accent: #f59e0b; }
+    .doc-kpi.primary { --doc-accent: #2563eb; }
+    .doc-kpi.slate   { --doc-accent: #475569; }
+
+    .doc-kpi-label {
+        font-size: .74rem;
+        color: #64748b;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+
+    .doc-kpi-value {
+        font-size: 1.55rem;
+        line-height: 1;
+        font-weight: 850;
+        color: #0f172a;
+    }
+
+    .doc-kpi-meta {
+        margin-top: 7px;
+        font-size: .72rem;
+        color: #64748b;
+    }
+
+    .doc-breakdown {
+        background: #f8fafc;
+        border-top: 1px solid #eef2f7;
+        padding: 12px 18px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex-wrap: wrap;
+        font-size: .8rem;
+        color: #475569;
+    }
+
+    .doc-breakdown strong {
+        color: #0f172a;
+    }
+
+
+    .mileage-control {
+        background: #fff;
+        border: 1px solid var(--dash-border);
+        border-radius: 18px;
+        box-shadow: 0 6px 22px rgba(15, 23, 42, .05);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+
+    .mileage-control-head {
+        padding: 15px 18px;
+        border-bottom: 1px solid #eef2f7;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .mileage-control-head h5 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .mileage-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        padding: 14px 18px;
+    }
+
+    .mileage-summary-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 13px;
+        padding: 12px 14px;
+        background: #fff;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .mileage-summary-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: var(--km-color);
+    }
+
+    .mileage-summary-card.danger { --km-color: #ef4444; }
+    .mileage-summary-card.warning { --km-color: #f59e0b; }
+    .mileage-summary-card.success { --km-color: #10b981; }
+
+    .mileage-summary-card .label {
+        font-size: .7rem;
+        color: #64748b;
+        font-weight: 700;
+    }
+
+    .mileage-summary-card .value {
+        font-size: 1.35rem;
+        font-weight: 850;
+        color: #0f172a;
+        margin-top: 2px;
+    }
+
+    .mileage-list {
+        border-top: 1px solid #eef2f7;
+    }
+
+    .mileage-row {
+        display: grid;
+        grid-template-columns: minmax(130px, 1.1fr) 1fr 1fr 1.1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 18px;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: .78rem;
+    }
+
+    .mileage-row:last-child {
+        border-bottom: 0;
+    }
+
+    .mileage-plate {
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    @media (max-width: 900px) {
+        .mileage-summary {
+            grid-template-columns: 1fr;
+        }
+
+        .mileage-row {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+
+    /* FASE 2.17 — Estado operacional de viajes próximos */
+    .trip-op-control{background:#fff;border:1px solid var(--dash-border);border-radius:18px;box-shadow:0 6px 22px rgba(15,23,42,.05);overflow:hidden;margin-bottom:24px}
+    .trip-op-control-head{padding:16px 18px;border-bottom:1px solid #eef2f7;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .trip-op-control-head h5{margin:0;font-size:1rem;font-weight:800;color:#0f172a}
+    .trip-op-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px 18px}.trip-op-summary-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .trip-op-card{border:1px solid #e2e8f0;border-radius:13px;padding:12px 14px;position:relative;overflow:hidden}
+    .trip-op-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--op-color)}
+    .trip-op-card.success{--op-color:#10b981}.trip-op-card.warning{--op-color:#f59e0b}.trip-op-card.danger{--op-color:#ef4444}
+    .trip-op-card .op-label{font-size:.7rem;color:#64748b;font-weight:700;text-transform:uppercase}
+    .trip-op-card .op-value{font-size:1.45rem;font-weight:850;line-height:1.15;margin-top:3px}
+    .trip-operational-badge{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;font-size:.7rem;font-weight:800;white-space:nowrap}
+    .trip-operational-badge.operational{background:#dcfce7;color:#166534}.trip-operational-badge.attention{background:#fef3c7;color:#92400e}.trip-operational-badge.no-operational{background:#fee2e2;color:#991b1b}
+    .trip-operational-reason{margin-top:4px;max-width:260px;font-size:.69rem;color:#64748b;line-height:1.25}
+    @media(max-width:1100px){.trip-op-summary-4{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:900px){.trip-op-summary,.trip-op-summary-4{grid-template-columns:1fr}}
+
 </style>
 {% endblock %}
 
@@ -465,7 +670,7 @@
             </div>
 
             <div class="col-md-6 col-xl-3">
-                <a href="{% url 'coordinator:buses_dashboard' %}" class="quick-action">
+                <a href="{% url 'coordinator:bus_list' %}" class="quick-action">
                     <div class="qa-icon"><i class="fas fa-bus-alt"></i></div>
                     <div class="qa-text">
                         <strong>Flota</strong>
@@ -473,6 +678,227 @@
                     </div>
                 </a>
             </div>
+        </div>
+    </div>
+
+    <!-- Resumen documental integrado -->
+    <div class="doc-summary-wrap">
+        <div class="doc-summary-header">
+            <div>
+                <h5>
+                    <i class="fas fa-folder-open me-2 text-primary"></i>
+                    Control documental
+                </h5>
+                <small class="text-muted">
+                    Choferes y buses con documentos vencidos o próximos a vencer.
+                </small>
+            </div>
+
+            <a href="{% url 'coordinator:expiring_documents' %}"
+               class="btn btn-sm btn-outline-primary">
+                Ver documentos
+                <i class="fas fa-arrow-right ms-1"></i>
+            </a>
+        </div>
+
+        <div class="p-3">
+            <div class="row g-3">
+                <div class="col-sm-6 col-xl-3">
+                    <div class="doc-kpi danger">
+                        <div class="doc-kpi-label">Vencidos</div>
+                        <div class="doc-kpi-value text-danger">{{ total_docs_vencidos }}</div>
+                        <div class="doc-kpi-meta">
+                            Requieren atención inmediata
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-xl-3">
+                    <div class="doc-kpi warning">
+                        <div class="doc-kpi-label">Urgentes (≤ 7 días)</div>
+                        <div class="doc-kpi-value text-warning">{{ total_docs_urgentes }}</div>
+                        <div class="doc-kpi-meta">
+                            Vencimiento inminente
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-xl-3">
+                    <div class="doc-kpi primary">
+                        <div class="doc-kpi-label">Próximos (8–30 días)</div>
+                        <div class="doc-kpi-value text-primary">{{ total_docs_proximos }}</div>
+                        <div class="doc-kpi-meta">
+                            Planificar renovación
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-xl-3">
+                    <div class="doc-kpi slate">
+                        <div class="doc-kpi-label">Requieren atención</div>
+                        <div class="doc-kpi-value">{{ total_docs_atencion }}</div>
+                        <div class="doc-kpi-meta">
+                            Total dentro de 30 días
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="doc-breakdown">
+            <span>
+                <i class="fas fa-user me-1 text-secondary"></i>
+                Choferes: <strong>{{ total_docs_choferes }}</strong>
+            </span>
+            <span>
+                <i class="fas fa-bus me-1 text-primary"></i>
+                Buses: <strong>{{ total_docs_buses }}</strong>
+            </span>
+
+            {% if total_docs_atencion %}
+                <span class="ms-xl-auto text-warning fw-semibold">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    {{ total_docs_atencion }} documento(s) requieren seguimiento
+                </span>
+            {% else %}
+                <span class="ms-xl-auto text-success fw-semibold">
+                    <i class="fas fa-circle-check me-1"></i>
+                    Documentación al día
+                </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- FASE 2.11 · Alertas de kilometraje -->
+    <div class="mileage-control">
+        <div class="mileage-control-head">
+            <div>
+                <h5>
+                    <i class="fas fa-gauge-high me-2 text-primary"></i>
+                    Control de kilometraje y mantenciones
+                </h5>
+                <small class="text-muted">
+                    Seguimiento automático según el kilometraje operacional consolidado del bus.
+                </small>
+            </div>
+
+            <a href="{% url 'coordinator:maintenance_list' %}"
+               class="btn btn-sm btn-outline-primary">
+                Ver mantenimiento
+                <i class="fas fa-arrow-right ms-1"></i>
+            </a>
+        </div>
+
+        <div class="mileage-summary">
+            <div class="mileage-summary-card danger">
+                <div class="label">Mantenciones vencidas</div>
+                <div class="value text-danger">{{ mantenciones_vencidas }}</div>
+                <div class="small text-muted">Kilometraje objetivo alcanzado o superado</div>
+            </div>
+
+            <div class="mileage-summary-card warning">
+                <div class="label">Próximas (≤ {{ margen_mantenimiento_km }} km)</div>
+                <div class="value text-warning">{{ mantenciones_proximas }}</div>
+                <div class="small text-muted">Requieren planificación preventiva</div>
+            </div>
+
+            <div class="mileage-summary-card success">
+                <div class="label">Programadas y al día</div>
+                <div class="value text-success">{{ mantenciones_al_dia }}</div>
+                <div class="small text-muted">Más de {{ margen_mantenimiento_km }} km disponibles</div>
+            </div>
+        </div>
+
+        {% if buses_mantencion_vencida or buses_mantencion_proxima %}
+            <div class="mileage-list">
+                {% for bus_item in buses_mantencion_vencida|slice:":5" %}
+                    <div class="mileage-row">
+                        <div>
+                            <div class="mileage-plate">
+                                <i class="fas fa-bus me-1 text-danger"></i>
+                                {{ bus_item.plate }}
+                            </div>
+                            <div class="text-muted">{{ bus_item.model|default:"Sin modelo" }}</div>
+                        </div>
+
+                        <div>
+                            <span class="text-muted">Actual:</span>
+                            <strong>{{ bus_item.current_km }} km</strong>
+                        </div>
+
+                        <div>
+                            <span class="text-muted">Objetivo:</span>
+                            <strong>{{ bus_item.next_km }} km</strong>
+                        </div>
+
+                        <div class="text-danger fw-bold">
+                            <i class="fas fa-triangle-exclamation me-1"></i>
+                            Excedida {{ bus_item.overdue_km }} km
+                        </div>
+
+                        <a href="{% url 'coordinator:bus_detail' bus_item.id %}"
+                           class="btn btn-sm btn-outline-danger">
+                            Ver bus
+                        </a>
+                    </div>
+                {% endfor %}
+
+                {% for bus_item in buses_mantencion_proxima|slice:":5" %}
+                    <div class="mileage-row">
+                        <div>
+                            <div class="mileage-plate">
+                                <i class="fas fa-bus me-1 text-warning"></i>
+                                {{ bus_item.plate }}
+                            </div>
+                            <div class="text-muted">{{ bus_item.model|default:"Sin modelo" }}</div>
+                        </div>
+
+                        <div>
+                            <span class="text-muted">Actual:</span>
+                            <strong>{{ bus_item.current_km }} km</strong>
+                        </div>
+
+                        <div>
+                            <span class="text-muted">Objetivo:</span>
+                            <strong>{{ bus_item.next_km }} km</strong>
+                        </div>
+
+                        <div class="text-warning fw-bold">
+                            <i class="fas fa-clock me-1"></i>
+                            Faltan {{ bus_item.remaining_km }} km
+                        </div>
+
+                        <a href="{% url 'coordinator:bus_detail' bus_item.id %}"
+                           class="btn btn-sm btn-outline-warning">
+                            Ver bus
+                        </a>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="px-3 pb-3">
+                <div class="alert alert-success border-0 mb-0 small">
+                    <i class="fas fa-circle-check me-1"></i>
+                    No existen buses con mantenciones vencidas o dentro del umbral preventivo.
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- FASE 2.17 · Estado operacional integral de viajes próximos -->
+    <div class="trip-op-control">
+        <div class="trip-op-control-head">
+            <div>
+                <h5><i class="fas fa-shield-halved me-2 text-primary"></i>Estado operacional de viajes próximos</h5>
+                <small class="text-muted">Validación integral de bus, choferes y auxiliar para las próximas 24 horas.</small>
+            </div>
+            <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-sm btn-outline-primary">Gestionar viajes <i class="fas fa-arrow-right ms-1"></i></a>
+        </div>
+        <div class="trip-op-summary trip-op-summary-4">
+            <div class="trip-op-card success"><div class="op-label">Operativos</div><div class="op-value text-success">{{ viajes_operativos_24h }}</div><div class="small text-muted">Sin restricciones</div></div>
+            <div class="trip-op-card warning"><div class="op-label">Atención</div><div class="op-value text-warning">{{ viajes_atencion_24h }}</div><div class="small text-muted">Con advertencias preventivas</div></div>
+            <div class="trip-op-card danger"><div class="op-label">No operativos</div><div class="op-value text-danger">{{ viajes_no_operativos_24h }}</div><div class="small text-muted">Requieren corrección antes del despacho</div></div>
+            <div class="trip-op-card warning"><div class="op-label">Pendientes cierre</div><div class="op-value text-warning">{{ viajes_pendientes_cierre_24h }}</div><div class="small text-muted">Llegada programada ya superada</div></div>
         </div>
     </div>
 
@@ -511,7 +937,7 @@
                         </div>
                     </div>
 
-                    <a href="{% url alerta.url_name %}"
+                    <a href="{% url alerta.url_name %}{{ alerta.querystring|default:'' }}"
                        class="btn btn-sm btn-outline-secondary">
                         {{ alerta.action }}
                         <i class="fas fa-arrow-right ms-1"></i>
@@ -534,7 +960,7 @@
                     <i class="fas fa-clock me-2 text-primary"></i>
                     Viajes próximos
                 </h5>
-                <small class="text-muted">Servicios programados para las próximas 24 horas</small>
+                <small class="text-muted">Servicios programados para las próximas 24 horas y viajes actualmente en curso</small>
             </div>
 
             <a href="{% url 'coordinator:trips_dashboard' %}" class="btn btn-sm btn-outline-primary">
@@ -553,6 +979,7 @@
                                 <th>Bus</th>
                                 <th>Chofer</th>
                                 <th>Asientos</th>
+                                <th>Operación</th>
                                 <th>Estado</th>
                             </tr>
                         </thead>
@@ -589,14 +1016,29 @@
                                     </div>
                                 </td>
                                 <td>
+                                    {% if viaje.operational_key == 'operational' %}
+                                        <span class="trip-operational-badge operational"><i class="fas {{ viaje.operational_icon }}"></i>{{ viaje.operational_label }}</span>
+                                    {% elif viaje.operational_key == 'attention' %}
+                                        <span class="trip-operational-badge attention"><i class="fas {{ viaje.operational_icon }}"></i>{{ viaje.operational_label }}</span>
+                                    {% else %}
+                                        <span class="trip-operational-badge no-operational"><i class="fas {{ viaje.operational_icon }}"></i>{{ viaje.operational_label }}</span>
+                                    {% endif %}
+                                    <div class="trip-operational-reason" title="{{ viaje.operational_reason }}">{{ viaje.operational_reason }}</div>
+                                </td>
+                                <td>
                                     <span class="badge-estado bg-{{ viaje.estado_color }} text-white">
-                                        {% if viaje.estado == "Próximo" %}
-                                            <i class="fas fa-clock"></i>
-                                        {% else %}
-                                            <i class="fas fa-play"></i>
-                                        {% endif %}
+                                        <i class="fas {{ viaje.estado_icon }}"></i>
                                         {{ viaje.estado }}
                                     </span>
+                                    {% if viaje.trip_status == 'in_progress' and viaje.actual_departure %}
+                                        <div class="trip-operational-reason">
+                                            Salida real {{ viaje.actual_departure }}
+                                        </div>
+                                    {% elif viaje.trip_status == 'completed' and viaje.actual_arrival %}
+                                        <div class="trip-operational-reason">
+                                            Llegada real {{ viaje.actual_arrival }}
+                                        </div>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
