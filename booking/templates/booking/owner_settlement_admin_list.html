@@ -1,0 +1,514 @@
+{% extends "booking/pos_base.html" %}
+{% load humanize %}
+
+{% block title %}
+Liquidaciones de Propietarios
+{% endblock %}
+
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- =========================================================
+         CABECERA
+         ========================================================= -->
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+            <h2 class="fw-bold mb-1">
+                <i class="fa-solid fa-file-invoice-dollar me-2"></i>
+                Liquidaciones de propietarios
+            </h2>
+
+            <div class="text-muted">
+                Revisión y pago de ingresos correspondientes a socios de flota.
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+     GENERAR NUEVA LIQUIDACIÓN
+     ========================================================= -->
+
+<div class="card mb-4">
+
+    <div class="card-header">
+
+        <strong>
+            <i class="fa-solid fa-plus me-1"></i>
+            Generar nueva liquidación
+        </strong>
+
+    </div>
+
+    <div class="card-body">
+
+        <form
+            method="post"
+            action="{% url 'owner_settlement_generate' %}"
+        >
+
+            {% csrf_token %}
+
+            <div class="row g-3 align-items-end">
+
+                <div class="col-12 col-md-4">
+
+                    <label class="form-label fw-semibold">
+                        Propietario / Socio
+                    </label>
+
+                    <select
+                        name="owner"
+                        class="form-select"
+                        required
+                    >
+
+                        <option value="">
+                            Seleccione propietario
+                        </option>
+
+                        {% for owner in owners %}
+
+                            <option value="{{ owner.id }}">
+                                {{ owner.display_name }}
+                                — {{ owner.company.name }}
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+
+                <div class="col-12 col-md-3">
+
+                    <label class="form-label fw-semibold">
+                        Desde
+                    </label>
+
+                    <input
+                        type="date"
+                        name="date_from"
+                        class="form-control"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="col-12 col-md-3">
+
+                    <label class="form-label fw-semibold">
+                        Hasta
+                    </label>
+
+                    <input
+                        type="date"
+                        name="date_to"
+                        class="form-control"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="col-12 col-md-2">
+
+                    <button
+                        type="submit"
+                        class="btn btn-success w-100"
+                        onclick="return confirm(
+                            '¿Generar la liquidación con todos los tickets pendientes del período seleccionado?'
+                        );"
+                    >
+                        <i class="fa-solid fa-file-circle-plus"></i>
+                        Generar
+                    </button>
+
+                </div>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+    <!-- =========================================================
+         FILTROS
+         ========================================================= -->
+
+    <div class="card mb-4">
+
+        <div class="card-body">
+
+            <form method="get">
+
+                <div class="row g-3 align-items-end">
+
+                    <div class="col-12 col-md-4">
+
+                        <label class="form-label fw-semibold">
+                            Propietario
+                        </label>
+
+                        <select
+                            name="owner"
+                            class="form-select"
+                        >
+
+                            <option value="">
+                                Todos los propietarios
+                            </option>
+
+                            {% for owner in owners %}
+
+                                <option
+                                    value="{{ owner.id }}"
+                                    {% if owner_filter == owner.id|stringformat:"s" %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ owner.display_name }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="col-12 col-md-4">
+
+                        <label class="form-label fw-semibold">
+                            Estado
+                        </label>
+
+                        <select
+                            name="status"
+                            class="form-select"
+                        >
+
+                            <option value="">
+                                Todos los estados
+                            </option>
+
+                            {% for value, label in status_choices %}
+
+                                <option
+                                    value="{{ value }}"
+                                    {% if status_filter == value %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ label }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="col-12 col-md-4">
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                        >
+                            <i class="fa-solid fa-filter"></i>
+                            Filtrar
+                        </button>
+
+                        <a
+                            href="{% url 'owner_settlement_admin_list' %}"
+                            class="btn btn-outline-secondary"
+                        >
+                            Limpiar
+                        </a>
+
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+         TABLA
+         ========================================================= -->
+
+    <div class="card">
+
+        <div class="card-header">
+
+            <strong>
+                Liquidaciones
+            </strong>
+
+        </div>
+
+
+        {% if settlements %}
+
+            <div class="table-responsive">
+
+                <table class="table table-hover align-middle mb-0">
+
+                    <thead>
+
+                        <tr>
+                            <th>#</th>
+                            <th>Propietario</th>
+                            <th>Período</th>
+                            <th>Tickets</th>
+                            <th class="text-end">Bruto</th>
+                            <th class="text-end">Comisión</th>
+                            <th class="text-end">Líquido</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody>
+
+                        {% for settlement in settlements %}
+
+                            <tr>
+
+                                <td>
+
+                                    <a
+                                        href="{% url 'owner_settlement_admin_detail' settlement.id %}"
+                                        class="fw-bold text-decoration-none"
+                                    >
+                                        #{{ settlement.id }}
+                                    </a>
+                                
+                                </td>
+
+
+                                <td>
+
+                                    <strong>
+                                        {{ settlement.owner.display_name }}
+                                    </strong>
+
+                                    <div class="small text-muted">
+                                        {{ settlement.company.name }}
+                                    </div>
+
+                                </td>
+
+
+                                <td>
+
+                                    {{ settlement.date_from|date:"d/m/Y" }}
+
+                                    <br>
+
+                                    <span class="text-muted">
+                                        al
+                                    </span>
+
+                                    {{ settlement.date_to|date:"d/m/Y" }}
+
+                                </td>
+
+
+                                <td>
+                                    {{ settlement.items.count }}
+                                </td>
+
+
+                                <td class="text-end">
+                                    ${{ settlement.gross_amount|floatformat:0|intcomma }}
+                                </td>
+
+
+                                <td class="text-end">
+                                    ${{ settlement.commission_amount|floatformat:0|intcomma }}
+                                </td>
+
+
+                                <td class="text-end fw-bold text-success">
+                                    ${{ settlement.net_amount|floatformat:0|intcomma }}
+                                </td>
+
+
+                                <td>
+
+                                    {% if settlement.status == "pending" %}
+
+                                        <span class="badge bg-warning text-dark">
+                                            Pendiente
+                                        </span>
+
+                                    {% elif settlement.status == "review" %}
+
+                                        <span class="badge bg-primary">
+                                            En revisión
+                                        </span>
+
+                                    {% elif settlement.status == "paid" %}
+
+                                        <span class="badge bg-success">
+                                            Pagada
+                                        </span>
+
+                                    {% elif settlement.status == "cancelled" %}
+
+                                        <span class="badge bg-danger">
+                                            Anulada
+                                        </span>
+
+                                    {% endif %}
+
+                                </td>
+
+
+                                <td>
+
+                                    <!-- ============================
+                                         VER DETALLE
+                                         ============================ -->
+
+                                    <a
+                                        href="{% url 'owner_settlement_admin_detail' settlement.id %}"
+                                        class="btn btn-sm btn-outline-secondary mb-1"
+                                    >
+                                        <i class="fa-solid fa-eye"></i>
+                                        Ver detalle
+                                    </a>
+
+                                    <!-- ============================
+                                         PENDIENTE → REVISIÓN
+                                         ============================ -->
+
+                                    {% if settlement.status == "pending" %}
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'owner_settlement_change_status' settlement.id %}"
+                                        >
+
+                                            {% csrf_token %}
+
+                                            <input
+                                                type="hidden"
+                                                name="status"
+                                                value="review"
+                                            >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-sm btn-primary"
+                                            >
+                                                <i class="fa-solid fa-magnifying-glass"></i>
+                                                Enviar a revisión
+                                            </button>
+
+                                        </form>
+
+
+                                    <!-- ============================
+                                         REVISIÓN → PAGADA
+                                         ============================ -->
+
+                                    {% elif settlement.status == "review" %}
+
+                                        <form
+                                            method="post"
+                                            action="{% url 'owner_settlement_change_status' settlement.id %}"
+                                            onsubmit="return confirm('¿Confirmas que esta liquidación ya fue pagada? Esta operación no podrá revertirse desde esta pantalla.');"
+                                        >
+
+                                            {% csrf_token %}
+
+                                            <input
+                                                type="hidden"
+                                                name="status"
+                                                value="paid"
+                                            >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-sm btn-success"
+                                            >
+                                                <i class="fa-solid fa-check"></i>
+                                                Marcar pagada
+                                            </button>
+
+                                        </form>
+
+
+                                    <!-- ============================
+                                         PAGADA
+                                         ============================ -->
+
+                                    {% elif settlement.status == "paid" %}
+
+                                        <div class="small text-success fw-semibold">
+
+                                            <i class="fa-solid fa-circle-check"></i>
+
+                                            Pagada
+
+                                            {% if settlement.paid_at %}
+                                                <br>
+
+                                                <span class="text-muted">
+                                                    {{ settlement.paid_at|date:"d/m/Y H:i" }}
+                                                </span>
+                                            {% endif %}
+
+                                        </div>
+
+                                    {% endif %}
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <div class="p-5 text-center text-muted">
+
+                <i class="fa-solid fa-file-invoice-dollar fa-2x mb-3"></i>
+
+                <div>
+                    No existen liquidaciones para los filtros seleccionados.
+                </div>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+{% endblock %}

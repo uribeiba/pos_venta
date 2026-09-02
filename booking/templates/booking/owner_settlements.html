@@ -1,0 +1,258 @@
+{% load humanize %}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Mis Liquidaciones</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
+
+    <style>
+        body {
+            background: #f3f4f6;
+            color: #111827;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .page-wrap {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #111827, #334155);
+            color: white;
+            border-radius: 20px;
+            padding: 26px;
+            margin-bottom: 24px;
+        }
+
+        .hero-label {
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: .08em;
+        }
+
+        .hero-title {
+            font-size: 28px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            overflow: hidden;
+        }
+
+        .table {
+            margin-bottom: 0;
+        }
+
+        .table th {
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .table td,
+        .table th {
+            padding: 14px 16px;
+            vertical-align: middle;
+        }
+
+        .money {
+            color: #047857;
+            font-weight: 700;
+        }
+
+        .status {
+            display: inline-flex;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-review {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .status-paid {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-cancelled {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="page-wrap">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+
+        <a
+            href="{% url 'owner_dashboard' %}"
+            class="btn btn-outline-secondary"
+        >
+            <i class="fa-solid fa-arrow-left me-1"></i>
+            Volver al resumen
+        </a>
+
+        <a
+            href="{% url 'logout' %}"
+            class="btn btn-outline-danger"
+        >
+            Cerrar sesión
+        </a>
+
+    </div>
+
+    <div class="hero">
+
+        <div class="hero-label">
+            Propietario / Socio
+        </div>
+
+        <div class="hero-title">
+            Mis liquidaciones
+        </div>
+
+        <div class="mt-1 text-light">
+            {% if owner %}
+                {{ owner.display_name }}
+            {% endif %}
+
+            {% if company %}
+                · {{ company.name }}
+            {% endif %}
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        {% if settlements %}
+
+            <div class="table-responsive">
+
+                <table class="table">
+
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Período</th>
+                            <th>Estado</th>
+                            <th class="text-end">Bruto</th>
+                            <th class="text-end">Comisión</th>
+                            <th class="text-end">Líquido</th>
+                            <th class="text-end"></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for settlement in settlements %}
+
+                            <tr>
+
+                                <td>
+                                    <strong>#{{ settlement.id }}</strong>
+                                </td>
+
+                                <td>
+                                    {{ settlement.date_from|date:"d/m/Y" }}
+                                    →
+                                    {{ settlement.date_to|date:"d/m/Y" }}
+                                </td>
+
+                                <td>
+                                    <span class="status status-{{ settlement.status }}">
+                                        {{ settlement.get_status_display }}
+                                    </span>
+                                    
+                                    {% if settlement.status == "paid" and settlement.paid_at %}
+                                        <div class="small text-muted mt-1">
+                                            Pagada el {{ settlement.paid_at|date:"d/m/Y H:i" }}
+                                        </div>
+                                    {% endif %}
+                                </td>
+
+                                <td class="text-end">
+                                    ${{ settlement.gross_amount|floatformat:0|intcomma }}
+                                </td>
+
+                                <td class="text-end">
+                                    ${{ settlement.commission_amount|floatformat:0|intcomma }}
+                                </td>
+
+                                <td class="text-end money">
+                                    ${{ settlement.net_amount|floatformat:0|intcomma }}
+                                </td>
+
+                                <td class="text-end">
+
+                                    <a
+                                        href="{% url 'owner_settlement_detail' settlement.id %}"
+                                        class="btn btn-sm btn-primary"
+                                    >
+                                        Ver detalle
+                                    </a>
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <div class="p-5 text-center text-muted">
+                <i class="fa-solid fa-file-invoice-dollar fa-2x mb-3"></i>
+
+                <div>
+                    Todavía no existen liquidaciones asociadas a este propietario.
+                </div>
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+</body>
+</html>

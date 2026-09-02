@@ -263,8 +263,21 @@
       <a href="{% url 'pos_reportes' %}" class="nav-item {% if request.resolver_match.url_name == 'pos_reportes' %}active{% endif %}">📊 Reportes</a>
       <a href="/admin/" class="nav-item">⚙️ Administración</a>
       {% if request.user.is_superuser or request.user.profile.role in 'admin,supervisor' %}
-        <a href="{% url 'gestion_usuarios' %}" class="nav-item {% if request.resolver_match.url_name == 'gestion_usuarios' %}active{% endif %}">👥 Gestión de Usuarios</a>
-      {% endif %}
+
+    <a href="{% url 'gestion_usuarios' %}"
+       class="nav-item">
+        👥 Gestión de Usuarios
+    </a>
+
+    <a
+        href="{% url 'owner_settlement_admin_list' %}"
+        class="nav-item {% if request.resolver_match.url_name == 'owner_settlement_admin_list' %}active{% endif %}"
+    >
+        <i class="fa-solid fa-file-invoice-dollar"></i>
+        Liquidaciones
+    </a>
+
+{% endif %}
     </nav>
   </aside>
 

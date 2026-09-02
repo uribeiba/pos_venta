@@ -32,7 +32,7 @@ from django.contrib.auth import logout
 from core.decorators import role_required, admin_required, supervisor_required, vendedor_required, cajero_required
 
 from .models import (
-    City, Parcel, Promotion, Route, Trip, Bus, Seat, Ticket, SeatHold,
+    City, OwnerSettlement, OwnerSettlementHistory, OwnerSettlementTicket, Parcel, Promotion, Route, Trip, Bus, Seat, Ticket, SeatHold,
     Terminal, UserProfile, CashRegister, DailyReport,
     Customer, BusLayout, Driver, Company, FleetOwner,
     CompanyContract, ContractEmployee, AuditLog
@@ -3218,6 +3218,1124 @@ def owner_bus_detail(request, bus_id):
     return render(
         request,
         "booking/owner_bus_detail.html",
+        context,
+    )
+
+@login_required
+def owner_settlements(request):
+    """
+    FASE 2.18.3-A3.3-C
+
+    Listado de liquidaciones visibles para el Propietario / Socio.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    if not profile:
+        raise PermissionDenied(
+            "El usuario no tiene un perfil operativo configurado."
+        )
+
+    if not profile.is_active:
+        raise PermissionDenied(
+            "La cuenta se encuentra desactivada."
+        )
+
+    if not user.is_superuser and profile.role != "owner":
+        raise PermissionDenied(
+            "No tiene permisos para ver liquidaciones."
+        )
+
+    settlements = OwnerSettlement.objects.select_related(
+        "owner",
+        "company",
+        "created_by",
+    )
+
+    if not user.is_superuser:
+        if not profile.company_id or not profile.fleet_owner_id:
+            raise PermissionDenied(
+                "El perfil de propietario no está completamente configurado."
+            )
+
+        settlements = settlements.filter(
+            company=profile.company,
+            owner=profile.fleet_owner,
+        )
+
+    settlements = settlements.order_by(
+        "-date_to",
+        "-created_at",
+    )
+
+    context = {
+        "profile": profile,
+        "owner": getattr(profile, "fleet_owner", None),
+        "company": getattr(profile, "company", None),
+        "settlements": settlements,
+    }
+
+    return render(
+        request,
+        "booking/owner_settlements.html",
+        context,
+    )
+
+
+@login_required
+def owner_settlement_detail(request, settlement_id):
+    """
+    FASE 2.18.3-A3.3-C
+
+    Detalle de una liquidación individual.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    if not profile:
+        raise PermissionDenied(
+            "El usuario no tiene un perfil operativo configurado."
+        )
+
+    if not profile.is_active:
+        raise PermissionDenied(
+            "La cuenta se encuentra desactivada."
+        )
+
+    if not user.is_superuser and profile.role != "owner":
+        raise PermissionDenied(
+            "No tiene permisos para ver esta liquidación."
+        )
+
+    settlements = OwnerSettlement.objects.select_related(
+        "owner",
+        "company",
+        "created_by",
+    ).prefetch_related(
+        "items__ticket__revenue_bus",
+        "items__ticket__trip__route",
+    )
+
+    if not user.is_superuser:
+        if not profile.company_id or not profile.fleet_owner_id:
+            raise PermissionDenied(
+                "El perfil de propietario no está completamente configurado."
+            )
+
+        settlements = settlements.filter(
+            company=profile.company,
+            owner=profile.fleet_owner,
+        )
+
+    settlement = get_object_or_404(
+        settlements,
+        pk=settlement_id,
+    )
+
+    context = {
+        "profile": profile,
+        "owner": getattr(profile, "fleet_owner", None),
+        "company": getattr(profile, "company", None),
+        "settlement": settlement,
+        "items": settlement.items.select_related(
+            "ticket",
+            "ticket__revenue_bus",
+            "ticket__trip",
+            "ticket__trip__route",
+        ).order_by(
+            "ticket__created_at",
+            "ticket__id",
+        ),
+    }
+
+    return render(
+        request,
+        "booking/owner_settlement_detail.html",
+        context,
+    )
+
+
+@login_required
+@supervisor_required
+def owner_settlement_admin_list(request):
+    """
+    FASE 2.18.3-A3.3-D
+
+    Administración de liquidaciones de propietarios.
+
+    - Superuser: ve todas.
+    - Admin/Supervisor normal: solamente su empresa.
+    - Propietario: no tiene acceso a esta vista.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    settlements = (
+        OwnerSettlement.objects
+        .select_related(
+            "company",
+            "owner",
+            "created_by",
+        )
+        .prefetch_related(
+            "items",
+        )
+    )
+
+    # Superusuario puede administrar todas las empresas.
+    if not user.is_superuser:
+
+        if not profile or not profile.is_active:
+            raise PermissionDenied(
+                "El usuario no tiene un perfil operativo activo."
+            )
+
+        if not profile.company_id:
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asociada."
+            )
+
+        settlements = settlements.filter(
+            company=profile.company
+        )
+
+    # --------------------------------------------------------------
+    # FILTROS
+    # --------------------------------------------------------------
+    status_filter = request.GET.get(
+        "status",
+        ""
+    ).strip()
+
+    owner_filter = request.GET.get(
+        "owner",
+        ""
+    ).strip()
+
+    if status_filter in {
+        OwnerSettlement.STATUS_PENDING,
+        OwnerSettlement.STATUS_REVIEW,
+        OwnerSettlement.STATUS_PAID,
+        OwnerSettlement.STATUS_CANCELLED,
+    }:
+        settlements = settlements.filter(
+            status=status_filter
+        )
+
+    if owner_filter:
+        try:
+            owner_id = int(owner_filter)
+        except (TypeError, ValueError):
+            owner_id = None
+
+        if owner_id:
+            settlements = settlements.filter(
+                owner_id=owner_id
+            )
+
+    settlements = settlements.order_by(
+        "-date_to",
+        "-created_at",
+    )
+
+    # --------------------------------------------------------------
+    # PROPIETARIOS DISPONIBLES
+    # --------------------------------------------------------------
+    owners = FleetOwner.objects.filter(
+        is_active=True
+    )
+
+    if not user.is_superuser:
+        owners = owners.filter(
+            company=profile.company
+        )
+
+    owners = owners.order_by(
+        "first_name",
+        "last_name",
+    )
+
+    context = {
+        "settlements": settlements,
+        "owners": owners,
+
+        "status_filter": status_filter,
+        "owner_filter": owner_filter,
+
+        "status_choices": OwnerSettlement.STATUS_CHOICES,
+    }
+
+    return render(
+        request,
+        "booking/owner_settlement_admin_list.html",
+        context,
+    )
+
+
+@login_required
+@supervisor_required
+@require_POST
+def owner_settlement_change_status(request, settlement_id):
+    """
+    FASE 2.18.3-A3.3-D / A3.3-G.1 / A3.3-I
+
+    Cambia el estado de una liquidación y registra trazabilidad.
+
+    Transiciones permitidas:
+
+        pending -> review
+        review  -> paid
+
+    Una liquidación pagada no puede volver atrás desde esta operación.
+
+    Si el cambio se ejecuta desde el detalle administrativo,
+    vuelve al detalle de la misma liquidación.
+    Si se ejecuta desde el listado, vuelve al listado general.
+
+    Cada cambio válido queda registrado en OwnerSettlementHistory.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    # --------------------------------------------------------------
+    # DESTINO DESPUÉS DEL CAMBIO
+    # --------------------------------------------------------------
+    next_url = request.POST.get(
+        "next",
+        ""
+    ).strip()
+
+    with transaction.atomic():
+
+        # ----------------------------------------------------------
+        # 1. BLOQUEAR LIQUIDACIÓN
+        # ----------------------------------------------------------
+        settlements = (
+            OwnerSettlement.objects
+            .select_for_update()
+            .select_related(
+                "company",
+                "owner",
+            )
+        )
+
+        # ----------------------------------------------------------
+        # 2. ALCANCE EMPRESARIAL
+        # ----------------------------------------------------------
+        if not user.is_superuser:
+
+            if not profile or not profile.is_active:
+
+                raise PermissionDenied(
+                    "El usuario no tiene un perfil operativo activo."
+                )
+
+            if not profile.company_id:
+
+                raise PermissionDenied(
+                    "El usuario no tiene una empresa asociada."
+                )
+
+            settlements = settlements.filter(
+                company=profile.company
+            )
+
+        # ----------------------------------------------------------
+        # 3. OBTENER LIQUIDACIÓN
+        # ----------------------------------------------------------
+        settlement = get_object_or_404(
+            settlements,
+            pk=settlement_id,
+        )
+
+        # ----------------------------------------------------------
+        # 4. ESTADO SOLICITADO
+        # ----------------------------------------------------------
+        new_status = request.POST.get(
+            "status",
+            ""
+        ).strip()
+
+        # ----------------------------------------------------------
+        # 5. TRANSICIONES PERMITIDAS
+        # ----------------------------------------------------------
+        allowed_transitions = {
+
+            OwnerSettlement.STATUS_PENDING: {
+                OwnerSettlement.STATUS_REVIEW,
+            },
+
+            OwnerSettlement.STATUS_REVIEW: {
+                OwnerSettlement.STATUS_PAID,
+            },
+
+            OwnerSettlement.STATUS_PAID: set(),
+
+            OwnerSettlement.STATUS_CANCELLED: set(),
+        }
+
+        current_status = settlement.status
+
+        # ----------------------------------------------------------
+        # 6. VALIDAR TRANSICIÓN
+        # ----------------------------------------------------------
+        if new_status not in allowed_transitions.get(
+            current_status,
+            set(),
+        ):
+
+            messages.error(
+                request,
+                (
+                    "No se puede cambiar la liquidación "
+                    f"de '{settlement.get_status_display()}' "
+                    "al estado solicitado."
+                )
+            )
+
+            # ------------------------------------------------------
+            # REDIRECCIÓN SEGURA
+            # ------------------------------------------------------
+            allowed_next = reverse(
+                "owner_settlement_admin_detail",
+                args=[settlement.id],
+            )
+
+            if next_url == allowed_next:
+
+                return redirect(
+                    allowed_next
+                )
+
+            return redirect(
+                "owner_settlement_admin_list"
+            )
+
+        # ----------------------------------------------------------
+        # 7. GUARDAR ESTADO ANTERIOR PARA AUDITORÍA
+        # ----------------------------------------------------------
+        previous_status = settlement.status
+
+        # ----------------------------------------------------------
+        # 8. CAMBIAR ESTADO
+        # ----------------------------------------------------------
+        settlement.status = new_status
+
+        update_fields = [
+            "status",
+            "updated_at",
+        ]
+
+        # ----------------------------------------------------------
+        # 9. MARCAR FECHA DE PAGO
+        # ----------------------------------------------------------
+        if new_status == OwnerSettlement.STATUS_PAID:
+
+            settlement.paid_at = timezone.now()
+
+            update_fields.append(
+                "paid_at"
+            )
+
+        settlement.save(
+            update_fields=update_fields
+        )
+
+        # ----------------------------------------------------------
+        # 10. REGISTRAR HISTORIAL
+        # ----------------------------------------------------------
+        if new_status == OwnerSettlement.STATUS_REVIEW:
+
+            history_note = (
+                "Liquidación enviada a revisión desde administración."
+            )
+
+        elif new_status == OwnerSettlement.STATUS_PAID:
+
+            history_note = (
+                "Liquidación marcada como pagada desde administración."
+            )
+
+        else:
+
+            history_note = (
+                "Cambio de estado realizado desde administración."
+            )
+
+        OwnerSettlementHistory.objects.create(
+            settlement=settlement,
+            previous_status=previous_status,
+            new_status=new_status,
+            changed_by=user,
+            note=history_note,
+        )
+
+    # --------------------------------------------------------------
+    # 11. MENSAJES
+    # --------------------------------------------------------------
+    if new_status == OwnerSettlement.STATUS_REVIEW:
+
+        messages.success(
+            request,
+            (
+                f"Liquidación #{settlement.id} "
+                "enviada a revisión."
+            )
+        )
+
+    elif new_status == OwnerSettlement.STATUS_PAID:
+
+        messages.success(
+            request,
+            (
+                f"Liquidación #{settlement.id} "
+                "marcada como pagada correctamente."
+            )
+        )
+
+    # --------------------------------------------------------------
+    # 12. REDIRECCIÓN SEGURA
+    # --------------------------------------------------------------
+    allowed_next = reverse(
+        "owner_settlement_admin_detail",
+        args=[settlement.id],
+    )
+
+    # Si el formulario vino desde el detalle administrativo,
+    # permanece en la misma liquidación.
+    if next_url == allowed_next:
+
+        return redirect(
+            allowed_next
+        )
+
+    # Si vino desde el listado, regresa al listado general.
+    return redirect(
+        "owner_settlement_admin_list"
+    )
+    
+    
+@login_required
+@supervisor_required
+@require_POST
+def owner_settlement_cancel(request, settlement_id):
+    """
+    FASE 2.18.3-A3.3-H / A3.3-I
+
+    Anulación controlada de una liquidación con trazabilidad.
+
+    Permitido:
+        pending -> cancelled
+        review  -> cancelled
+
+    No permitido:
+        paid      -> cancelled
+        cancelled -> cancelled
+
+    Al anular:
+    - Se conserva snapshot de tickets para auditoría.
+    - Se registra el cambio en OwnerSettlementHistory.
+    - Se liberan OwnerSettlementTicket.
+    - Los tickets pueden entrar en una liquidación futura.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    cancellation_reason = request.POST.get(
+        "cancellation_reason",
+        ""
+    ).strip()
+
+    next_url = request.POST.get(
+        "next",
+        ""
+    ).strip()
+
+    # --------------------------------------------------------------
+    # 1. MOTIVO OBLIGATORIO
+    # --------------------------------------------------------------
+    if not cancellation_reason:
+
+        messages.error(
+            request,
+            "Debe ingresar el motivo de la anulación."
+        )
+
+        allowed_next = reverse(
+            "owner_settlement_admin_detail",
+            args=[settlement_id],
+        )
+
+        if next_url == allowed_next:
+            return redirect(
+                allowed_next
+            )
+
+        return redirect(
+            "owner_settlement_admin_list"
+        )
+
+    # --------------------------------------------------------------
+    # 2. VALIDAR LARGO DEL MOTIVO
+    # --------------------------------------------------------------
+    if len(cancellation_reason) > 1000:
+
+        messages.error(
+            request,
+            "El motivo de anulación no puede superar los 1000 caracteres."
+        )
+
+        allowed_next = reverse(
+            "owner_settlement_admin_detail",
+            args=[settlement_id],
+        )
+
+        if next_url == allowed_next:
+            return redirect(
+                allowed_next
+            )
+
+        return redirect(
+            "owner_settlement_admin_list"
+        )
+
+    # --------------------------------------------------------------
+    # 3. OPERACIÓN ATÓMICA
+    # --------------------------------------------------------------
+    with transaction.atomic():
+
+        settlements = (
+            OwnerSettlement.objects
+            .select_for_update()
+            .select_related(
+                "company",
+                "owner",
+            )
+        )
+
+        # ----------------------------------------------------------
+        # 4. ALCANCE EMPRESARIAL
+        # ----------------------------------------------------------
+        if not user.is_superuser:
+
+            if not profile or not profile.is_active:
+
+                raise PermissionDenied(
+                    "El usuario no tiene un perfil operativo activo."
+                )
+
+            if not profile.company_id:
+
+                raise PermissionDenied(
+                    "El usuario no tiene una empresa asociada."
+                )
+
+            settlements = settlements.filter(
+                company=profile.company
+            )
+
+        # ----------------------------------------------------------
+        # 5. OBTENER LIQUIDACIÓN
+        # ----------------------------------------------------------
+        settlement = get_object_or_404(
+            settlements,
+            pk=settlement_id,
+        )
+
+        # ----------------------------------------------------------
+        # 6. VALIDAR ESTADO
+        # ----------------------------------------------------------
+        allowed_statuses = {
+            OwnerSettlement.STATUS_PENDING,
+            OwnerSettlement.STATUS_REVIEW,
+        }
+
+        if settlement.status not in allowed_statuses:
+
+            messages.error(
+                request,
+                (
+                    f"La liquidación #{settlement.id} "
+                    f"se encuentra '{settlement.get_status_display()}' "
+                    "y no puede ser anulada."
+                )
+            )
+
+            allowed_next = reverse(
+                "owner_settlement_admin_detail",
+                args=[settlement.id],
+            )
+
+            if next_url == allowed_next:
+                return redirect(
+                    allowed_next
+                )
+
+            return redirect(
+                "owner_settlement_admin_list"
+            )
+
+        # ----------------------------------------------------------
+        # 7. GUARDAR ESTADO ANTERIOR
+        # ----------------------------------------------------------
+        previous_status = settlement.status
+
+        # ----------------------------------------------------------
+        # 8. BLOQUEAR ITEMS
+        # ----------------------------------------------------------
+        items = list(
+            OwnerSettlementTicket.objects
+            .select_for_update()
+            .select_related(
+                "ticket",
+            )
+            .filter(
+                settlement=settlement
+            )
+            .order_by("id")
+        )
+
+        # ----------------------------------------------------------
+        # 9. SNAPSHOT PARA AUDITORÍA
+        # ----------------------------------------------------------
+        ticket_snapshot = []
+
+        for item in items:
+
+            ticket = item.ticket
+            bus = ticket.revenue_bus
+
+            ticket_snapshot.append(
+                {
+                    "ticket_id": ticket.id,
+                    "number": ticket.number,
+                    "amount": str(item.amount),
+
+                    "bus_id": (
+                        bus.id
+                        if bus
+                        else None
+                    ),
+
+                    "bus_plate": (
+                        bus.plate
+                        if bus
+                        else None
+                    ),
+                }
+            )
+
+        # ----------------------------------------------------------
+        # 10. MARCAR LIQUIDACIÓN ANULADA
+        # ----------------------------------------------------------
+        settlement.status = OwnerSettlement.STATUS_CANCELLED
+
+        settlement.cancelled_at = timezone.now()
+
+        settlement.cancelled_by = user
+
+        settlement.cancellation_reason = cancellation_reason
+
+        settlement.cancelled_ticket_snapshot = ticket_snapshot
+
+        settlement.save(
+            update_fields=[
+                "status",
+                "cancelled_at",
+                "cancelled_by",
+                "cancellation_reason",
+                "cancelled_ticket_snapshot",
+                "updated_at",
+            ]
+        )
+
+        # ----------------------------------------------------------
+        # 11. REGISTRAR HISTORIAL
+        # ----------------------------------------------------------
+        OwnerSettlementHistory.objects.create(
+            settlement=settlement,
+            previous_status=previous_status,
+            new_status=OwnerSettlement.STATUS_CANCELLED,
+            changed_by=user,
+            note=cancellation_reason,
+        )
+
+        # ----------------------------------------------------------
+        # 12. LIBERAR TICKETS
+        # ----------------------------------------------------------
+        OwnerSettlementTicket.objects.filter(
+            settlement=settlement
+        ).delete()
+
+    # --------------------------------------------------------------
+    # 13. MENSAJE FINAL
+    # --------------------------------------------------------------
+    messages.success(
+        request,
+        (
+            f"Liquidación #{settlement.id} anulada correctamente. "
+            f"{len(ticket_snapshot)} ticket(s) quedaron disponibles "
+            "para una nueva liquidación."
+        )
+    )
+
+    # --------------------------------------------------------------
+    # 14. REDIRECCIÓN SEGURA
+    # --------------------------------------------------------------
+    allowed_next = reverse(
+        "owner_settlement_admin_detail",
+        args=[settlement.id],
+    )
+
+    if next_url == allowed_next:
+
+        return redirect(
+            allowed_next
+        )
+
+    return redirect(
+        "owner_settlement_admin_list"
+    )
+@login_required
+@supervisor_required
+@require_POST
+def owner_settlement_generate(request):
+    """
+    FASE 2.18.3-A3.3-F
+
+    Genera una liquidación desde la interfaz administrativa.
+
+    Reglas:
+    - Solo Admin / Supervisor / Superuser.
+    - Admin/Supervisor solo puede liquidar propietarios de su empresa.
+    - Solo incluye tickets del revenue_owner seleccionado.
+    - Solo incluye tickets NO liquidados.
+    - Bloquea tickets durante la operación para evitar carreras.
+    - OwnerSettlementTicket.ticket es OneToOne, por lo que
+      un mismo ticket no puede pertenecer a dos liquidaciones.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    owner_id_raw = request.POST.get("owner", "").strip()
+    date_from_raw = request.POST.get("date_from", "").strip()
+    date_to_raw = request.POST.get("date_to", "").strip()
+
+    # --------------------------------------------------------------
+    # 1. VALIDAR DATOS RECIBIDOS
+    # --------------------------------------------------------------
+    try:
+        owner_id = int(owner_id_raw)
+
+    except (TypeError, ValueError):
+
+        messages.error(
+            request,
+            "Debe seleccionar un propietario válido."
+        )
+
+        return redirect(
+            "owner_settlement_admin_list"
+        )
+
+    try:
+        date_from = datetime.strptime(
+            date_from_raw,
+            "%Y-%m-%d",
+        ).date()
+
+        date_to = datetime.strptime(
+            date_to_raw,
+            "%Y-%m-%d",
+        ).date()
+
+    except (TypeError, ValueError):
+
+        messages.error(
+            request,
+            "Debe ingresar un rango de fechas válido."
+        )
+
+        return redirect(
+            "owner_settlement_admin_list"
+        )
+
+    if date_from > date_to:
+
+        messages.error(
+            request,
+            "La fecha inicial no puede ser posterior a la fecha final."
+        )
+
+        return redirect(
+            "owner_settlement_admin_list"
+        )
+
+    # --------------------------------------------------------------
+    # 2. VALIDAR PROPIETARIO Y EMPRESA
+    # --------------------------------------------------------------
+    owners = (
+        FleetOwner.objects
+        .filter(
+            pk=owner_id,
+            is_active=True,
+        )
+        .select_related(
+            "company",
+        )
+    )
+
+    # Usuario administrativo normal:
+    # solo puede trabajar con propietarios de su empresa.
+    if not user.is_superuser:
+
+        if not profile or not profile.is_active:
+
+            raise PermissionDenied(
+                "El usuario no tiene un perfil operativo activo."
+            )
+
+        if not profile.company_id:
+
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asociada."
+            )
+
+        owners = owners.filter(
+            company=profile.company
+        )
+
+    owner = get_object_or_404(
+        owners,
+        pk=owner_id,
+    )
+
+    # --------------------------------------------------------------
+    # 3. GENERACIÓN ATÓMICA
+    # --------------------------------------------------------------
+    with transaction.atomic():
+
+        # ----------------------------------------------------------
+        # Tickets que ya pertenecen a alguna liquidación.
+        #
+        # Se usa una subconsulta en vez de:
+        #
+        # owner_settlement_item__isnull=True
+        #
+        # porque esa expresión genera un LEFT OUTER JOIN y PostgreSQL
+        # no permite SELECT FOR UPDATE sobre el lado nullable de ese JOIN.
+        # ----------------------------------------------------------
+        tickets_ya_liquidados = (
+            OwnerSettlementTicket.objects
+            .values_list(
+                "ticket_id",
+                flat=True,
+            )
+        )
+
+        # ----------------------------------------------------------
+        # Tickets disponibles para liquidar
+        # ----------------------------------------------------------
+        tickets = list(
+            Ticket.objects
+            .select_for_update()
+            .filter(
+                revenue_owner=owner,
+                revenue_bus__company=owner.company,
+                created_at__date__range=[
+                    date_from,
+                    date_to,
+                ],
+            )
+            .exclude(
+                pk__in=tickets_ya_liquidados
+            )
+            .select_related(
+                "revenue_bus",
+            )
+            .order_by(
+                "created_at",
+                "id",
+            )
+        )
+
+        # ----------------------------------------------------------
+        # 4. SIN TICKETS LIQUIDABLES
+        # ----------------------------------------------------------
+        if not tickets:
+
+            messages.warning(
+                request,
+                (
+                    f"No existen tickets pendientes de liquidar para "
+                    f"{owner.display_name} entre "
+                    f"{date_from.strftime('%d/%m/%Y')} y "
+                    f"{date_to.strftime('%d/%m/%Y')}."
+                )
+            )
+
+            return redirect(
+                "owner_settlement_admin_list"
+            )
+
+        # ----------------------------------------------------------
+        # 5. CALCULAR TOTALES
+        # ----------------------------------------------------------
+        gross_amount = sum(
+            (
+                ticket.price
+                for ticket in tickets
+            ),
+            Decimal("0"),
+        )
+
+        # Por ahora no existe comisión configurada.
+        commission_amount = Decimal("0")
+
+        net_amount = (
+            gross_amount
+            - commission_amount
+        )
+
+        # ----------------------------------------------------------
+        # 6. CREAR CABECERA DE LIQUIDACIÓN
+        # ----------------------------------------------------------
+        settlement = OwnerSettlement.objects.create(
+            company=owner.company,
+            owner=owner,
+
+            date_from=date_from,
+            date_to=date_to,
+
+            gross_amount=gross_amount,
+            commission_amount=commission_amount,
+            net_amount=net_amount,
+
+            status=OwnerSettlement.STATUS_PENDING,
+
+            created_by=user,
+
+            notes=(
+                "Liquidación generada desde administración."
+            ),
+        )
+
+        # ----------------------------------------------------------
+        # 7. ASOCIAR TICKETS
+        # ----------------------------------------------------------
+        settlement_items = [
+            OwnerSettlementTicket(
+                settlement=settlement,
+                ticket=ticket,
+
+                # Congelamos el monto utilizado en la liquidación.
+                amount=ticket.price,
+            )
+            for ticket in tickets
+        ]
+
+        OwnerSettlementTicket.objects.bulk_create(
+            settlement_items
+        )
+
+    # --------------------------------------------------------------
+    # 8. MENSAJE FINAL
+    # --------------------------------------------------------------
+    messages.success(
+        request,
+        (
+            f"Liquidación #{settlement.id} creada correctamente. "
+            f"{len(tickets)} ticket(s) incluidos. "
+            f"Monto líquido: ${net_amount:,.0f}."
+        )
+    )
+
+    return redirect(
+        "owner_settlement_admin_list"
+    )
+    
+@login_required
+@supervisor_required
+def owner_settlement_admin_detail(request, settlement_id):
+    """
+    FASE 2.18.3-A3.3-G
+
+    Detalle administrativo de una liquidación.
+
+    - Superuser: puede ver cualquier liquidación.
+    - Admin/Supervisor: solo liquidaciones de su empresa.
+    - Propietario: no tiene acceso a esta vista.
+    """
+
+    user = request.user
+    profile = getattr(user, "profile", None)
+
+    settlements = (
+        OwnerSettlement.objects
+        .select_related(
+            "company",
+            "owner",
+            "created_by",
+        )
+    )
+
+    # --------------------------------------------------------------
+    # ALCANCE DE EMPRESA
+    # --------------------------------------------------------------
+    if not user.is_superuser:
+
+        if not profile or not profile.is_active:
+            raise PermissionDenied(
+                "El usuario no tiene un perfil operativo activo."
+            )
+
+        if not profile.company_id:
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asociada."
+            )
+
+        settlements = settlements.filter(
+            company=profile.company
+        )
+
+    settlement = get_object_or_404(
+        settlements,
+        pk=settlement_id,
+    )
+
+    # --------------------------------------------------------------
+    # TICKETS DE LA LIQUIDACIÓN
+    # --------------------------------------------------------------
+    items = (
+        settlement.items
+        .select_related(
+            "ticket",
+            "ticket__revenue_bus",
+            "ticket__revenue_owner",
+            "ticket__trip",
+            "ticket__trip__route",
+            "ticket__seat",
+        )
+        .order_by(
+            "ticket__created_at",
+            "ticket__id",
+        )
+    )
+
+    context = {
+        "settlement": settlement,
+        "items": items,
+    }
+
+    return render(
+        request,
+        "booking/owner_settlement_admin_detail.html",
         context,
     )
 

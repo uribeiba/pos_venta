@@ -1545,6 +1545,241 @@ class DailyReport(models.Model):
         return f"Reporte {self.date}"
 
 
+
+
+# =========================================================
+# FASE 2.18.3-A3.3 — LIQUIDACIONES DE PROPIETARIOS
+# =========================================================
+
+class OwnerSettlement(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_REVIEW = "review"
+    STATUS_PAID = "paid"
+    STATUS_CANCELLED = "cancelled"
+
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "Pendiente"),
+        (STATUS_REVIEW, "En revisión"),
+        (STATUS_PAID, "Pagada"),
+        (STATUS_CANCELLED, "Anulada"),
+    )
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="owner_settlements",
+        verbose_name="Empresa",
+    )
+
+    owner = models.ForeignKey(
+        FleetOwner,
+        on_delete=models.PROTECT,
+        related_name="settlements",
+        verbose_name="Propietario / socio",
+    )
+
+    date_from = models.DateField(
+        "Desde",
+    )
+
+    date_to = models.DateField(
+        "Hasta",
+    )
+
+    gross_amount = models.DecimalField(
+        "Ventas brutas",
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0"),
+    )
+
+    commission_amount = models.DecimalField(
+        "Comisión",
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0"),
+    )
+
+    net_amount = models.DecimalField(
+        "Monto líquido",
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0"),
+    )
+
+    status = models.CharField(
+        "Estado",
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+
+    notes = models.TextField(
+        "Observaciones",
+        blank=True,
+        default="",
+    )
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="owner_settlements_created",
+        verbose_name="Creada por",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    paid_at = models.DateTimeField(
+        "Fecha de pago",
+        null=True,
+        blank=True,
+    )
+    
+    cancelled_at = models.DateTimeField(
+    null=True,
+    blank=True,
+    )
+
+    cancelled_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="cancelled_owner_settlements",
+    )
+
+    cancellation_reason = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    cancelled_ticket_snapshot = models.JSONField(
+        default=list,
+        blank=True,
+    )
+    
+    
+
+    class Meta:
+        verbose_name = "Liquidación de propietario"
+        verbose_name_plural = "Liquidaciones de propietarios"
+        ordering = ("-date_to", "-created_at")
+        indexes = [
+            models.Index(fields=("company", "owner")),
+            models.Index(fields=("status",)),
+            models.Index(fields=("date_from", "date_to")),
+        ]
+
+    def __str__(self):
+        return (
+            f"Liquidación #{self.pk or 'NUEVA'} — "
+            f"{self.owner.display_name} — "
+            f"{self.date_from} a {self.date_to}"
+        )
+
+
+class OwnerSettlementTicket(models.Model):
+    settlement = models.ForeignKey(
+        OwnerSettlement,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="Liquidación",
+    )
+
+    ticket = models.OneToOneField(
+        Ticket,
+        on_delete=models.PROTECT,
+        related_name="owner_settlement_item",
+        verbose_name="Ticket",
+    )
+
+    amount = models.DecimalField(
+        "Monto del ticket",
+        max_digits=14,
+        decimal_places=2,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = "Ticket liquidado"
+        verbose_name_plural = "Tickets liquidados"
+        ordering = ("ticket__created_at",)
+
+    def __str__(self):
+        return f"{self.ticket.number} — Liquidación #{self.settlement_id}"
+    
+
+
+class OwnerSettlementHistory(models.Model):
+    settlement = models.ForeignKey(
+        OwnerSettlement,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+
+    previous_status = models.CharField(
+        max_length=20,
+        choices=OwnerSettlement.STATUS_CHOICES,
+    )
+
+    new_status = models.CharField(
+        max_length=20,
+        choices=OwnerSettlement.STATUS_CHOICES,
+    )
+
+    changed_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="owner_settlement_status_changes",
+    )
+
+    note = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = "Historial de liquidación"
+        verbose_name_plural = "Historial de liquidaciones"
+        ordering = [
+            "created_at",
+            "id",
+        ]
+
+        indexes = [
+            models.Index(
+                fields=[
+                    "settlement",
+                    "created_at",
+                ]
+            ),
+            models.Index(
+                fields=[
+                    "new_status",
+                    "created_at",
+                ]
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"Liquidación #{self.settlement_id}: "
+            f"{self.previous_status} → {self.new_status}"
+        )
 # =========================================================
 # Perfil de Usuario
 # =========================================================

@@ -1,0 +1,562 @@
+{% extends "booking/pos_base.html" %}
+{% load humanize %}
+
+{% block title %}
+Liquidación #{{ settlement.id }}
+{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">
+                <i class="fa-solid fa-file-invoice-dollar me-2"></i>
+                Liquidación #{{ settlement.id }}
+            </h2>
+            <div class="text-muted">
+                Detalle administrativo de la liquidación del propietario.
+            </div>
+        </div>
+
+        <a href="{% url 'owner_settlement_admin_list' %}"
+           class="btn btn-outline-secondary">
+            <i class="fa-solid fa-arrow-left me-1"></i>
+            Volver a liquidaciones
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-4">
+
+                <div class="col-12 col-md-3">
+                    <div class="text-muted small mb-1">Propietario</div>
+                    <div class="fw-bold">{{ settlement.owner.display_name }}</div>
+                    <div class="small text-muted">{{ settlement.company.name }}</div>
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <div class="text-muted small mb-1">Período</div>
+                    <div class="fw-semibold">
+                        {{ settlement.date_from|date:"d/m/Y" }}
+                        →
+                        {{ settlement.date_to|date:"d/m/Y" }}
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <div class="text-muted small mb-1">Estado</div>
+
+                    {% if settlement.status == "pending" %}
+                        <span class="badge bg-warning text-dark">Pendiente</span>
+                    {% elif settlement.status == "review" %}
+                        <span class="badge bg-primary">En revisión</span>
+                    {% elif settlement.status == "paid" %}
+                        <span class="badge bg-success">Pagada</span>
+                    {% elif settlement.status == "cancelled" %}
+                        <span class="badge bg-danger">Anulada</span>
+                    {% endif %}
+
+                    {% if settlement.status == "paid" and settlement.paid_at %}
+                        <div class="small text-muted mt-1">
+                            Pagada el {{ settlement.paid_at|date:"d/m/Y H:i" }}
+                        </div>
+                    {% elif settlement.status == "cancelled" and settlement.cancelled_at %}
+                        <div class="small text-muted mt-1">
+                            Anulada el {{ settlement.cancelled_at|date:"d/m/Y H:i" }}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <div class="text-muted small mb-1">Creada por</div>
+                    <div class="fw-semibold">{{ settlement.created_by.username }}</div>
+                    <div class="small text-muted">
+                        {{ settlement.created_at|date:"d/m/Y H:i" }}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+
+        <div class="col-12 col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Tickets incluidos</div>
+                    <div class="fs-3 fw-bold mt-1">
+                        {% if settlement.status == "cancelled" and settlement.cancelled_ticket_snapshot %}
+                            {{ settlement.cancelled_ticket_snapshot|length }}
+                        {% else %}
+                            {{ items|length }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Venta bruta</div>
+                    <div class="fs-3 fw-bold mt-1">
+                        ${{ settlement.gross_amount|floatformat:0|intcomma }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Comisión</div>
+                    <div class="fs-3 fw-bold mt-1">
+                        ${{ settlement.commission_amount|floatformat:0|intcomma }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Monto líquido</div>
+                    <div class="fs-3 fw-bold text-success mt-1">
+                        ${{ settlement.net_amount|floatformat:0|intcomma }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Estado de la liquidación</strong>
+        </div>
+
+        <div class="card-body">
+
+            {% if settlement.status == "pending" %}
+
+                <form method="post"
+                      action="{% url 'owner_settlement_change_status' settlement.id %}">
+
+                    {% csrf_token %}
+
+                    <input type="hidden" name="status" value="review">
+                    <input type="hidden"
+                           name="next"
+                           value="{% url 'owner_settlement_admin_detail' settlement.id %}">
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-magnifying-glass me-1"></i>
+                        Enviar a revisión
+                    </button>
+                </form>
+
+            {% elif settlement.status == "review" %}
+
+                <form method="post"
+                      action="{% url 'owner_settlement_change_status' settlement.id %}"
+                      onsubmit="return confirm('¿Confirmas que esta liquidación ya fue pagada? Esta operación no podrá revertirse desde esta pantalla.');">
+
+                    {% csrf_token %}
+
+                    <input type="hidden" name="status" value="paid">
+                    <input type="hidden"
+                           name="next"
+                           value="{% url 'owner_settlement_admin_detail' settlement.id %}">
+
+                    <button type="submit" class="btn btn-success">
+                        <i class="fa-solid fa-check me-1"></i>
+                        Marcar pagada
+                    </button>
+                </form>
+
+            {% elif settlement.status == "paid" %}
+
+                <div class="alert alert-success mb-0">
+                    <i class="fa-solid fa-circle-check me-1"></i>
+                    Esta liquidación está pagada.
+
+                    {% if settlement.paid_at %}
+                        <strong>{{ settlement.paid_at|date:"d/m/Y H:i" }}</strong>
+                    {% endif %}
+                </div>
+
+            {% elif settlement.status == "cancelled" %}
+
+                <div class="alert alert-danger mb-0">
+                    <div class="fw-bold mb-2">
+                        <i class="fa-solid fa-ban me-1"></i>
+                        Esta liquidación fue anulada.
+                    </div>
+
+                    {% if settlement.cancelled_at %}
+                        <div>
+                            <strong>Fecha:</strong>
+                            {{ settlement.cancelled_at|date:"d/m/Y H:i" }}
+                        </div>
+                    {% endif %}
+
+                    {% if settlement.cancelled_by %}
+                        <div>
+                            <strong>Anulada por:</strong>
+                            {{ settlement.cancelled_by.username }}
+                        </div>
+                    {% endif %}
+
+                    {% if settlement.cancellation_reason %}
+                        <div class="mt-2">
+                            <strong>Motivo:</strong><br>
+                            {{ settlement.cancellation_reason }}
+                        </div>
+                    {% endif %}
+                </div>
+
+            {% endif %}
+
+            {% if settlement.status == "pending" or settlement.status == "review" %}
+
+                <hr class="my-4">
+
+                <div class="border border-danger rounded p-3">
+
+                    <div class="fw-bold text-danger mb-2">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                        Anular liquidación
+                    </div>
+
+                    <div class="small text-muted mb-3">
+                        Al anular esta liquidación, sus tickets volverán a quedar
+                        disponibles para una nueva liquidación. La liquidación no se elimina
+                        y la operación quedará registrada para auditoría.
+                    </div>
+
+                    <form method="post"
+                          action="{% url 'owner_settlement_cancel' settlement.id %}"
+                          onsubmit="return confirm('¿Confirma que desea anular esta liquidación? Los tickets volverán a quedar disponibles para liquidar.');">
+
+                        {% csrf_token %}
+
+                        <input type="hidden"
+                               name="next"
+                               value="{% url 'owner_settlement_admin_detail' settlement.id %}">
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Motivo de anulación
+                            </label>
+
+                            <textarea name="cancellation_reason"
+                                      class="form-control"
+                                      rows="3"
+                                      maxlength="1000"
+                                      required
+                                      placeholder="Ejemplo: Error en el período seleccionado, liquidación generada por equivocación..."></textarea>
+
+                            <div class="form-text">
+                                El motivo quedará guardado en el historial de la liquidación.
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-outline-danger">
+                            <i class="fa-solid fa-ban me-1"></i>
+                            Anular liquidación
+                        </button>
+                    </form>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+    </div>
+
+    <div class="card mb-4">
+
+        <div class="card-header">
+            <strong>
+                {% if settlement.status == "cancelled" %}
+                    Tickets de la liquidación
+                {% else %}
+                    Tickets incluidos
+                {% endif %}
+            </strong>
+        </div>
+
+        {% if items %}
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Fecha</th>
+                            <th>Pasajero</th>
+                            <th>Bus</th>
+                            <th>Asiento</th>
+                            <th>Ruta</th>
+                            <th class="text-end">Monto</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for item in items %}
+                            <tr>
+                                <td><strong>{{ item.ticket.number }}</strong></td>
+                                <td>{{ item.ticket.created_at|date:"d/m/Y H:i" }}</td>
+
+                                <td>
+                                    {{ item.ticket.buyer_name }}
+                                    {% if item.ticket.national_id %}
+                                        <div class="small text-muted">
+                                            {{ item.ticket.national_id }}
+                                        </div>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if item.ticket.revenue_bus %}
+                                        <strong>{{ item.ticket.revenue_bus.plate }}</strong>
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if item.ticket.seat %}
+                                        {{ item.ticket.seat.number }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if item.ticket.trip and item.ticket.trip.route %}
+                                        {{ item.ticket.trip.route.origin }}
+                                        →
+                                        {{ item.ticket.trip.route.destination }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+
+                                <td class="text-end fw-bold">
+                                    ${{ item.amount|floatformat:0|intcomma }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        {% elif settlement.status == "cancelled" and settlement.cancelled_ticket_snapshot %}
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Bus</th>
+                            <th class="text-end">Monto</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for ticket in settlement.cancelled_ticket_snapshot %}
+                            <tr>
+                                <td><strong>{{ ticket.number }}</strong></td>
+
+                                <td>
+                                    {% if ticket.bus_plate %}
+                                        {{ ticket.bus_plate }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+
+                                <td class="text-end fw-bold">
+                                    ${{ ticket.amount|floatformat:0|intcomma }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="p-3 small text-muted border-top">
+                Estos tickets fueron liberados al anular la liquidación y se muestran
+                desde el registro histórico de auditoría.
+            </div>
+
+        {% else %}
+
+            <div class="p-5 text-center text-muted">
+                Esta liquidación no contiene tickets.
+            </div>
+
+        {% endif %}
+
+    </div>
+
+    {% if settlement.notes %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <strong>Observaciones</strong>
+            </div>
+            <div class="card-body">
+                {{ settlement.notes }}
+            </div>
+        </div>
+    {% endif %}
+
+    {% if settlement.status == "cancelled" %}
+
+        <div class="card border-danger">
+
+            <div class="card-header text-danger">
+                <strong>
+                    <i class="fa-solid fa-clock-rotate-left me-1"></i>
+                    Auditoría de anulación
+                </strong>
+            </div>
+
+            <div class="card-body">
+                <div class="row g-3">
+
+                    <div class="col-12 col-md-4">
+                        <div class="small text-muted">Fecha de anulación</div>
+                        <div class="fw-semibold">
+                            {% if settlement.cancelled_at %}
+                                {{ settlement.cancelled_at|date:"d/m/Y H:i" }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <div class="small text-muted">Anulada por</div>
+                        <div class="fw-semibold">
+                            {% if settlement.cancelled_by %}
+                                {{ settlement.cancelled_by.username }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <div class="small text-muted">Tickets liberados</div>
+                        <div class="fw-semibold">
+                            {{ settlement.cancelled_ticket_snapshot|length }}
+                        </div>
+                    </div>
+
+                </div>
+
+                {% if settlement.cancellation_reason %}
+                    <hr>
+                    <div class="small text-muted mb-1">Motivo</div>
+                    <div>{{ settlement.cancellation_reason }}</div>
+                {% endif %}
+            </div>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+<!-- =========================================================
+     HISTORIAL DE ESTADOS
+     ========================================================= -->
+
+     <div class="card mt-4">
+
+        <div class="card-header">
+            <strong>
+                <i class="fa-solid fa-clock-rotate-left me-1"></i>
+                Historial de cambios
+            </strong>
+        </div>
+    
+        <div class="card-body p-0">
+    
+            {% if settlement.history.all %}
+    
+                <div class="table-responsive">
+    
+                    <table class="table table-hover align-middle mb-0">
+    
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Usuario</th>
+                                <th>Estado anterior</th>
+                                <th>Nuevo estado</th>
+                                <th>Observación</th>
+                            </tr>
+                        </thead>
+    
+                        <tbody>
+    
+                            {% for entry in settlement.history.all %}
+    
+                                <tr>
+    
+                                    <td>
+                                        {{ entry.created_at|date:"d/m/Y H:i" }}
+                                    </td>
+    
+                                    <td>
+                                        {{ entry.changed_by.username }}
+                                    </td>
+    
+                                    <td>
+                                        {{ entry.get_previous_status_display }}
+                                    </td>
+    
+                                    <td>
+                                        <strong>
+                                            {{ entry.get_new_status_display }}
+                                        </strong>
+                                    </td>
+    
+                                    <td>
+                                        {% if entry.note %}
+                                            {{ entry.note }}
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+    
+                                </tr>
+    
+                            {% endfor %}
+    
+                        </tbody>
+    
+                    </table>
+    
+                </div>
+    
+            {% else %}
+    
+                <div class="p-4 text-center text-muted">
+                    Esta liquidación todavía no registra cambios de estado.
+                </div>
+    
+            {% endif %}
+    
+        </div>
+    
+    </div>
+
+{% endblock %}

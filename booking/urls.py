@@ -67,6 +67,50 @@ urlpatterns = [
     views.owner_bus_detail,
     name='owner_bus_detail',
     ),
+    
+    path(
+    'owner/settlements/',
+    views.owner_settlements,
+    name='owner_settlements',
+    ),
+
+    path(
+    'owner/settlements/<int:settlement_id>/',
+    views.owner_settlement_detail,
+    name='owner_settlement_detail',
+    ),
+    
+    # ===== ADMINISTRACIÓN DE LIQUIDACIONES DE PROPIETARIOS =====
+
+    path(
+        'liquidaciones/',
+        views.owner_settlement_admin_list,
+        name='owner_settlement_admin_list',
+    ),
+    
+    path(
+        'liquidaciones/<int:settlement_id>/',
+        views.owner_settlement_admin_detail,
+        name='owner_settlement_admin_detail',
+    ),
+    
+    path(
+    'liquidaciones/generar/',
+    views.owner_settlement_generate,
+    name='owner_settlement_generate',
+    ),
+
+    path(
+        'liquidaciones/<int:settlement_id>/estado/',
+        views.owner_settlement_change_status,
+        name='owner_settlement_change_status',
+    ),
+    
+    path(
+        'liquidaciones/<int:settlement_id>/anular/',
+        views.owner_settlement_cancel,
+        name='owner_settlement_cancel',
+    ),
 
     # ===== CONVENIOS =====
     path('convenio/dashboard/', views.contract_dashboard, name='contract_dashboard'),
