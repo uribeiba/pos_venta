@@ -117,12 +117,136 @@ def buses_for_user(user, queryset):
         return queryset
 
     if scope["type"] == "owner":
+        if not scope["company"] or not scope["fleet_owner"]:
+            return queryset.none()
+
         return queryset.filter(
             company=scope["company"],
             owner=scope["fleet_owner"],
         )
 
     if scope["type"] in {"company", "terminal"}:
+        if not scope["company"]:
+            return queryset.none()
+
+        return queryset.filter(
+            company=scope["company"],
+        )
+
+    return queryset.none()
+
+
+# ============================================================
+# ROUTE
+# ============================================================
+
+def routes_for_user(user, queryset):
+    """
+    Aplica el alcance multiempresa sobre Route.
+
+    REGLAS:
+    - Superusuario:
+      puede ver todas las rutas.
+
+    - Administrador / supervisor / coordinador / ejecutivo /
+      secretaria:
+      puede ver las rutas de su empresa.
+
+    - Propietario / socio:
+      puede ver las rutas de su empresa.
+      La restricción por propietario se aplica sobre buses,
+      viajes, ventas y tickets, no sobre Route.
+
+    - Vendedor / cajero / convenio:
+      puede ver las rutas de su empresa.
+    """
+
+    scope = get_user_scope(user)
+
+    if scope["type"] == "superuser":
+        return queryset
+
+    if scope["type"] in {"company", "owner", "terminal"}:
+        if not scope["company"]:
+            return queryset.none()
+
+        return queryset.filter(
+            company=scope["company"],
+        )
+
+    return queryset.none()
+
+
+# ============================================================
+# DRIVER
+# ============================================================
+
+def drivers_for_user(user, queryset):
+    """
+    Aplica el alcance multiempresa sobre Driver.
+
+    REGLAS:
+    - Superusuario:
+      puede ver todos los choferes.
+
+    - Empresa:
+      puede ver únicamente los choferes de su empresa.
+
+    - Propietario / socio:
+      puede ver los choferes de su empresa.
+      No se filtra por FleetOwner, porque el chofer pertenece
+      a la empresa y puede operar distintos buses autorizados.
+
+    - Terminal:
+      puede ver los choferes de su empresa.
+      Si más adelante se asignan choferes por terminal,
+      esta función podrá endurecer ese alcance.
+    """
+
+    scope = get_user_scope(user)
+
+    if scope["type"] == "superuser":
+        return queryset
+
+    if scope["type"] in {"company", "owner", "terminal"}:
+        if not scope["company"]:
+            return queryset.none()
+
+        return queryset.filter(
+            company=scope["company"],
+        )
+
+    return queryset.none()
+
+
+# ============================================================
+# ASSISTANT
+# ============================================================
+
+def assistants_for_user(user, queryset):
+    """
+    Aplica el alcance multiempresa sobre Assistant.
+
+    REGLAS:
+    - Superusuario:
+      puede ver todos los auxiliares.
+
+    - Empresa:
+      puede ver únicamente los auxiliares de su empresa.
+
+    - Propietario / socio:
+      puede ver los auxiliares de su empresa.
+
+    - Terminal:
+      puede ver los auxiliares de su empresa.
+    """
+
+    scope = get_user_scope(user)
+
+    if scope["type"] == "superuser":
+        return queryset
+
+    if scope["type"] in {"company", "owner", "terminal"}:
         if not scope["company"]:
             return queryset.none()
 
@@ -144,6 +268,9 @@ def trips_for_user(user, queryset):
         return queryset
 
     if scope["type"] == "owner":
+        if not scope["company"] or not scope["fleet_owner"]:
+            return queryset.none()
+
         return queryset.filter(
             bus__company=scope["company"],
             bus__owner=scope["fleet_owner"],
@@ -180,6 +307,7 @@ def tickets_for_user(user, queryset):
     de un ticket, porque el propietario operacional del bus puede cambiar
     después de realizada la venta.
     """
+
     scope = get_user_scope(user)
 
     if scope["type"] == "superuser":
@@ -222,6 +350,9 @@ def sales_for_user(user, queryset):
         return queryset
 
     if scope["type"] == "owner":
+        if not scope["company"] or not scope["fleet_owner"]:
+            return queryset.none()
+
         return queryset.filter(
             trip__bus__company=scope["company"],
             trip__bus__owner=scope["fleet_owner"],
@@ -249,6 +380,9 @@ def booking_orders_for_user(user, queryset):
         return queryset
 
     if scope["type"] == "owner":
+        if not scope["company"] or not scope["fleet_owner"]:
+            return queryset.none()
+
         return queryset.filter(
             trip__bus__company=scope["company"],
             trip__bus__owner=scope["fleet_owner"],
@@ -276,12 +410,74 @@ def assert_bus_access(user, bus):
 
     allowed = buses_for_user(
         user,
-        bus.__class__.objects.filter(pk=bus.pk),
+        bus.__class__.objects.filter(
+            pk=bus.pk
+        ),
     ).exists()
 
     if not allowed:
         raise PermissionDenied(
             "No tiene autorización para acceder a este bus."
+        )
+
+    return True
+
+
+def assert_route_access(user, route):
+    """
+    Impide acceder a una ruta de otra empresa manipulando la URL.
+    """
+
+    allowed = routes_for_user(
+        user,
+        route.__class__.objects.filter(
+            pk=route.pk
+        ),
+    ).exists()
+
+    if not allowed:
+        raise PermissionDenied(
+            "No tiene autorización para acceder a esta ruta."
+        )
+
+    return True
+
+
+def assert_driver_access(user, driver):
+    """
+    Impide acceder a un chofer de otra empresa manipulando la URL.
+    """
+
+    allowed = drivers_for_user(
+        user,
+        driver.__class__.objects.filter(
+            pk=driver.pk
+        ),
+    ).exists()
+
+    if not allowed:
+        raise PermissionDenied(
+            "No tiene autorización para acceder a este chofer."
+        )
+
+    return True
+
+
+def assert_assistant_access(user, assistant):
+    """
+    Impide acceder a un auxiliar de otra empresa manipulando la URL.
+    """
+
+    allowed = assistants_for_user(
+        user,
+        assistant.__class__.objects.filter(
+            pk=assistant.pk
+        ),
+    ).exists()
+
+    if not allowed:
+        raise PermissionDenied(
+            "No tiene autorización para acceder a este auxiliar."
         )
 
     return True
@@ -294,7 +490,9 @@ def assert_trip_access(user, trip):
 
     allowed = trips_for_user(
         user,
-        trip.__class__.objects.filter(pk=trip.pk),
+        trip.__class__.objects.filter(
+            pk=trip.pk
+        ),
     ).exists()
 
     if not allowed:

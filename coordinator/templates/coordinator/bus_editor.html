@@ -198,6 +198,8 @@
     height: 100%;
     object-fit: contain;
     display: block;
+    transform-origin: center;
+    transition: transform 0.12s ease;
 }
 
 .seat-cell i.special-icon {
@@ -381,6 +383,39 @@
                     </div>
                 </div>
 
+                <!-- =========================================================
+                     B3.1 — PLANTILLA VISUAL DEL BUS
+                     ========================================================= -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">
+                            <i class="fa-solid fa-bus me-1 text-primary"></i>
+                            Plantilla de bus
+                        </label>
+
+                        <select
+                            name="layout_template"
+                            id="id_layout_template"
+                            class="form-select"
+                        >
+                            <option value="">— Diseño actual / Sin plantilla visual —</option>
+
+                            {% for template in layout_templates %}
+                                <option
+                                    value="{{ template.id }}"
+                                    {% if selected_layout_template_id|stringformat:"s" == template.id|stringformat:"s" %}selected{% endif %}
+                                >
+                                    {{ template.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+
+                        <div class="form-text">
+                            Define la estructura visual base del bus. La distribución de asientos seguirá siendo editable.
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-4">
                     <div class="col-md-2">
                         <label class="form-label fw-semibold">Pisos</label>
@@ -545,6 +580,186 @@
         if (!val || val === "" || val === "None") return [];
         try { return JSON.parse(val); } catch(e) { return []; }
     }
+
+
+    // =========================================================
+    // B3.2 — PLANTILLAS VISUALES / ESTRUCTURALES
+    // =========================================================
+    const layoutTemplates = safeParse('{{ layout_templates_json|escapejs }}');
+    const layoutTemplateSelect = document.getElementById('id_layout_template');
+    const staticBaseUrl = "{% static '' %}";
+
+    function getSelectedTemplate() {
+        if (!layoutTemplateSelect || !layoutTemplateSelect.value) return null;
+        const selectedId = String(layoutTemplateSelect.value);
+        return layoutTemplates.find(template => String(template.id) === selectedId) || null;
+    }
+
+    function getTemplateDeckConfig(template, deck) {
+        if (!template || !template.editor_config) return {};
+        const key = deck === 1 ? 'lower' : 'upper';
+        return template.editor_config[key] || {};
+    }
+
+    function buildStaticUrl(path) {
+        if (!path) return '';
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
+            return path;
+        }
+        return staticBaseUrl + path;
+    }
+
+    function updateDeckTabsVisibility() {
+        const floor2Tab = document.querySelector('.deck-tab[data-deck="2"]');
+        if (!floor2Tab) return;
+
+        if (floors === 2) {
+            floor2Tab.style.display = '';
+        } else {
+            floor2Tab.style.display = 'none';
+            if (currentDeck === 2) {
+                currentDeck = 1;
+                document.querySelectorAll('.deck-tab').forEach(tab => tab.classList.remove('active'));
+                const floor1Tab = document.querySelector('.deck-tab[data-deck="1"]');
+                if (floor1Tab) floor1Tab.classList.add('active');
+            }
+        }
+    }
+
+    // =========================================================
+    // B3.7 — CALIBRACIÓN PROFESIONAL POR PLANTILLA
+    // =========================================================
+    function isGenericFrontDoorTemplate(template) {
+        if (!template) return false;
+
+        const normalizedName = String(template.name || '').toLowerCase();
+        const backgroundLower = String(template.background_lower || '').toLowerCase();
+
+        return (
+            backgroundLower.endsWith('bus-generico.png') ||
+            normalizedName.includes('puerta delantera') ||
+            normalizedName.includes('bus genérico') ||
+            normalizedName.includes('bus generico')
+        );
+    }
+
+    function getEffectiveDeckConfig(template, deck) {
+        const savedConfig = getTemplateDeckConfig(template, deck);
+
+        const genericDefaults = (
+            deck === 1 && isGenericFrontDoorTemplate(template)
+        ) ? {
+            // Ajuste fino B3.5:
+            // - baja el bloque de asientos para despegarlo de la cabina
+            // - mete mejor las columnas dentro de la carrocería
+            // - reduce levemente el tamaño visual del asiento
+            // B3.6 — Ajuste fino para bus-generico.png
+            // Más espacio detrás del chofer, parejas más juntas
+            // y bloque completo desplazado hacia la parte trasera.
+            padding_top: 164,
+            padding_bottom: 42,
+            padding_left: 44,
+            padding_right: 44,
+
+            // Tamaño visual de cada asiento.
+            seat_scale: 0.94,
+            seat_size: 37,
+
+            // Separación real entre asientos contiguos.
+            column_gap: 2,
+
+            // Ancho de la columna central que representa el pasillo.
+            aisle_width: 16,
+
+            // Distancia vertical entre filas.
+            row_gap: 5,
+
+            // Desplazamiento fino de TODO el bloque de asientos.
+            grid_offset_x: 0,
+            grid_offset_y: 18
+        } : {};
+
+        // IMPORTANTE B3.7:
+        // Para la carrocería genérica, los valores de calibración de este
+        // editor deben prevalecer sobre configuraciones antiguas guardadas
+        // en editor_config (por ejemplo padding_top=200).
+        if (deck === 1 && isGenericFrontDoorTemplate(template)) {
+            return {
+                ...(savedConfig || {}),
+                ...genericDefaults
+            };
+        }
+
+        return savedConfig || {};
+    }
+
+    function initializeGenericTwoPlusAisleTwo(template) {
+        if (!isGenericFrontDoorTemplate(template)) return;
+        if (cols !== 5) return;
+
+        const expectedSize = rowsLower * cols;
+
+        const hasMeaningfulLayout = layoutLower.some(
+            cell => cell && cell !== 'L'
+        );
+
+        const hasAssignedNumbers = numbersLower.some(
+            number => String(number || '').trim() !== ''
+        );
+
+        if (hasMeaningfulLayout || hasAssignedNumbers) return;
+
+        const newLayout = [];
+        const newNumbers = [];
+        const newServices = [];
+        let seatCounter = 1;
+
+        for (let row = 0; row < rowsLower; row++) {
+            for (let col = 0; col < cols; col++) {
+                const isAisle = col === 2;
+
+                if (isAisle) {
+                    newLayout.push('P');
+                    newNumbers.push('');
+                    newServices.push('');
+                } else {
+                    newLayout.push('L');
+                    newNumbers.push(String(seatCounter));
+                    newServices.push('semi_cama');
+                    seatCounter++;
+                }
+            }
+        }
+
+        layoutLower = newLayout.slice(0, expectedSize);
+        numbersLower = newNumbers.slice(0, expectedSize);
+        servicesLower = newServices.slice(0, expectedSize);
+    }
+
+    function applySelectedTemplate() {
+        const template = getSelectedTemplate();
+
+        if (!template) {
+            updateDeckTabsVisibility();
+            render();
+            return;
+        }
+
+        floorsInput.value = String(template.floors || 1);
+        rowsLowerInput.value = String(template.rows_lower || 1);
+        rowsUpperInput.value = String(template.rows_upper || 0);
+        colsInput.value = String(template.cols || 4);
+
+        floors = parseInt(floorsInput.value) || 1;
+        rowsLower = parseInt(rowsLowerInput.value) || 1;
+        rowsUpper = parseInt(rowsUpperInput.value) || 0;
+        cols = parseInt(colsInput.value) || 4;
+
+        ensureSizes();
+        initializeGenericTwoPlusAisleTwo(template);
+        updateDeckTabsVisibility();
+        render();
+    }
     
     const busForm = document.getElementById('busForm');
     const busFrame = document.getElementById('busFrame');
@@ -604,27 +819,114 @@
         const currentServices = currentDeck === 1 ? servicesLower : servicesUpper;
         const currentRows = currentDeck === 1 ? rowsLower : rowsUpper;
     
-        // Cambiar el fondo según el piso
+        // =========================================================
+        // B3.2 — FONDO DINÁMICO SEGÚN PLANTILLA Y PISO
+        // =========================================================
+        const selectedTemplate = getSelectedTemplate();
+
         if (currentDeck === 1) {
             busFrame.classList.remove('floor-2');
             busFrame.classList.add('floor-1');
+
+            if (selectedTemplate && selectedTemplate.background_lower) {
+                busFrame.style.backgroundImage = `url("${buildStaticUrl(selectedTemplate.background_lower)}")`;
+            } else {
+                busFrame.style.backgroundImage = '';
+            }
         } else {
             busFrame.classList.remove('floor-1');
             busFrame.classList.add('floor-2');
+
+            if (selectedTemplate && selectedTemplate.background_upper) {
+                busFrame.style.backgroundImage = `url("${buildStaticUrl(selectedTemplate.background_upper)}")`;
+            } else {
+                busFrame.style.backgroundImage = '';
+            }
         }
+
+        const deckConfig = getEffectiveDeckConfig(selectedTemplate, currentDeck);
+        // El tamaño exterior del bus sigue fijo en CSS: 260 x 840.
+        busFrame.style.height = '';
+
+        const configuredPaddingTop = parseInt(deckConfig.padding_top);
+        const configuredPaddingBottom = parseInt(deckConfig.padding_bottom);
+        const configuredPaddingLeft = parseInt(deckConfig.padding_left);
+        const configuredPaddingRight = parseInt(deckConfig.padding_right);
+
+        if (selectedTemplate && Object.keys(deckConfig).length) {
+            busFrame.style.paddingTop = (configuredPaddingTop >= 0 ? configuredPaddingTop : 0) + 'px';
+            busFrame.style.paddingBottom = (configuredPaddingBottom >= 0 ? configuredPaddingBottom : 0) + 'px';
+            busFrame.style.paddingLeft = (configuredPaddingLeft >= 0 ? configuredPaddingLeft : 0) + 'px';
+            busFrame.style.paddingRight = (configuredPaddingRight >= 0 ? configuredPaddingRight : 0) + 'px';
+        } else {
+            busFrame.style.paddingTop = '';
+            busFrame.style.paddingBottom = '';
+            busFrame.style.paddingLeft = '';
+            busFrame.style.paddingRight = '';
+        }
+
+        const configuredSeatScale = parseFloat(deckConfig.seat_scale);
+        const configuredSeatSize = parseInt(deckConfig.seat_size);
+        const configuredColumnGap = parseInt(deckConfig.column_gap);
+        const configuredAisleWidth = parseInt(deckConfig.aisle_width);
+        const configuredGridOffsetX = parseInt(deckConfig.grid_offset_x);
+        const configuredGridOffsetY = parseInt(deckConfig.grid_offset_y);
+
+        const seatScale = Number.isFinite(configuredSeatScale)
+            ? configuredSeatScale
+            : 1;
+
+        const seatSize = Number.isFinite(configuredSeatSize)
+            ? configuredSeatSize
+            : 44;
+
+        const templateColumnGap = Number.isFinite(configuredColumnGap)
+            ? configuredColumnGap
+            : null;
+
+        const aisleWidth = Number.isFinite(configuredAisleWidth)
+            ? configuredAisleWidth
+            : null;
+
+        const gridOffsetX = Number.isFinite(configuredGridOffsetX)
+            ? configuredGridOffsetX
+            : 0;
+
+        const gridOffsetY = Number.isFinite(configuredGridOffsetY)
+            ? configuredGridOffsetY
+            : 0;
+
+        // ÉSTE es el desplazamiento visual directo del bloque completo.
+        // A diferencia del padding del frame, mueve claramente todos los
+        // asientos juntos sin modificar las demás plantillas.
+        gridContainer.style.transform =
+            `translate(${gridOffsetX}px, ${gridOffsetY}px)`;
     
         // ==========================================================================
         // DISTRIBUCIÓN HORIZONTAL EXACTA POR COLUMNAS
         // ==========================================================================
         if (cols === 4) {
             gridContainer.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
-            gridContainer.style.columnGap = "14px"; 
+            gridContainer.style.columnGap = (templateColumnGap !== null ? templateColumnGap : 14) + "px"; 
         } else if (cols === 3) {
             gridContainer.style.gridTemplateColumns = "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)";
-            gridContainer.style.columnGap = "20px";
+            gridContainer.style.columnGap = (templateColumnGap !== null ? templateColumnGap : 20) + "px";
+        } else if (
+            cols === 5 &&
+            isGenericFrontDoorTemplate(selectedTemplate) &&
+            aisleWidth !== null
+        ) {
+            // 2 asientos + pasillo + 2 asientos.
+            // Ya no usamos 5 columnas iguales: la tercera columna es
+            // deliberadamente más angosta y representa el pasillo.
+            gridContainer.style.gridTemplateColumns =
+                `${seatSize}px ${seatSize}px ${aisleWidth}px ${seatSize}px ${seatSize}px`;
+            gridContainer.style.columnGap =
+                (templateColumnGap !== null ? templateColumnGap : 2) + "px";
+            gridContainer.style.justifyContent = "center";
         } else {
             gridContainer.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-            gridContainer.style.columnGap = "4px";
+            gridContainer.style.columnGap = (templateColumnGap !== null ? templateColumnGap : 4) + "px";
         }
 
         // ==========================================================================
@@ -639,24 +941,48 @@
             }
         }
     
-        const frameHeight = 840; 
-        let paddingTop = currentDeck === 1 ? 340 : 155; 
-        let paddingBottom = 40;  
-        
+        const selectedTemplateForSizing = getSelectedTemplate();
+        const sizingConfig = getEffectiveDeckConfig(selectedTemplateForSizing, currentDeck);
+
+        const frameHeight = 840;
+        const parsedPaddingTop = parseInt(sizingConfig.padding_top);
+        const parsedPaddingBottom = parseInt(sizingConfig.padding_bottom);
+
+        const paddingTop = Number.isFinite(parsedPaddingTop)
+            ? parsedPaddingTop
+            : (currentDeck === 1 ? 340 : 155);
+
+        const paddingBottom = Number.isFinite(parsedPaddingBottom)
+            ? parsedPaddingBottom
+            : 40;
         const availableHeight = frameHeight - paddingTop - paddingBottom;
-        const seatSize = 44;
+        const seatSizeForHeight = seatSize;
         const rows = currentRows;
-        
-        let targetGap = 11; 
-        if (seatCount > 0 && (camaCount / seatCount) >= 0.5) {
-            targetGap = 16; 
+
+        const configuredRowGap = parseInt(sizingConfig.row_gap);
+
+        let targetGap = Number.isFinite(configuredRowGap)
+            ? configuredRowGap
+            : 11;
+
+        if (
+            !Number.isFinite(configuredRowGap) &&
+            seatCount > 0 &&
+            (camaCount / seatCount) >= 0.5
+        ) {
+            targetGap = 16;
         }
-    
-        let gridHeight = (rows * seatSize) + ((rows - 1) * targetGap);
-        
+
+        let gridHeight =
+            (rows * seatSizeForHeight) +
+            ((rows - 1) * targetGap);
+
         if (gridHeight > availableHeight && rows > 1) {
-            let exactGap = (availableHeight - (rows * seatSize)) / (rows - 1);
-            if (exactGap < 1) exactGap = 1; 
+            let exactGap =
+                (availableHeight - (rows * seatSizeForHeight)) /
+                (rows - 1);
+
+            if (exactGap < 1) exactGap = 1;
             targetGap = exactGap;
         }
     
@@ -675,23 +1001,21 @@
             cell.className = `seat-cell type-${type}`;
             cell.dataset.index = i;
             cell.dataset.type = type;
+            cell.style.maxWidth = seatSize + 'px';
     
             if (type === 'L') {
     const img = document.createElement('img');
     img.src = getSeatImage(service);
     img.alt = "asiento";
-    
-    // ========= AQUÍ AGREGAMOS LA MAGIA =========
+    // B3.4 — Escala visual por plantilla sin tocar otros buses.
     if (service === 'cama') {
-    // Estira el asiento en ancho (8%) y largo (15%)
-    img.style.transform = 'scale(1.08, 1.15)'; 
-    img.style.transformOrigin = 'center';
-} else {
-    img.style.transform = 'none';
-}
-    // ==========================================
-
-    cell.appendChild(img);
+        img.style.transform =
+            `scale(${(seatScale * 1.08).toFixed(3)}, ${(seatScale * 1.15).toFixed(3)})`;
+    } else {
+        img.style.transform =
+            `scale(${seatScale.toFixed(3)})`;
+    }
+cell.appendChild(img);
     
     const numberSpan = document.createElement('span');
     numberSpan.className = 'seat-number';
@@ -822,9 +1146,7 @@
         const renumberBtn = document.getElementById('renumberBtn');
         if (renumberBtn) renumberBtn.addEventListener('click', renumberSeats);
     
-        setTimeout(() => {
-            document.querySelector('.deck-tab[data-deck="2"]').click();
-        }, 100);
+        updateDeckTabsVisibility();
     }
     
     function initDimensionListeners() {
@@ -836,10 +1158,17 @@
             ensureSizes();
             render();
         }
-        floorsInput.addEventListener('change', updateDimensions);
+        floorsInput.addEventListener('change', () => {
+            updateDimensions();
+            updateDeckTabsVisibility();
+        });
         rowsLowerInput.addEventListener('input', updateDimensions);
         rowsUpperInput.addEventListener('input', updateDimensions);
         colsInput.addEventListener('change', updateDimensions);
+
+        if (layoutTemplateSelect) {
+            layoutTemplateSelect.addEventListener('change', applySelectedTemplate);
+        }
     }
     
     function initSubmit() {
@@ -886,6 +1215,7 @@
         initToolbar();
         initDimensionListeners();
         initSubmit();
+        updateDeckTabsVisibility();
         render();
     });
 </script>

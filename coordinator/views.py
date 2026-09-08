@@ -10,7 +10,7 @@ from venv import logger
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction, IntegrityError
 from django.db.models import ProtectedError, Count, Q, Exists, OuterRef, Sum, Avg, Max
@@ -35,6 +35,22 @@ from booking.forms import (
 )
 
 
+from booking.access import (
+    get_user_scope,
+    buses_for_user,
+    routes_for_user,
+    drivers_for_user,
+    assistants_for_user,
+    trips_for_user,
+    tickets_for_user,
+    sales_for_user,
+    booking_orders_for_user,
+    assert_bus_access,
+    assert_route_access,
+    assert_driver_access,
+    assert_assistant_access,
+    assert_trip_access,
+)
 # ============================================================================
 # ALIAS PARA SIMPLIFICAR DECORADORES
 # ============================================================================
@@ -1325,50 +1341,122 @@ def bus_list(request):
     """
     Centro operacional de buses.
 
-    Muestra capacidad física real, actividad, historial y accesos directos
-    a datos, plano, documentos, mantenimiento y combustible.
+    MULTIEMPRESA:
+    - Solo muestra buses accesibles para el usuario.
+    - Superuser puede ver todos.
+    - Coordinador/empresa solo ve buses de su empresa.
+    - Owner solo ve sus buses.
+
+    Mantiene capacidad física, actividad, historial,
+    mantenimiento y accesos operacionales.
     """
+
     now = timezone.now()
     today = timezone.localdate()
 
-    query = request.GET.get('q', '').strip()
-    status_filter = request.GET.get('status', 'all')
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
 
-    buses_qs = (
-        Bus.objects
-        .select_related('company')
-        .annotate(
-            real_seat_count=Count('seats', distinct=True),
-            trip_count=Count('trips', distinct=True),
-            future_trip_count=Count(
-                'trips',
-                filter=Q(trips__departure__gt=now),
-                distinct=True,
-            ),
-            ticket_count=Count('trips__tickets', distinct=True),
-            document_count=Count('documents', distinct=True),
-            maintenance_count=Count('maintenances', distinct=True),
-            fuel_record_count=Count('fuel_records', distinct=True),
-        )
-        .order_by('-is_active', 'company__name', 'plate')
+    status_filter = request.GET.get(
+        "status",
+        "all",
     )
 
+    # ============================================================
+    # BUSES AUTORIZADOS
+    # ============================================================
+    buses_qs = buses_for_user(
+        request.user,
+        Bus.objects
+        .select_related(
+            "company",
+            "owner",
+        )
+        .annotate(
+            real_seat_count=Count(
+                "seats",
+                distinct=True,
+            ),
+            trip_count=Count(
+                "trips",
+                distinct=True,
+            ),
+            future_trip_count=Count(
+                "trips",
+                filter=Q(
+                    trips__departure__gt=now
+                ),
+                distinct=True,
+            ),
+            ticket_count=Count(
+                "trips__tickets",
+                distinct=True,
+            ),
+            document_count=Count(
+                "documents",
+                distinct=True,
+            ),
+            maintenance_count=Count(
+                "maintenances",
+                distinct=True,
+            ),
+            fuel_record_count=Count(
+                "fuel_records",
+                distinct=True,
+            ),
+        ),
+    ).order_by(
+        "-is_active",
+        "company__name",
+        "plate",
+    )
+
+    # ============================================================
+    # BÚSQUEDA
+    # ============================================================
     if query:
         buses_qs = buses_qs.filter(
-            Q(plate__icontains=query)
-            | Q(model__icontains=query)
-            | Q(brand__icontains=query)
-            | Q(company__name__icontains=query)
+            Q(
+                plate__icontains=query
+            )
+            |
+            Q(
+                model__icontains=query
+            )
+            |
+            Q(
+                brand__icontains=query
+            )
+            |
+            Q(
+                company__name__icontains=query
+            )
         )
 
-    if status_filter == 'active':
-        buses_qs = buses_qs.filter(is_active=True)
-    elif status_filter == 'inactive':
-        buses_qs = buses_qs.filter(is_active=False)
+    # ============================================================
+    # FILTRO DE ESTADO
+    # ============================================================
+    if status_filter == "active":
+        buses_qs = buses_qs.filter(
+            is_active=True
+        )
 
-    buses = list(buses_qs)
+    elif status_filter == "inactive":
+        buses_qs = buses_qs.filter(
+            is_active=False
+        )
 
+    buses = list(
+        buses_qs
+    )
+
+    # ============================================================
+    # DECORAR CADA BUS
+    # ============================================================
     for bus in buses:
+
         bus.has_history = bool(
             bus.trip_count
             or bus.ticket_count
@@ -1377,76 +1465,171 @@ def bus_list(request):
             or bus.fuel_record_count
         )
 
-        bus.maintenance_status = 'ok'
-        bus.maintenance_label = 'Sin alerta'
+        bus.maintenance_status = "ok"
+        bus.maintenance_label = "Sin alerta"
 
-        next_km = bus.next_maintenance_mileage or 0
-        current_km = bus.current_mileage or 0
+        next_km = (
+            bus.next_maintenance_mileage
+            or 0
+        )
+
+        current_km = (
+            bus.current_mileage
+            or 0
+        )
 
         if next_km:
-            remaining = next_km - current_km
+
+            remaining = (
+                next_km
+                - current_km
+            )
+
             if remaining <= 0:
-                bus.maintenance_status = 'danger'
-                bus.maintenance_label = 'Mantención vencida'
+
+                bus.maintenance_status = (
+                    "danger"
+                )
+
+                bus.maintenance_label = (
+                    "Mantención vencida"
+                )
+
             elif remaining <= 1000:
-                bus.maintenance_status = 'warning'
-                bus.maintenance_label = f'{remaining:,} km restantes'
+
+                bus.maintenance_status = (
+                    "warning"
+                )
+
+                bus.maintenance_label = (
+                    f"{remaining:,} km restantes"
+                )
+
             else:
-                bus.maintenance_status = 'success'
-                bus.maintenance_label = f'{remaining:,} km restantes'
 
-        operational = _bus_operational_status(
-            bus,
-            today=today,
-            seat_count=bus.real_seat_count,
+                bus.maintenance_status = (
+                    "success"
+                )
+
+                bus.maintenance_label = (
+                    f"{remaining:,} km restantes"
+                )
+
+        operational = (
+            _bus_operational_status(
+                bus,
+                today=today,
+                seat_count=(
+                    bus.real_seat_count
+                ),
+            )
         )
-        bus.operational_key = operational['key']
-        bus.operational_label = operational['label']
-        bus.operational_color = operational['color']
-        bus.operational_icon = operational['icon']
-        bus.operational_reasons = operational['reasons']
 
-    if status_filter in ('operational', 'attention', 'no_operational'):
+        bus.operational_key = (
+            operational["key"]
+        )
+
+        bus.operational_label = (
+            operational["label"]
+        )
+
+        bus.operational_color = (
+            operational["color"]
+        )
+
+        bus.operational_icon = (
+            operational["icon"]
+        )
+
+        bus.operational_reasons = (
+            operational["reasons"]
+        )
+
+    # ============================================================
+    # FILTRO OPERACIONAL
+    # ============================================================
+    if status_filter in (
+        "operational",
+        "attention",
+        "no_operational",
+    ):
+
         buses = [
-            bus for bus in buses
-            if bus.operational_key == status_filter
+            bus
+            for bus in buses
+            if bus.operational_key
+            == status_filter
         ]
 
-    total_buses = len(buses)
-    active_count = sum(1 for bus in buses if bus.is_active)
-    inactive_count = sum(1 for bus in buses if not bus.is_active)
+    # ============================================================
+    # CONTADORES
+    # ============================================================
+    total_buses = len(
+        buses
+    )
+
+    active_count = sum(
+        1
+        for bus in buses
+        if bus.is_active
+    )
+
+    inactive_count = sum(
+        1
+        for bus in buses
+        if not bus.is_active
+    )
+
     operational_count = sum(
-        1 for bus in buses if bus.operational_key == 'operational'
+        1
+        for bus in buses
+        if bus.operational_key
+        == "operational"
     )
+
     attention_count = sum(
-        1 for bus in buses if bus.operational_key == 'attention'
+        1
+        for bus in buses
+        if bus.operational_key
+        == "attention"
     )
+
     no_operational_count = sum(
-        1 for bus in buses if bus.operational_key == 'no_operational'
+        1
+        for bus in buses
+        if bus.operational_key
+        == "no_operational"
     )
-    total_seats = sum(bus.real_seat_count for bus in buses)
-    future_trips = sum(bus.future_trip_count for bus in buses)
+
+    total_seats = sum(
+        bus.real_seat_count
+        for bus in buses
+    )
+
+    future_trips = sum(
+        bus.future_trip_count
+        for bus in buses
+    )
 
     context = {
-        'buses': buses,
-        'query': query,
-        'status_filter': status_filter,
-        'total_buses': total_buses,
-        'active_count': active_count,
-        'inactive_count': inactive_count,
-        'operational_count': operational_count,
-        'attention_count': attention_count,
-        'no_operational_count': no_operational_count,
-        'total_seats': total_seats,
-        'future_trips': future_trips,
+        "buses": buses,
+        "query": query,
+        "status_filter": status_filter,
+        "total_buses": total_buses,
+        "active_count": active_count,
+        "inactive_count": inactive_count,
+        "operational_count": operational_count,
+        "attention_count": attention_count,
+        "no_operational_count": no_operational_count,
+        "total_seats": total_seats,
+        "future_trips": future_trips,
     }
 
     return render(
         request,
-        'coordinator/bus_list.html',
+        "coordinator/bus_list.html",
         context,
     )
-
 
 @login_required
 @coordinator_required
@@ -1454,7 +1637,16 @@ def bus_editor(request, bus_id=None):
     """
     Editor avanzado de buses con protección de integridad entre
     el plano visual (layout/numeración/servicios) y los Seat reales.
+
+    B3.2:
+    - Permite seleccionar una plantilla BusLayout.
+    - Valida que la plantilla exista y esté activa.
+    - Guarda la plantilla seleccionada en Bus.layout_template.
+    - Conserva compatibilidad con buses antiguos sin plantilla.
+    - Expone al template la configuración completa de las plantillas
+      para aplicar dimensiones y fondos dinámicamente desde JavaScript.
     """
+
     if bus_id:
         bus = get_object_or_404(Bus, pk=bus_id)
     else:
@@ -1469,88 +1661,262 @@ def bus_editor(request, bus_id=None):
 
     if request.method == 'POST':
         try:
+            # =====================================================
+            # DATOS GENERALES
+            # =====================================================
             company_id = request.POST.get('company')
             owner_id = (request.POST.get('owner') or '').strip()
-            plate = request.POST.get('plate', '').upper().strip()
-            model = request.POST.get('model', '').strip()
+
+            layout_template_id = (
+                request.POST.get('layout_template') or ''
+            ).strip()
+
+            plate = request.POST.get(
+                'plate',
+                ''
+            ).upper().strip()
+
+            model = request.POST.get(
+                'model',
+                ''
+            ).strip()
 
             year_val = request.POST.get('year')
-            year = int(year_val) if year_val and year_val.isdigit() else 2024
+            year = (
+                int(year_val)
+                if year_val and year_val.isdigit()
+                else 2024
+            )
 
-            floors = int(request.POST.get('floors', 1))
-            rows_lower = int(request.POST.get('rows_lower', 5))
-            rows_upper = int(request.POST.get('rows_upper', 0))
-            cols = int(request.POST.get('cols', 4))
+            # =====================================================
+            # CONFIGURACIÓN DEL PLANO
+            # =====================================================
+            floors = int(
+                request.POST.get('floors', 1)
+            )
 
-            prefix_lower = request.POST.get('prefix_lower', '')
-            prefix_upper = request.POST.get('prefix_upper', '')
+            rows_lower = int(
+                request.POST.get('rows_lower', 5)
+            )
 
-            technical_review_expiry = request.POST.get('technical_review_expiry') or None
-            insurance_expiry = request.POST.get('insurance_expiry') or None
-            permit_expiry = request.POST.get('permit_expiry') or None
-            last_maintenance = request.POST.get('last_maintenance') or None
+            rows_upper = int(
+                request.POST.get('rows_upper', 0)
+            )
 
+            cols = int(
+                request.POST.get('cols', 4)
+            )
+
+            prefix_lower = request.POST.get(
+                'prefix_lower',
+                ''
+            )
+
+            prefix_upper = request.POST.get(
+                'prefix_upper',
+                ''
+            )
+
+            # =====================================================
+            # DOCUMENTOS / FECHAS
+            # =====================================================
+            technical_review_expiry = (
+                request.POST.get('technical_review_expiry')
+                or None
+            )
+
+            insurance_expiry = (
+                request.POST.get('insurance_expiry')
+                or None
+            )
+
+            permit_expiry = (
+                request.POST.get('permit_expiry')
+                or None
+            )
+
+            last_maintenance = (
+                request.POST.get('last_maintenance')
+                or None
+            )
+
+            # =====================================================
+            # VALIDACIONES GENERALES
+            # =====================================================
             if not company_id:
-                raise ValidationError("Debe seleccionar una empresa.")
-            if not plate:
-                raise ValidationError("La patente es obligatoria.")
-            if floors not in (1, 2):
-                raise ValidationError("El bus sólo puede tener 1 o 2 pisos.")
-            if rows_lower < 1:
-                raise ValidationError("El piso inferior debe tener al menos una fila.")
-            if floors == 2 and rows_upper < 1:
-                raise ValidationError("Un bus de 2 pisos debe tener filas en el piso superior.")
-            if cols < 1 or cols > 6:
-                raise ValidationError("La cantidad de columnas debe estar entre 1 y 6.")
+                raise ValidationError(
+                    "Debe seleccionar una empresa."
+                )
 
-            # FASE 2.18.3-A1.2 — validar propietario contra empresa.
+            if not plate:
+                raise ValidationError(
+                    "La patente es obligatoria."
+                )
+
+            if floors not in (1, 2):
+                raise ValidationError(
+                    "El bus sólo puede tener 1 o 2 pisos."
+                )
+
+            if rows_lower < 1:
+                raise ValidationError(
+                    "El piso inferior debe tener al menos una fila."
+                )
+
+            if floors == 2 and rows_upper < 1:
+                raise ValidationError(
+                    "Un bus de 2 pisos debe tener filas "
+                    "en el piso superior."
+                )
+
+            if cols < 1 or cols > 6:
+                raise ValidationError(
+                    "La cantidad de columnas debe estar "
+                    "entre 1 y 6."
+                )
+
+            # =====================================================
+            # B3.1 — VALIDAR PLANTILLA VISUAL
+            # =====================================================
+            layout_template = None
+
+            if layout_template_id:
+                layout_template = (
+                    BusLayout.objects
+                    .filter(
+                        pk=layout_template_id,
+                        is_active=True,
+                    )
+                    .first()
+                )
+
+                if not layout_template:
+                    raise ValidationError(
+                        "La plantilla de bus seleccionada "
+                        "no existe o está inactiva."
+                    )
+
+            # =====================================================
+            # FASE 2.18.3-A1.2
+            # VALIDAR PROPIETARIO CONTRA EMPRESA
+            # =====================================================
             owner = None
+
             if owner_id:
-                owner = FleetOwner.objects.filter(
-                    pk=owner_id,
-                    is_active=True,
-                ).select_related('company').first()
+                owner = (
+                    FleetOwner.objects
+                    .filter(
+                        pk=owner_id,
+                        is_active=True,
+                    )
+                    .select_related('company')
+                    .first()
+                )
 
                 if not owner:
                     raise ValidationError(
-                        "El propietario / socio seleccionado no existe o está inactivo."
+                        "El propietario / socio seleccionado "
+                        "no existe o está inactivo."
                     )
 
                 if str(owner.company_id) != str(company_id):
                     raise ValidationError(
-                        "El propietario / socio seleccionado pertenece a otra empresa operadora."
+                        "El propietario / socio seleccionado "
+                        "pertenece a otra empresa operadora."
                     )
 
+            # =====================================================
+            # TAMAÑOS DE LOS PLANOS
+            # =====================================================
             lower_size = rows_lower * cols
-            upper_size = rows_upper * cols if floors == 2 else 0
 
-            layout_lower = safe_json_loads(request.POST.get('layout_lower'))
-            layout_upper = safe_json_loads(request.POST.get('layout_upper'))
-            numbers_lower = safe_json_loads(request.POST.get('numbers_lower'))
-            numbers_upper = safe_json_loads(request.POST.get('numbers_upper'))
-            services_lower = safe_json_loads(request.POST.get('services_lower'))
-            services_upper = safe_json_loads(request.POST.get('services_upper'))
+            upper_size = (
+                rows_upper * cols
+                if floors == 2
+                else 0
+            )
 
-            layout_lower = (layout_lower + ['L'] * lower_size)[:lower_size]
-            numbers_lower = (numbers_lower + [''] * lower_size)[:lower_size]
-            services_lower = (services_lower + ['semi_cama'] * lower_size)[:lower_size]
+            # =====================================================
+            # RECUPERAR JSON DEL EDITOR
+            # =====================================================
+            layout_lower = safe_json_loads(
+                request.POST.get('layout_lower')
+            )
 
+            layout_upper = safe_json_loads(
+                request.POST.get('layout_upper')
+            )
+
+            numbers_lower = safe_json_loads(
+                request.POST.get('numbers_lower')
+            )
+
+            numbers_upper = safe_json_loads(
+                request.POST.get('numbers_upper')
+            )
+
+            services_lower = safe_json_loads(
+                request.POST.get('services_lower')
+            )
+
+            services_upper = safe_json_loads(
+                request.POST.get('services_upper')
+            )
+
+            # =====================================================
+            # NORMALIZAR PISO INFERIOR
+            # =====================================================
+            layout_lower = (
+                layout_lower
+                + ['L'] * lower_size
+            )[:lower_size]
+
+            numbers_lower = (
+                numbers_lower
+                + [''] * lower_size
+            )[:lower_size]
+
+            services_lower = (
+                services_lower
+                + ['semi_cama'] * lower_size
+            )[:lower_size]
+
+            # =====================================================
+            # NORMALIZAR PISO SUPERIOR
+            # =====================================================
             if floors == 2:
-                layout_upper = (layout_upper + ['L'] * upper_size)[:upper_size]
-                numbers_upper = (numbers_upper + [''] * upper_size)[:upper_size]
-                services_upper = (services_upper + ['semi_cama'] * upper_size)[:upper_size]
+                layout_upper = (
+                    layout_upper
+                    + ['L'] * upper_size
+                )[:upper_size]
+
+                numbers_upper = (
+                    numbers_upper
+                    + [''] * upper_size
+                )[:upper_size]
+
+                services_upper = (
+                    services_upper
+                    + ['semi_cama'] * upper_size
+                )[:upper_size]
+
             else:
                 layout_upper = []
                 numbers_upper = []
                 services_upper = []
 
+            # =====================================================
+            # NUMERACIÓN AUTOMÁTICA
+            # =====================================================
             next_counter = 1
+
             numbers_lower, next_counter = assign_missing_numbers(
                 numbers_lower,
                 layout_lower,
                 prefix_lower,
                 next_counter,
             )
+
             if floors == 2:
                 numbers_upper, _ = assign_missing_numbers(
                     numbers_upper,
@@ -1559,101 +1925,207 @@ def bus_editor(request, bus_id=None):
                     next_counter,
                 )
 
+            # =====================================================
+            # DETECTAR CAMBIOS DEL PLANO
+            # =====================================================
             seatmap_changed = not bus.pk
 
             if bus.pk:
                 seatmap_changed = any([
+                    # B3.1:
+                    # cambiar la plantilla se considera
+                    # cambio estructural del plano.
+                    bus.layout_template_id
+                    != (
+                        layout_template.id
+                        if layout_template
+                        else None
+                    ),
+
                     bus.floors != floors,
                     bus.rows_lower != rows_lower,
                     bus.rows_upper != rows_upper,
                     bus.cols != cols,
-                    (bus.prefix_lower or '') != prefix_lower,
-                    (bus.prefix_upper or '') != prefix_upper,
-                    list(bus.layout_lower or []) != layout_lower,
-                    list(bus.layout_upper or []) != layout_upper,
-                    list(bus.numbers_lower or []) != numbers_lower,
-                    list(bus.numbers_upper or []) != numbers_upper,
-                    list(bus.services_lower or []) != services_lower,
-                    list(bus.services_upper or []) != services_upper,
+
+                    (bus.prefix_lower or '')
+                    != prefix_lower,
+
+                    (bus.prefix_upper or '')
+                    != prefix_upper,
+
+                    list(bus.layout_lower or [])
+                    != layout_lower,
+
+                    list(bus.layout_upper or [])
+                    != layout_upper,
+
+                    list(bus.numbers_lower or [])
+                    != numbers_lower,
+
+                    list(bus.numbers_upper or [])
+                    != numbers_upper,
+
+                    list(bus.services_lower or [])
+                    != services_lower,
+
+                    list(bus.services_upper or [])
+                    != services_upper,
                 ])
 
+            # =====================================================
+            # PROTECCIÓN DE INTEGRIDAD OPERACIONAL
+            # =====================================================
             if bus.pk and seatmap_changed:
-                future_trips_count = Trip.objects.filter(
-                    bus=bus,
-                    departure__gt=timezone.now(),
-                ).count()
+                future_trips_count = (
+                    Trip.objects
+                    .filter(
+                        bus=bus,
+                        departure__gt=timezone.now(),
+                    )
+                    .count()
+                )
 
-                ticket_count = Ticket.objects.filter(
-                    seat__bus=bus,
-                ).count()
+                ticket_count = (
+                    Ticket.objects
+                    .filter(
+                        seat__bus=bus,
+                    )
+                    .count()
+                )
 
-                booking_seat_count = Seat.objects.filter(
-                    bus=bus,
-                    booking_order_items__isnull=False,
-                ).distinct().count()
+                booking_seat_count = (
+                    Seat.objects
+                    .filter(
+                        bus=bus,
+                        booking_order_items__isnull=False,
+                    )
+                    .distinct()
+                    .count()
+                )
 
                 blockers = []
 
                 if future_trips_count:
-                    blockers.append(f"{future_trips_count} viaje(s) futuro(s)")
+                    blockers.append(
+                        f"{future_trips_count} viaje(s) futuro(s)"
+                    )
+
                 if ticket_count:
-                    blockers.append(f"{ticket_count} ticket(s) asociado(s)")
+                    blockers.append(
+                        f"{ticket_count} ticket(s) asociado(s)"
+                    )
+
                 if booking_seat_count:
                     blockers.append(
-                        f"{booking_seat_count} asiento(s) en reservas web"
+                        f"{booking_seat_count} asiento(s) "
+                        "en reservas web"
                     )
 
                 if blockers:
                     raise ValidationError(
-                        "No se guardaron cambios en el plano de asientos. "
+                        "No se guardaron cambios en el plano "
+                        "de asientos. "
                         f"El bus {bus.plate} tiene "
                         + ", ".join(blockers)
-                        + ". Para proteger tickets, reservas y viajes, "
-                          "la distribución actual permanece intacta."
+                        + ". Para proteger tickets, reservas "
+                          "y viajes, la distribución actual "
+                          "permanece intacta."
                     )
 
+            # =====================================================
+            # GUARDADO ATÓMICO
+            # =====================================================
             with transaction.atomic():
-                if bus.pk:
-                    bus = Bus.objects.select_for_update().get(pk=bus.pk)
 
+                if bus.pk:
+                    bus = (
+                        Bus.objects
+                        .select_for_update()
+                        .get(pk=bus.pk)
+                    )
+
+                # -------------------------------------------------
+                # DATOS GENERALES
+                # -------------------------------------------------
                 bus.company_id = company_id
                 bus.owner = owner
+
+                # B3.1 — plantilla seleccionada
+                bus.layout_template = layout_template
+
                 bus.plate = plate
                 bus.model = model
                 bus.year = year
+
+                # -------------------------------------------------
+                # CONFIGURACIÓN DEL PLANO
+                # -------------------------------------------------
                 bus.floors = floors
                 bus.rows_lower = rows_lower
                 bus.rows_upper = rows_upper
                 bus.cols = cols
+
                 bus.prefix_lower = prefix_lower
                 bus.prefix_upper = prefix_upper
-                bus.technical_review_expiry = technical_review_expiry
-                bus.insurance_expiry = insurance_expiry
-                bus.permit_expiry = permit_expiry
-                bus.last_maintenance = last_maintenance
+
+                # -------------------------------------------------
+                # DOCUMENTOS
+                # -------------------------------------------------
+                bus.technical_review_expiry = (
+                    technical_review_expiry
+                )
+
+                bus.insurance_expiry = (
+                    insurance_expiry
+                )
+
+                bus.permit_expiry = (
+                    permit_expiry
+                )
+
+                bus.last_maintenance = (
+                    last_maintenance
+                )
+
+                # -------------------------------------------------
+                # LAYOUT / NÚMEROS / SERVICIOS
+                # -------------------------------------------------
                 bus.layout_lower = layout_lower
                 bus.layout_upper = layout_upper
+
                 bus.numbers_lower = numbers_lower
                 bus.numbers_upper = numbers_upper
+
                 bus.services_lower = services_lower
                 bus.services_upper = services_upper
+
                 bus.save()
 
-                # Normaliza los DateField asignados desde request.POST y
-                # sincroniza las alertas documentales del bus.
-                bus.refresh_from_db(fields=[
-                    'technical_review_expiry',
-                    'insurance_expiry',
-                    'permit_expiry',
-                ])
+                # -------------------------------------------------
+                # NORMALIZAR FECHAS Y DOCUMENTOS
+                # -------------------------------------------------
+                bus.refresh_from_db(
+                    fields=[
+                        'technical_review_expiry',
+                        'insurance_expiry',
+                        'permit_expiry',
+                    ]
+                )
+
                 _sync_bus_documents(bus)
 
+                # -------------------------------------------------
+                # SINCRONIZAR SEAT FÍSICOS
+                # -------------------------------------------------
                 if seatmap_changed:
                     created = bus.regenerate_seats()
+
                     messages.success(
                         request,
-                        f'Plano de asientos actualizado para {bus.plate}. '
-                        f'{created} asiento(s) físicos sincronizados.'
+                        f'Plano de asientos actualizado '
+                        f'para {bus.plate}. '
+                        f'{created} asiento(s) físicos '
+                        'sincronizados.'
                     )
 
                 messages.success(
@@ -1661,49 +2133,104 @@ def bus_editor(request, bus_id=None):
                     f'Bus {bus.plate} guardado correctamente.'
                 )
 
-            return redirect('coordinator:bus_list')
+            return redirect(
+                'coordinator:bus_list'
+            )
 
         except ValidationError as e:
-            messages.error(request, str(e))
+            messages.error(
+                request,
+                str(e)
+            )
+
         except Exception as e:
             messages.error(
                 request,
                 f'No fue posible guardar el bus: {str(e)}'
             )
 
-    companies = Company.objects.all().order_by('name')
+    # =========================================================
+    # DATOS PARA MOSTRAR EL EDITOR
+    # =========================================================
+    companies = (
+        Company.objects
+        .all()
+        .order_by('name')
+    )
+
     fleet_owners = (
         FleetOwner.objects
         .filter(is_active=True)
         .select_related('company')
-        .order_by('company__name', 'first_name', 'last_name')
+        .order_by(
+            'company__name',
+            'first_name',
+            'last_name',
+        )
     )
 
+    # =========================================================
+    # B3.1 — PLANTILLAS ACTIVAS
+    # =========================================================
+    layout_templates = (
+        BusLayout.objects
+        .filter(is_active=True)
+        .order_by('name')
+    )
+
+    # =========================================================
+    # CONSERVAR PROPIETARIO SELECCIONADO
+    # =========================================================
     selected_owner_id = (
         request.POST.get('owner')
         if request.method == 'POST'
         else bus.owner_id
     )
 
+    # =========================================================
+    # B3.1 — CONSERVAR PLANTILLA SELECCIONADA
+    # =========================================================
+    selected_layout_template_id = (
+        request.POST.get('layout_template')
+        if request.method == 'POST'
+        else bus.layout_template_id
+    )
+
+    # =========================================================
+    # ESTADO OPERACIONAL DEL PLANO
+    # =========================================================
     future_trips_count = 0
     ticket_count = 0
     booking_seat_count = 0
     seatmap_locked = False
 
     if bus.pk:
-        future_trips_count = Trip.objects.filter(
-            bus=bus,
-            departure__gt=timezone.now(),
-        ).count()
+        future_trips_count = (
+            Trip.objects
+            .filter(
+                bus=bus,
+                departure__gt=timezone.now(),
+            )
+            .count()
+        )
 
-        ticket_count = Ticket.objects.filter(
-            seat__bus=bus,
-        ).count()
+        ticket_count = (
+            Ticket.objects
+            .filter(
+                seat__bus=bus,
+            )
+            .count()
+        )
 
-        booking_seat_count = Seat.objects.filter(
-            bus=bus,
-            booking_order_items__isnull=False,
-        ).distinct().count()
+        booking_seat_count = (
+            Seat.objects
+            .filter(
+                bus=bus,
+                booking_order_items__isnull=False,
+            )
+            .distinct()
+            .count()
+        )
 
         seatmap_locked = bool(
             future_trips_count
@@ -1711,22 +2238,92 @@ def bus_editor(request, bus_id=None):
             or booking_seat_count
         )
 
+    # =========================================================
+    # B3.2 — DATOS JSON DE LAS PLANTILLAS PARA EL EDITOR
+    # =========================================================
+    layout_templates_payload = [
+        {
+            'id': template.id,
+            'name': template.name,
+            'floors': template.floors,
+            'rows_lower': template.rows_lower,
+            'rows_upper': template.rows_upper,
+            'cols': template.cols,
+            'background_lower': template.background_lower or '',
+            'background_upper': template.background_upper or '',
+            'editor_config': template.editor_config or {},
+            'structure_config': template.structure_config or {},
+        }
+        for template in layout_templates
+    ]
+
+    # =========================================================
+    # CONTEXTO
+    # =========================================================
     context = {
         'bus': bus,
+
         'companies': companies,
         'fleet_owners': fleet_owners,
+
+        # B3.1
+        'layout_templates': layout_templates,
+
+        # B3.2 — configuración completa de plantillas para JavaScript
+        'layout_templates_json': json.dumps(
+            layout_templates_payload
+        ),
+
         'selected_owner_id': selected_owner_id,
-        'layout_lower_json': json.dumps(bus.layout_lower or []),
-        'layout_upper_json': json.dumps(bus.layout_upper or []),
-        'numbers_lower_json': json.dumps(bus.numbers_lower or []),
-        'numbers_upper_json': json.dumps(bus.numbers_upper or []),
-        'services_lower_json': json.dumps(bus.services_lower or []),
-        'services_upper_json': json.dumps(bus.services_upper or []),
+
+        # B3.1
+        'selected_layout_template_id': (
+            selected_layout_template_id
+        ),
+
+        'layout_lower_json': json.dumps(
+            bus.layout_lower or []
+        ),
+
+        'layout_upper_json': json.dumps(
+            bus.layout_upper or []
+        ),
+
+        'numbers_lower_json': json.dumps(
+            bus.numbers_lower or []
+        ),
+
+        'numbers_upper_json': json.dumps(
+            bus.numbers_upper or []
+        ),
+
+        'services_lower_json': json.dumps(
+            bus.services_lower or []
+        ),
+
+        'services_upper_json': json.dumps(
+            bus.services_upper or []
+        ),
+
         'seatmap_locked': seatmap_locked,
-        'future_trips_count': future_trips_count,
+
+        'future_trips_count': (
+            future_trips_count
+        ),
+
         'ticket_count': ticket_count,
-        'booking_seat_count': booking_seat_count,
-        'real_seat_count': Seat.objects.filter(bus=bus).count() if bus.pk else 0,
+
+        'booking_seat_count': (
+            booking_seat_count
+        ),
+
+        'real_seat_count': (
+            Seat.objects
+            .filter(bus=bus)
+            .count()
+            if bus.pk
+            else 0
+        ),
     }
 
     return render(
@@ -1735,7 +2332,6 @@ def bus_editor(request, bus_id=None):
         context,
     )
 
-
 # ============================================================================
 # FASE 2.18.3-A1.1 — PROPIETARIOS / SOCIOS DE FLOTA
 # ============================================================================
@@ -1743,55 +2339,215 @@ def bus_editor(request, bus_id=None):
 @login_required
 @coordinator_required
 def fleet_owners_dashboard(request):
+    """
+    Gestión de propietarios / socios de flota.
+
+    MULTIEMPRESA:
+    - Superuser puede administrar todas las empresas.
+    - Resto solo puede ver, crear y editar propietarios de su empresa.
+    - Impide cambiar la empresa manipulando el POST.
+    """
+
+    scope = get_user_scope(request.user)
+    company = scope.get("company")
+
+    # ============================================================
+    # QUERYSET AUTORIZADO DE PROPIETARIOS
+    # ============================================================
+    owners_allowed = FleetOwner.objects.select_related(
+        "company"
+    )
+
+    if not request.user.is_superuser:
+        if not company:
+            owners_allowed = owners_allowed.none()
+        else:
+            owners_allowed = owners_allowed.filter(
+                company=company
+            )
+
+    # ============================================================
+    # EDICIÓN
+    # ============================================================
     owner_to_edit = None
-    edit_id = request.GET.get('edit')
+    edit_id = request.GET.get("edit")
 
     if edit_id:
-        owner_to_edit = get_object_or_404(FleetOwner, pk=edit_id)
-
-    if request.method == 'POST':
-        form = (
-            FleetOwnerForm(request.POST, instance=owner_to_edit)
-            if owner_to_edit
-            else FleetOwnerForm(request.POST)
+        owner_to_edit = get_object_or_404(
+            owners_allowed,
+            pk=edit_id,
         )
-        if form.is_valid():
-            owner = form.save()
-            messages.success(request, f'Propietario {owner.display_name} guardado correctamente.')
-            return redirect('coordinator:fleet_owners_dashboard')
-        messages.error(request, 'Por favor corrige los errores del formulario.')
-    else:
-        form = FleetOwnerForm(instance=owner_to_edit) if owner_to_edit else FleetOwnerForm()
 
-    query = request.GET.get('q', '').strip()
+    # ============================================================
+    # FORMULARIO
+    # ============================================================
+    if request.method == "POST":
+
+        form = (
+            FleetOwnerForm(
+                request.POST,
+                instance=owner_to_edit,
+            )
+            if owner_to_edit
+            else FleetOwnerForm(
+                request.POST
+            )
+        )
+
+        # --------------------------------------------------------
+        # Restringir empresa antes de validar POST
+        # --------------------------------------------------------
+        if (
+            not request.user.is_superuser
+            and company
+            and "company" in form.fields
+        ):
+            form.fields[
+                "company"
+            ].queryset = (
+                form.fields[
+                    "company"
+                ].queryset.filter(
+                    pk=company.pk
+                )
+            )
+
+        if form.is_valid():
+
+            owner = form.save(
+                commit=False
+            )
+
+            # ----------------------------------------------------
+            # Forzar empresa real del usuario
+            # ----------------------------------------------------
+            if not request.user.is_superuser:
+
+                if not company:
+                    raise PermissionDenied(
+                        "El usuario no tiene una empresa asignada."
+                    )
+
+                owner.company = company
+
+            owner.save()
+
+            messages.success(
+                request,
+                (
+                    f"Propietario "
+                    f"{owner.display_name} "
+                    "guardado correctamente."
+                ),
+            )
+
+            return redirect(
+                "coordinator:fleet_owners_dashboard"
+            )
+
+        messages.error(
+            request,
+            "Por favor corrige los errores del formulario.",
+        )
+
+    else:
+
+        form = (
+            FleetOwnerForm(
+                instance=owner_to_edit
+            )
+            if owner_to_edit
+            else FleetOwnerForm()
+        )
+
+        if (
+            not request.user.is_superuser
+            and company
+            and "company" in form.fields
+        ):
+            form.fields[
+                "company"
+            ].queryset = (
+                form.fields[
+                    "company"
+                ].queryset.filter(
+                    pk=company.pk
+                )
+            )
+
+            form.fields[
+                "company"
+            ].initial = company
+
+    # ============================================================
+    # LISTADO
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
     owners_qs = (
-        FleetOwner.objects
-        .select_related('company')
-        .annotate(bus_count=Count('buses'))
-        .order_by('company__name', 'first_name', 'last_name')
+        owners_allowed
+        .annotate(
+            bus_count=Count(
+                "buses"
+            )
+        )
+        .order_by(
+            "company__name",
+            "first_name",
+            "last_name",
+        )
     )
 
     if query:
         owners_qs = owners_qs.filter(
-            Q(first_name__icontains=query)
-            | Q(last_name__icontains=query)
-            | Q(rut__icontains=query)
-            | Q(company__name__icontains=query)
-            | Q(email__icontains=query)
+            Q(
+                first_name__icontains=query
+            )
+            |
+            Q(
+                last_name__icontains=query
+            )
+            |
+            Q(
+                rut__icontains=query
+            )
+            |
+            Q(
+                company__name__icontains=query
+            )
+            |
+            Q(
+                email__icontains=query
+            )
         )
 
-    paginator = Paginator(owners_qs, 12)
-    owners_page = paginator.get_page(request.GET.get('page'))
+    paginator = Paginator(
+        owners_qs,
+        12,
+    )
+
+    owners_page = paginator.get_page(
+        request.GET.get("page")
+    )
 
     return render(
         request,
-        'coordinator/fleet_owners.html',
+        "coordinator/fleet_owners.html",
         {
-            'form': form,
-            'owners': owners_page,
-            'query': query,
-            'edit_mode': bool(owner_to_edit),
-            'owner_edit_id': owner_to_edit.id if owner_to_edit else None,
+            "form": form,
+            "owners": owners_page,
+            "query": query,
+            "edit_mode": bool(
+                owner_to_edit
+            ),
+            "owner_edit_id": (
+                owner_to_edit.id
+                if owner_to_edit
+                else None
+            ),
         },
     )
 
@@ -1800,115 +2556,437 @@ def fleet_owners_dashboard(request):
 @coordinator_required
 @require_POST
 def fleet_owner_delete(request, owner_id):
-    owner = get_object_or_404(FleetOwner, pk=owner_id)
+    """
+    Elimina un propietario únicamente dentro del
+    alcance empresarial del usuario.
+    """
+
+    scope = get_user_scope(
+        request.user
+    )
+
+    company = scope.get(
+        "company"
+    )
+
+    owners_allowed = (
+        FleetOwner.objects
+        .select_related(
+            "company"
+        )
+    )
+
+    if not request.user.is_superuser:
+
+        if not company:
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asignada."
+            )
+
+        owners_allowed = (
+            owners_allowed.filter(
+                company=company
+            )
+        )
+
+    owner = get_object_or_404(
+        owners_allowed,
+        pk=owner_id,
+    )
+
     try:
+
         owner.delete()
-        messages.success(request, 'Propietario eliminado correctamente.')
+
+        messages.success(
+            request,
+            "Propietario eliminado correctamente.",
+        )
+
     except ProtectedError:
+
         messages.error(
             request,
-            f'No se puede eliminar a {owner.display_name} porque tiene buses asociados. Desactívalo en su lugar.'
+            (
+                f"No se puede eliminar a "
+                f"{owner.display_name} "
+                "porque tiene buses asociados. "
+                "Desactívalo en su lugar."
+            ),
         )
-    return redirect('coordinator:fleet_owners_dashboard')
+
+    return redirect(
+        "coordinator:fleet_owners_dashboard"
+    )
 
 
 @login_required
 @coordinator_required
 def buses_dashboard(request):
-    """Tablero unificado para la gestión rápida de buses."""
+    """
+    Tablero unificado para gestión rápida de buses.
+
+    MULTIEMPRESA:
+    - Superuser puede administrar todos los buses.
+    - Resto solo puede administrar buses de su empresa.
+    - El campo company queda restringido.
+    - El campo owner solo muestra propietarios de la empresa.
+    - Se valida nuevamente company/owner antes de guardar.
+    """
+
+    scope = get_user_scope(
+        request.user
+    )
+
+    company = scope.get(
+        "company"
+    )
+
+    # ============================================================
+    # BUSES AUTORIZADOS
+    # ============================================================
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.select_related(
+            "company",
+            "owner",
+            "owner__company",
+        ),
+    )
+
+    # ============================================================
+    # BUS A EDITAR
+    # ============================================================
     bus_to_edit = None
-    edit_id = request.GET.get('edit')
+
+    edit_id = request.GET.get(
+        "edit"
+    )
+
     if edit_id:
-        bus_to_edit = get_object_or_404(Bus, pk=edit_id)
-
-    if request.method == 'POST':
-        form = BusFullForm(request.POST, instance=bus_to_edit) if bus_to_edit else BusFullForm(request.POST)
-        if form.is_valid():
-            with transaction.atomic():
-                bus = form.save()
-                _sync_bus_documents(bus)
-
-            if bus_to_edit:
-                messages.success(
-                    request,
-                    f'Datos del bus {bus.plate} actualizados correctamente.'
-                )
-                return redirect(
-                    'coordinator:bus_detail',
-                    bus_id=bus.id,
-                )
-
-            messages.success(
-                request,
-                f'Bus {bus.plate} creado correctamente.'
-            )
-            return redirect('coordinator:bus_list')
-        else:
-            error_messages = []
-            for field, errors in form.errors.items():
-                label = (
-                    form.fields[field].label
-                    if field in form.fields
-                    else 'Formulario'
-                )
-                for error in errors:
-                    error_messages.append(f'{label}: {error}')
-
-            messages.error(
-                request,
-                'Error al guardar: ' + ' | '.join(error_messages)
-            )
-    else:
-        form = BusFullForm(instance=bus_to_edit) if bus_to_edit else BusFullForm()
-
-    query = request.GET.get('q', '').strip()
-    buses_list = Bus.objects.select_related('company', 'owner', 'owner__company').all().order_by('company__name', 'plate')
-    if query:
-        buses_list = buses_list.filter(
-            Q(plate__icontains=query)
-            | Q(model__icontains=query)
-            | Q(owner__first_name__icontains=query)
-            | Q(owner__last_name__icontains=query)
-            | Q(owner__rut__icontains=query)
-            | Q(owner_first_name__icontains=query)
-            | Q(owner_last_name__icontains=query)
-            | Q(brand__icontains=query)
+        bus_to_edit = get_object_or_404(
+            allowed_buses,
+            pk=edit_id,
         )
 
-    paginator = Paginator(buses_list, 10)
-    buses_page = paginator.get_page(request.GET.get('page'))
+    # ============================================================
+    # CREAR FORM
+    # ============================================================
+    if request.method == "POST":
+
+        form = (
+            BusFullForm(
+                request.POST,
+                instance=bus_to_edit,
+            )
+            if bus_to_edit
+            else BusFullForm(
+                request.POST
+            )
+        )
+
+    else:
+
+        form = (
+            BusFullForm(
+                instance=bus_to_edit
+            )
+            if bus_to_edit
+            else BusFullForm()
+        )
+
+    # ============================================================
+    # RESTRINGIR CAMPOS MULTIEMPRESA
+    # ANTES DE form.is_valid()
+    # ============================================================
+    if not request.user.is_superuser:
+
+        if not company:
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asignada."
+            )
+
+        # --------------------------------------------------------
+        # Empresa
+        # --------------------------------------------------------
+        company_field = form.fields.get(
+            "company"
+        )
+
+        if company_field:
+
+            company_field.queryset = (
+                company_field.queryset.filter(
+                    pk=company.pk
+                )
+            )
+
+            company_field.initial = company
+
+        # --------------------------------------------------------
+        # Propietarios de la empresa
+        # --------------------------------------------------------
+        owner_field = form.fields.get(
+            "owner"
+        )
+
+        if owner_field:
+
+            owner_field.queryset = (
+                FleetOwner.objects
+                .filter(
+                    company=company,
+                    is_active=True,
+                )
+                .select_related(
+                    "company"
+                )
+                .order_by(
+                    "first_name",
+                    "last_name",
+                )
+            )
+
+    # ============================================================
+    # GUARDAR
+    # ============================================================
+    if request.method == "POST":
+
+        if form.is_valid():
+
+            bus = form.save(
+                commit=False
+            )
+
+            # ----------------------------------------------------
+            # Forzar empresa para usuario no-superuser
+            # ----------------------------------------------------
+            if not request.user.is_superuser:
+                bus.company = company
+
+            # ----------------------------------------------------
+            # VALIDAR PROPIETARIO VS EMPRESA
+            # ----------------------------------------------------
+            if (
+                bus.owner_id
+                and bus.company_id
+                and bus.owner.company_id
+                != bus.company_id
+            ):
+
+                form.add_error(
+                    "owner",
+                    (
+                        "El propietario seleccionado "
+                        "no pertenece a la empresa del bus."
+                    ),
+                )
+
+            else:
+
+                with transaction.atomic():
+
+                    bus.save()
+
+                    form.save_m2m()
+
+                    _sync_bus_documents(
+                        bus
+                    )
+
+                if bus_to_edit:
+
+                    messages.success(
+                        request,
+                        (
+                            f"Datos del bus "
+                            f"{bus.plate} "
+                            "actualizados correctamente."
+                        ),
+                    )
+
+                    return redirect(
+                        "coordinator:bus_detail",
+                        bus_id=bus.id,
+                    )
+
+                messages.success(
+                    request,
+                    (
+                        f"Bus {bus.plate} "
+                        "creado correctamente."
+                    ),
+                )
+
+                return redirect(
+                    "coordinator:bus_list"
+                )
+
+        # ========================================================
+        # ERRORES
+        # ========================================================
+        error_messages = []
+
+        for field, errors in (
+            form.errors.items()
+        ):
+
+            label = (
+                form.fields[field].label
+                if field in form.fields
+                else "Formulario"
+            )
+
+            for error in errors:
+
+                error_messages.append(
+                    f"{label}: {error}"
+                )
+
+        messages.error(
+            request,
+            (
+                "Error al guardar: "
+                + " | ".join(
+                    error_messages
+                )
+            ),
+        )
+
+    # ============================================================
+    # LISTADO DE BUSES
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    buses_list = buses_for_user(
+        request.user,
+        Bus.objects.select_related(
+            "company",
+            "owner",
+            "owner__company",
+        ),
+    ).order_by(
+        "company__name",
+        "plate",
+    )
+
+    if query:
+
+        buses_list = (
+            buses_list.filter(
+                Q(
+                    plate__icontains=query
+                )
+                |
+                Q(
+                    model__icontains=query
+                )
+                |
+                Q(
+                    owner__first_name__icontains=query
+                )
+                |
+                Q(
+                    owner__last_name__icontains=query
+                )
+                |
+                Q(
+                    owner__rut__icontains=query
+                )
+                |
+                Q(
+                    owner_first_name__icontains=query
+                )
+                |
+                Q(
+                    owner_last_name__icontains=query
+                )
+                |
+                Q(
+                    brand__icontains=query
+                )
+            )
+        )
+
+    paginator = Paginator(
+        buses_list,
+        10,
+    )
+
+    buses_page = paginator.get_page(
+        request.GET.get(
+            "page"
+        )
+    )
 
     context = {
-        'form': form,
-        'buses': buses_page,
-        'query': query,
-        'edit_mode': bool(bus_to_edit),
-        'bus_edit_id': bus_to_edit.id if bus_to_edit else None,
+        "form": form,
+        "buses": buses_page,
+        "query": query,
+        "edit_mode": bool(
+            bus_to_edit
+        ),
+        "bus_edit_id": (
+            bus_to_edit.id
+            if bus_to_edit
+            else None
+        ),
     }
-    return render(request, 'buses/buses_full.html', context)
+
+    return render(
+        request,
+        "buses/buses_full.html",
+        context,
+    )
 
 
 @login_required
 @coordinator_required
 def bus_duplicate(request, bus_id):
     """
-    Duplica la configuración física de un bus usando una patente temporal
-    única. El nuevo bus queda listo para que el coordinador cambie la patente.
+    Duplica la configuración física de un bus autorizado.
+
+    MULTIEMPRESA:
+    No permite duplicar un bus perteneciente a otra empresa.
     """
-    original = get_object_or_404(Bus, pk=bus_id)
+
+    original = get_object_or_404(
+        buses_for_user(
+            request.user,
+            Bus.objects.select_related(
+                "company",
+                "owner",
+            ),
+        ),
+        pk=bus_id,
+    )
 
     base_plate = f"{original.plate}-COPIA"
     candidate = base_plate[:30]
     counter = 2
 
-    while Bus.objects.filter(plate=candidate).exists():
+    # La patente es globalmente única, por eso esta consulta
+    # deliberadamente revisa todos los buses.
+    while Bus.objects.filter(
+        plate=candidate
+    ).exists():
         suffix = f"-{counter}"
-        candidate = f"{base_plate[:30-len(suffix)]}{suffix}"
+
+        candidate = (
+            f"{base_plate[:30-len(suffix)]}"
+            f"{suffix}"
+        )
+
         counter += 1
 
     with transaction.atomic():
+
         new_bus = Bus(
             company=original.company,
+            owner=original.owner,
             plate=candidate,
             model=original.model,
             year=original.year,
@@ -1918,87 +2996,134 @@ def bus_duplicate(request, bus_id):
             cols=original.cols,
             prefix_lower=original.prefix_lower,
             prefix_upper=original.prefix_upper,
-            layout_lower=list(original.layout_lower or []),
-            layout_upper=list(original.layout_upper or []),
-            numbers_lower=list(original.numbers_lower or []),
-            numbers_upper=list(original.numbers_upper or []),
-            services_lower=list(original.services_lower or []),
-            services_upper=list(original.services_upper or []),
+            layout_lower=list(
+                original.layout_lower or []
+            ),
+            layout_upper=list(
+                original.layout_upper or []
+            ),
+            numbers_lower=list(
+                original.numbers_lower or []
+            ),
+            numbers_upper=list(
+                original.numbers_upper or []
+            ),
+            services_lower=list(
+                original.services_lower or []
+            ),
+            services_upper=list(
+                original.services_upper or []
+            ),
             is_active=False,
         )
+
         new_bus.save()
+
         created = new_bus.regenerate_seats()
 
     messages.success(
         request,
         (
-            f'Bus duplicado como {new_bus.plate}. '
-            f'Se crearon {created} asiento(s). '
-            'Cambia la patente y revisa el plano antes de activarlo.'
+            f"Bus duplicado como {new_bus.plate}. "
+            f"Se crearon {created} asiento(s). "
+            "Cambia la patente y revisa el plano "
+            "antes de activarlo."
         ),
     )
-    return redirect('coordinator:bus_editor', bus_id=new_bus.id)
 
+    return redirect(
+        "coordinator:bus_editor",
+        bus_id=new_bus.id,
+    )
 
 @login_required
 @coordinator_required
 @require_POST
 def bus_toggle_active(request, bus_id):
     """
-    Activa o desactiva un bus sin eliminar su historial.
+    Activa o desactiva un bus autorizado.
+
     Un bus con viajes futuros no puede desactivarse.
+
+    MULTIEMPRESA:
+    Impide modificar buses de otra empresa manipulando bus_id.
     """
+
     with transaction.atomic():
+
         bus = get_object_or_404(
-            Bus.objects.select_for_update(),
+            buses_for_user(
+                request.user,
+                Bus.objects.select_for_update(),
+            ),
             pk=bus_id,
         )
 
         if bus.is_active:
+
             future_trips = Trip.objects.filter(
                 bus=bus,
                 departure__gt=timezone.now(),
             ).count()
 
             if future_trips:
+
                 return JsonResponse(
                     {
-                        'success': False,
-                        'protected': True,
-                        'message': (
-                            f'No se puede desactivar el bus {bus.plate}: '
-                            f'tiene {future_trips} viaje(s) futuro(s) programado(s).'
+                        "success": False,
+                        "protected": True,
+                        "message": (
+                            f"No se puede desactivar "
+                            f"el bus {bus.plate}: "
+                            f"tiene {future_trips} "
+                            "viaje(s) futuro(s) "
+                            "programado(s)."
                         ),
                     },
                     status=409,
                 )
 
             bus.is_active = False
-            action = 'desactivado'
+            action = "desactivado"
+
         else:
-            seat_count = Seat.objects.filter(bus=bus).count()
+
+            seat_count = Seat.objects.filter(
+                bus=bus
+            ).count()
+
             if seat_count == 0:
+
                 return JsonResponse(
                     {
-                        'success': False,
-                        'message': (
-                            f'El bus {bus.plate} no tiene asientos físicos. '
-                            'Revise el plano antes de activarlo.'
+                        "success": False,
+                        "message": (
+                            f"El bus {bus.plate} "
+                            "no tiene asientos físicos. "
+                            "Revise el plano antes "
+                            "de activarlo."
                         ),
                     },
                     status=409,
                 )
 
             bus.is_active = True
-            action = 'activado'
+            action = "activado"
 
-        bus.save(update_fields=['is_active'])
+        bus.save(
+            update_fields=[
+                "is_active"
+            ]
+        )
 
     return JsonResponse(
         {
-            'success': True,
-            'message': f'Bus {bus.plate} {action} correctamente.',
-            'is_active': bus.is_active,
+            "success": True,
+            "message": (
+                f"Bus {bus.plate} "
+                f"{action} correctamente."
+            ),
+            "is_active": bus.is_active,
         }
     )
 
@@ -2176,82 +3301,285 @@ def api_bus_data(request, bus_id):
 @login_required
 @coordinator_required
 def trip_list(request):
-    """Lista todos los viajes con origen, destino y bus."""
-    trips = Trip.objects.select_related('route__origin', 'route__destination', 'bus').all().order_by('-departure')
-    return render(request, 'coordinator/trip_list.html', {'trips': trips})
+    """
+    Lista los viajes visibles para el usuario.
+
+    MULTIEMPRESA:
+    - Superuser: todos.
+    - Coordinador/empresa: solo su empresa.
+    - Owner: solo buses de su propiedad.
+    """
+
+    trips = trips_for_user(
+        request.user,
+        Trip.objects.select_related(
+            "route",
+            "route__origin",
+            "route__destination",
+            "bus",
+            "bus__company",
+        ),
+    ).order_by(
+        "-departure"
+    )
+
+    return render(
+        request,
+        "coordinator/trip_list.html",
+        {
+            "trips": trips,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def trip_create_edit(request, trip_id=None):
-    """Crear o editar un viaje individual."""
-    trip = get_object_or_404(Trip, pk=trip_id) if trip_id else Trip()
+    """
+    Crear o editar un viaje individual.
 
-    if request.method == 'POST':
+    MULTIEMPRESA:
+    - El coordinador solo puede ver y utilizar rutas de su empresa.
+    - El coordinador solo puede ver y utilizar buses de su empresa.
+    - Se impide editar un viaje perteneciente a otra empresa.
+    - Se impide manipular route_id o bus_id desde el POST.
+    """
+
+    # ============================================================
+    # VIAJE A EDITAR
+    # ============================================================
+    if trip_id:
+        trip = get_object_or_404(
+            trips_for_user(
+                request.user,
+                Trip.objects.select_related(
+                    "route",
+                    "bus",
+                    "driver1",
+                    "driver2",
+                    "assistant",
+                ),
+            ),
+            pk=trip_id,
+        )
+    else:
+        trip = Trip()
+
+    # ============================================================
+    # QUERYSETS PERMITIDOS PARA EL USUARIO
+    # ============================================================
+    allowed_routes = routes_for_user(
+        request.user,
+        Route.objects.select_related(
+            "origin",
+            "destination",
+            "origin_terminal",
+            "destination_terminal",
+            "company",
+        ).filter(is_active=True),
+    )
+
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.filter(is_active=True),
+    )
+
+    # ============================================================
+    # GUARDAR
+    # ============================================================
+    if request.method == "POST":
         try:
-            route_id = request.POST.get('route')
-            bus_id = request.POST.get('bus')
-            departure = make_aware_datetime(request.POST.get('departure'), "Salida")
+            route_id = request.POST.get("route")
+            bus_id = request.POST.get("bus")
 
-            trip.route_id = route_id
-            trip.bus_id = bus_id
+            # ----------------------------------------------------
+            # VALIDACIONES BÁSICAS
+            # ----------------------------------------------------
+            if not route_id:
+                raise ValidationError(
+                    "Debe seleccionar una ruta."
+                )
+
+            if not bus_id:
+                raise ValidationError(
+                    "Debe seleccionar un bus."
+                )
+
+            # ----------------------------------------------------
+            # SEGURIDAD MULTIEMPRESA
+            #
+            # No usamos Route.objects.get() ni Bus.objects.get()
+            # directamente, porque permitiría enviar IDs de otra
+            # empresa manipulando el formulario.
+            # ----------------------------------------------------
+            route = allowed_routes.filter(pk=route_id).first()
+
+            if not route:
+                raise ValidationError(
+                    "La ruta seleccionada no pertenece a su empresa "
+                    "o no está activa."
+                )
+
+            bus = allowed_buses.filter(pk=bus_id).first()
+
+            if not bus:
+                raise ValidationError(
+                    "El bus seleccionado no pertenece a su empresa "
+                    "o no está activo."
+                )
+
+            # ----------------------------------------------------
+            # INTEGRIDAD EMPRESA RUTA / BUS
+            #
+            # También protege al superusuario de crear accidentalmente
+            # un viaje mezclando una ruta de una empresa con un bus
+            # perteneciente a otra.
+            # ----------------------------------------------------
+            if route.company_id != bus.company_id:
+                raise ValidationError(
+                    "La ruta y el bus deben pertenecer a la misma empresa."
+                )
+
+            # ----------------------------------------------------
+            # FECHA / HORA DE SALIDA
+            # ----------------------------------------------------
+            departure = make_aware_datetime(
+                request.POST.get("departure"),
+                "Salida",
+            )
+
+            trip.route = route
+            trip.bus = bus
             trip.departure = departure
 
-            if request.POST.get('arrival'):
-                trip.arrival = make_aware_datetime(request.POST.get('arrival'), "Llegada")
-
-            trip.driver1_id = request.POST.get('driver1') or None
-            trip.driver2_id = request.POST.get('driver2') or None
-            trip.assistant_id = request.POST.get('assistant') or None
-
-            if trip.bus_id:
-                trip.seats_total = Seat.objects.filter(bus_id=trip.bus_id).count()
+            # ----------------------------------------------------
+            # FECHA / HORA DE LLEGADA
+            # ----------------------------------------------------
+            if request.POST.get("arrival"):
+                trip.arrival = make_aware_datetime(
+                    request.POST.get("arrival"),
+                    "Llegada",
+                )
             else:
-                trip.seats_total = 0
+                # Si no se especificó llegada, calcularla usando
+                # la duración configurada en la ruta.
+                trip.arrival = (
+                    trip.departure
+                    + timedelta(minutes=route.duration_minutes)
+                )
 
-            if not trip.arrival and trip.route_id:
-                route = Route.objects.get(pk=trip.route_id)
-                trip.arrival = trip.departure + timedelta(minutes=route.duration_minutes)
+            # ----------------------------------------------------
+            # PERSONAL
+            # ----------------------------------------------------
+            trip.driver1_id = request.POST.get("driver1") or None
+            trip.driver2_id = request.POST.get("driver2") or None
+            trip.assistant_id = request.POST.get("assistant") or None
 
-            # Validar conflictos
-            route = trip.route
-            bus = trip.bus
+            # ----------------------------------------------------
+            # TOTAL DE ASIENTOS
+            # ----------------------------------------------------
+            trip.seats_total = Seat.objects.filter(
+                bus=bus
+            ).count()
+
+            # ----------------------------------------------------
+            # VALIDACIÓN AUXILIAR
+            # ----------------------------------------------------
             if trip.assistant:
-                _validate_assistant_dispatch(trip.assistant)
+                _validate_assistant_dispatch(
+                    trip.assistant
+                )
 
+            # ----------------------------------------------------
+            # VALIDAR CONFLICTOS
+            # ----------------------------------------------------
             conflicts = validate_trip_conflicts(
-                route, bus, trip.driver1_id, trip.driver2_id,
-                trip.departure, trip.arrival,
+                route,
+                bus,
+                trip.driver1_id,
+                trip.driver2_id,
+                trip.departure,
+                trip.arrival,
                 assistant_id=trip.assistant_id,
-                exclude_trip=trip if trip.pk else None
+                exclude_trip=trip if trip.pk else None,
             )
+
             if conflicts:
                 for conflict in conflicts:
-                    messages.error(request, conflict)
-                return redirect('coordinator:trip_create_edit', trip_id=trip.pk if trip.pk else None)
+                    messages.error(
+                        request,
+                        conflict,
+                    )
 
+                return redirect(
+                    "coordinator:trip_create_edit",
+                    trip_id=trip.pk if trip.pk else None,
+                )
+
+            # ----------------------------------------------------
+            # GUARDAR VIAJE
+            # ----------------------------------------------------
             trip.save()
-            messages.success(request, 'Viaje guardado correctamente.')
-            return redirect('coordinator:trip_list')
+
+            messages.success(
+                request,
+                "Viaje guardado correctamente.",
+            )
+
+            return redirect(
+                "coordinator:trip_list"
+            )
 
         except ValidationError as e:
-            messages.error(request, str(e))
+            messages.error(
+                request,
+                str(e),
+            )
+
         except Exception as e:
-            messages.error(request, f'Error: {str(e)}')
+            messages.error(
+                request,
+                f"Error: {str(e)}",
+            )
 
-    routes = Route.objects.select_related('origin', 'destination').all()
-    buses = Bus.objects.all()
-    drivers = Driver.objects.filter(is_active=True).order_by('full_name')
-    assistants = Assistant.objects.filter(is_active=True).order_by('full_name')
+    # ============================================================
+    # DATOS PARA EL FORMULARIO
+    # ============================================================
+    routes = allowed_routes
+    buses = allowed_buses
 
-    return render(request, 'coordinator/trip_form.html', {
-        'trip': trip,
-        'routes': routes,
-        'buses': buses,
-        'drivers': drivers,
-        'assistants': assistants,
-    })
+    drivers = drivers_for_user(
+    request.user,
+    Driver.objects.filter(
+        is_active=True
+    ),
+    ).order_by(
+    "full_name"
+    )
 
+    assistants = assistants_for_user(
+    request.user,
+    Assistant.objects.filter(
+        is_active=True
+    ),
+    ).order_by(
+    "full_name"
+    )
+
+    # ============================================================
+    # RENDER
+    # ============================================================
+    return render(
+        request,
+        "coordinator/trip_form.html",
+        {
+            "trip": trip,
+            "routes": routes,
+            "buses": buses,
+            "drivers": drivers,
+            "assistants": assistants,
+        },
+    )
 
 @login_required
 @coordinator_required
@@ -2480,537 +3808,1527 @@ def trips_dashboard(request):
 @login_required
 @coordinator_required
 def trip_change_bus(request, trip_id):
-    """Reasigna un viaje a un bus diferente."""
+    """
+    Reasigna un viaje a un bus diferente.
+
+    MULTIEMPRESA:
+    - Solo permite acceder a viajes autorizados.
+    - Solo permite seleccionar buses autorizados.
+    - Impide enviar manualmente un bus de otra empresa.
+    - Mantiene la reasignación de pasajeros/asientos existente.
+    """
+
     from booking.views import _build_trip_grid
 
+    # ============================================================
+    # VIAJE AUTORIZADO
+    # ============================================================
     trip = get_object_or_404(
-        Trip.objects.select_related('bus', 'route').select_for_update(),
-        pk=trip_id
+        trips_for_user(
+            request.user,
+            Trip.objects.select_related(
+                "bus",
+                "route",
+                "route__company",
+            ),
+        ),
+        pk=trip_id,
     )
 
-    if request.method == 'POST':
-        new_bus_id = request.POST.get('new_bus')
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
+        new_bus_id = request.POST.get(
+            "new_bus"
+        )
+
         if not new_bus_id:
-            messages.error(request, "Debe seleccionar un bus nuevo.")
-            return redirect('coordinator:trip_change_bus', trip_id=trip.id)
+            messages.error(
+                request,
+                "Debe seleccionar un bus nuevo.",
+            )
 
-        # Bloquear el bus nuevo para evitar race conditions
-        new_bus = get_object_or_404(Bus.objects.select_for_update(), pk=new_bus_id)
-
-        try:
-            _validate_bus_dispatch(new_bus)
-        except ValidationError as e:
-            messages.error(request, str(e))
             return redirect(
-                'coordinator:trip_change_bus',
+                "coordinator:trip_change_bus",
                 trip_id=trip.id,
             )
 
-        reassign_map = {k.split('_')[1]: v for k, v in request.POST.items() if k.startswith('seat_')}
-
         try:
             with transaction.atomic():
-                # Bloquear todos los tickets y asientos involucrados
-                tickets = Ticket.objects.filter(trip=trip).select_related('seat').select_for_update()
 
+                # =================================================
+                # VOLVER A BLOQUEAR Y VALIDAR EL VIAJE
+                # =================================================
+                locked_trip = get_object_or_404(
+                    trips_for_user(
+                        request.user,
+                        Trip.objects.select_for_update()
+                        .select_related(
+                            "bus",
+                            "route",
+                            "route__company",
+                        ),
+                    ),
+                    pk=trip.id,
+                )
+
+                # =================================================
+                # BUS NUEVO AUTORIZADO
+                # =================================================
+                new_bus = get_object_or_404(
+                    buses_for_user(
+                        request.user,
+                        Bus.objects.select_for_update()
+                        .filter(
+                            is_active=True
+                        ),
+                    ),
+                    pk=new_bus_id,
+                )
+
+                # No tiene sentido reasignar al mismo bus.
+                if new_bus.pk == locked_trip.bus_id:
+                    raise ValidationError(
+                        "Debe seleccionar un bus diferente al actual."
+                    )
+
+                # =================================================
+                # VALIDAR EMPRESA
+                # =================================================
+                if (
+                    locked_trip.route.company_id
+                    != new_bus.company_id
+                ):
+                    raise ValidationError(
+                        "El nuevo bus y la ruta del viaje "
+                        "deben pertenecer a la misma empresa."
+                    )
+
+                # =================================================
+                # VALIDACIÓN OPERACIONAL DEL BUS
+                # =================================================
+                _validate_bus_dispatch(
+                    new_bus
+                )
+
+                # =================================================
+                # MAPEO DE ASIENTOS
+                # =================================================
+                reassign_map = {
+                    k.split("_")[1]: v
+                    for k, v in request.POST.items()
+                    if k.startswith("seat_")
+                }
+
+                # =================================================
+                # BLOQUEAR TICKETS
+                # =================================================
+                tickets = (
+                    Ticket.objects
+                    .filter(
+                        trip=locked_trip
+                    )
+                    .select_related(
+                        "seat"
+                    )
+                    .select_for_update()
+                )
+
+                # =================================================
+                # VIAJE SIN PASAJEROS
+                # =================================================
                 if not tickets.exists():
-                    trip.bus = new_bus
-                    trip.seats_total = Seat.objects.filter(bus=new_bus).count()
-                    trip.save()
-                    messages.success(request, f"Bus cambiado a {new_bus.plate} (sin pasajeros).")
-                    return redirect('coordinator:trip_list')
 
-                missing = [ticket.seat.number for ticket in tickets if str(ticket.seat.id) not in reassign_map]
+                    locked_trip.bus = new_bus
+
+                    locked_trip.seats_total = (
+                        Seat.objects.filter(
+                            bus=new_bus
+                        ).count()
+                    )
+
+                    locked_trip.save(
+                        update_fields=[
+                            "bus",
+                            "seats_total",
+                        ]
+                    )
+
+                    messages.success(
+                        request,
+                        (
+                            f"Bus cambiado a {new_bus.plate} "
+                            "(sin pasajeros)."
+                        ),
+                    )
+
+                    return redirect(
+                        "coordinator:trip_list"
+                    )
+
+                # =================================================
+                # VALIDAR QUE TODOS LOS ASIENTOS FUERON REASIGNADOS
+                # =================================================
+                missing = [
+                    ticket.seat.number
+                    for ticket in tickets
+                    if str(ticket.seat.id)
+                    not in reassign_map
+                ]
+
                 if missing:
-                    raise ValidationError(f"Asientos sin reasignar: {', '.join(missing)}")
+                    raise ValidationError(
+                        "Asientos sin reasignar: "
+                        + ", ".join(
+                            str(number)
+                            for number in missing
+                        )
+                    )
 
-                # Bloquear los asientos de destino
-                new_seat_ids = list(reassign_map.values())
-                new_seats = Seat.objects.filter(pk__in=new_seat_ids, bus=new_bus).select_for_update()
-                new_seats_dict = {str(s.id): s for s in new_seats}
+                # =================================================
+                # BLOQUEAR ASIENTOS DEL NUEVO BUS
+                # =================================================
+                new_seat_ids = list(
+                    reassign_map.values()
+                )
 
+                new_seats = (
+                    Seat.objects
+                    .filter(
+                        pk__in=new_seat_ids,
+                        bus=new_bus,
+                    )
+                    .select_for_update()
+                )
+
+                new_seats_dict = {
+                    str(seat.id): seat
+                    for seat in new_seats
+                }
+
+                # =================================================
+                # VALIDAR ASIENTOS DESTINO
+                # =================================================
                 for ticket in tickets:
-                    new_seat_id = reassign_map.get(str(ticket.seat.id))
-                    if not new_seat_id or new_seat_id not in new_seats_dict:
-                        raise ValidationError(f"Asiento destino no encontrado para {ticket.seat.number}")
 
-                    new_seat = new_seats_dict[new_seat_id]
+                    new_seat_id = (
+                        reassign_map.get(
+                            str(ticket.seat.id)
+                        )
+                    )
 
-                    # Verificar que el asiento no esté ocupado
-                    if Ticket.objects.filter(trip=trip, seat=new_seat).exists():
-                        raise ValidationError(f"El asiento {new_seat.number} ya está ocupado.")
+                    if (
+                        not new_seat_id
+                        or new_seat_id
+                        not in new_seats_dict
+                    ):
+                        raise ValidationError(
+                            (
+                                "Asiento destino no encontrado "
+                                f"para {ticket.seat.number}"
+                            )
+                        )
 
-                # Ejecutar la reasignación
+                    new_seat = (
+                        new_seats_dict[
+                            new_seat_id
+                        ]
+                    )
+
+                    # Verificar que otro ticket del mismo viaje
+                    # no esté ya asociado al asiento destino.
+                    if Ticket.objects.filter(
+                        trip=locked_trip,
+                        seat=new_seat,
+                    ).exclude(
+                        pk=ticket.pk
+                    ).exists():
+                        raise ValidationError(
+                            (
+                                f"El asiento {new_seat.number} "
+                                "ya está ocupado."
+                            )
+                        )
+
+                # =================================================
+                # EJECUTAR REASIGNACIÓN
+                # =================================================
                 for ticket in tickets:
-                    new_seat = new_seats_dict[reassign_map[str(ticket.seat.id)]]
+
+                    new_seat = new_seats_dict[
+                        reassign_map[
+                            str(ticket.seat.id)
+                        ]
+                    ]
+
                     old_seat = ticket.seat
+
                     old_seat.is_occupied = False
-                    old_seat.save(update_fields=['is_occupied'])
+
+                    old_seat.save(
+                        update_fields=[
+                            "is_occupied"
+                        ]
+                    )
 
                     ticket.seat = new_seat
-                    ticket.save()
+                    ticket.save(
+                        update_fields=[
+                            "seat"
+                        ]
+                    )
 
                     new_seat.is_occupied = True
-                    new_seat.save(update_fields=['is_occupied'])
 
-                trip.bus = new_bus
-                trip.seats_total = Seat.objects.filter(bus=new_bus).count()
-                trip.save()
+                    new_seat.save(
+                        update_fields=[
+                            "is_occupied"
+                        ]
+                    )
 
-                messages.success(request, f"Viaje reasignado a bus {new_bus.plate}.")
-                return redirect('coordinator:trip_list')
+                # =================================================
+                # ACTUALIZAR VIAJE
+                # =================================================
+                locked_trip.bus = new_bus
+
+                locked_trip.seats_total = (
+                    Seat.objects.filter(
+                        bus=new_bus
+                    ).count()
+                )
+
+                locked_trip.save(
+                    update_fields=[
+                        "bus",
+                        "seats_total",
+                    ]
+                )
+
+                messages.success(
+                    request,
+                    (
+                        f"Viaje reasignado a bus "
+                        f"{new_bus.plate}."
+                    ),
+                )
+
+                return redirect(
+                    "coordinator:trip_list"
+                )
 
         except ValidationError as e:
-            messages.error(request, str(e))
+            messages.error(
+                request,
+                str(e),
+            )
+
         except Exception as e:
-            messages.error(request, f"Error inesperado: {str(e)}")
+            messages.error(
+                request,
+                f"Error inesperado: {str(e)}",
+            )
 
-        return redirect('coordinator:trip_change_bus', trip_id=trip.id)
+        return redirect(
+            "coordinator:trip_change_bus",
+            trip_id=trip.id,
+        )
 
+    # ============================================================
+    # BUSES DISPONIBLES PARA LA EMPRESA
+    # ============================================================
     buses = _prepare_bus_dispatch_options(
-
-        Bus.objects.exclude(pk=trip.bus.pk).order_by('company__name', 'plate'),
-
+        buses_for_user(
+            request.user,
+            Bus.objects.filter(
+                is_active=True
+            ).exclude(
+                pk=trip.bus.pk
+            ),
+        ).order_by(
+            "plate"
+        ),
         current_bus_id=trip.bus_id,
-
     )
-    current_lower, current_upper, cols = _build_trip_grid(trip)
+
+    current_lower, current_upper, cols = (
+        _build_trip_grid(
+            trip
+        )
+    )
 
     context = {
-        'trip': trip,
-        'buses': buses,
-        'current_lower': current_lower,
-        'current_upper': current_upper,
-        'cols': cols,
+        "trip": trip,
+        "buses": buses,
+        "current_lower": current_lower,
+        "current_upper": current_upper,
+        "cols": cols,
     }
-    return render(request, 'coordinator/trip_change_bus.html', context)
+
+    return render(
+        request,
+        "coordinator/trip_change_bus.html",
+        context,
+    )
 
 
 @login_required
 @coordinator_required
 def trip_delete(request, trip_id):
-    """Elimina un viaje solo si no tiene tickets vendidos."""
-    try:
-        trip = Trip.objects.get(pk=trip_id)
-    except Trip.DoesNotExist:
-        messages.warning(request, 'El viaje que intenta eliminar ya no existe.')
-        return redirect('coordinator:trips_dashboard')
+    """
+    Elimina un viaje solo si pertenece al alcance del usuario
+    y no tiene tickets vendidos.
+    """
 
-    if Ticket.objects.filter(trip=trip).exists():
-        messages.error(request, 'No se puede eliminar un viaje con tickets vendidos.')
-        return redirect('coordinator:trips_dashboard')
+    trip = trips_for_user(
+        request.user,
+        Trip.objects.all(),
+    ).filter(
+        pk=trip_id
+    ).first()
+
+    if not trip:
+        messages.warning(
+            request,
+            "El viaje que intenta eliminar no existe "
+            "o no pertenece a su empresa.",
+        )
+        return redirect(
+            "coordinator:trips_dashboard"
+        )
+
+    if Ticket.objects.filter(
+        trip=trip
+    ).exists():
+        messages.error(
+            request,
+            "No se puede eliminar un viaje con tickets vendidos.",
+        )
+        return redirect(
+            "coordinator:trips_dashboard"
+        )
 
     trip.delete()
-    messages.success(request, 'Viaje eliminado correctamente.')
-    return redirect('coordinator:trips_dashboard')
+
+    messages.success(
+        request,
+        "Viaje eliminado correctamente.",
+    )
+
+    return redirect(
+        "coordinator:trips_dashboard"
+    )
 
 
 # ============================================================================
 # GENERACIÓN MASIVA DE VIAJES Y CALENDARIO
 # ============================================================================
-
 @login_required
 @coordinator_required
 def generate_trips(request):
     """
     Genera múltiples viajes recurrentes en un rango de fechas.
-    Incluye validaciones de conflictos de horario para bus y choferes.
+
+    MULTIEMPRESA:
+    - Solo muestra rutas, buses, choferes y auxiliares accesibles.
+    - Valida nuevamente todos los IDs recibidos por POST.
+    - Impide mezclar ruta/bus/personal de distintas empresas.
+    - Revalida ruta, bus y personal dentro de transaction.atomic().
+    - Mantiene validaciones de conflictos de horario.
+    - Mantiene vista previa y generación recurrente.
     """
+
     from django.utils.dateparse import parse_date
 
+    # ============================================================
+    # FECHA / CALENDARIO
+    # ============================================================
+
     today = timezone.now().date()
-    year = int(request.GET.get('year', today.year))
-    month = int(request.GET.get('month', today.month))
+
+    try:
+        year = int(
+            request.GET.get(
+                "year",
+                today.year,
+            )
+        )
+    except (TypeError, ValueError):
+        year = today.year
+
+    try:
+        month = int(
+            request.GET.get(
+                "month",
+                today.month,
+            )
+        )
+    except (TypeError, ValueError):
+        month = today.month
+
     if month < 1 or month > 12:
         month = today.month
+
     if year < 2000 or year > 2100:
         year = today.year
 
-    cal = calendar.monthcalendar(year, month)
-    first_day = datetime(year, month, 1).date()
-    last_day = (
-        (datetime(year, month + 1, 1) - timedelta(days=1)).date()
-        if month < 12
-        else datetime(year, 12, 31).date()
+    cal = calendar.monthcalendar(
+        year,
+        month,
     )
 
-    existing_trips = Trip.objects.filter(
-        departure__date__range=(first_day, last_day)
-    ).values_list('departure__date', flat=True).distinct()
-    existing_dates = set(existing_trips)
+    first_day = datetime(
+        year,
+        month,
+        1,
+    ).date()
+
+    last_day = (
+        (
+            datetime(
+                year,
+                month + 1,
+                1,
+            )
+            - timedelta(days=1)
+        ).date()
+        if month < 12
+        else datetime(
+            year,
+            12,
+            31,
+        ).date()
+    )
+
+    # ============================================================
+    # QUERYSETS AUTORIZADOS
+    # ============================================================
+
+    allowed_routes = routes_for_user(
+        request.user,
+        Route.objects.select_related(
+            "origin",
+            "destination",
+            "origin_terminal",
+            "destination_terminal",
+            "company",
+        ).filter(
+            is_active=True
+        ),
+    )
+
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.filter(
+            is_active=True
+        ),
+    )
+
+    allowed_drivers = drivers_for_user(
+        request.user,
+        Driver.objects.filter(
+            is_active=True
+        ),
+    )
+
+    allowed_assistants = assistants_for_user(
+        request.user,
+        Assistant.objects.filter(
+            is_active=True
+        ),
+    )
+
+    # ============================================================
+    # VIAJES EXISTENTES DEL CALENDARIO
+    # ============================================================
+
+    existing_trips = trips_for_user(
+        request.user,
+        Trip.objects.filter(
+            departure__date__range=(
+                first_day,
+                last_day,
+            )
+        ),
+    ).values_list(
+        "departure__date",
+        flat=True,
+    ).distinct()
+
+    existing_dates = set(
+        existing_trips
+    )
 
     month_days = []
+
     for week in cal:
         week_days = []
+
         for day in week:
+
             if day == 0:
-                week_days.append(None)
+                week_days.append(
+                    None
+                )
+
             else:
-                date_obj = datetime(year, month, day).date()
-                has_trip = date_obj in existing_dates
-                week_days.append({
-                    'day': day,
-                    'date': date_obj,
-                    'has_trip': has_trip,
-                })
-        month_days.append(week_days)
+                date_obj = datetime(
+                    year,
+                    month,
+                    day,
+                ).date()
 
-    if request.method == 'POST':
-        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+                has_trip = (
+                    date_obj
+                    in existing_dates
+                )
 
-        route_id = request.POST.get('route')
-        bus_id = request.POST.get('bus')
-        driver1_id = request.POST.get('driver1') or None
-        driver2_id = request.POST.get('driver2') or None
-        assistant_id = request.POST.get('assistant') or None
-        departure_hour = request.POST.get('departure_hour')
-        start_date_str = request.POST.get('start_date')
-        end_date_str = request.POST.get('end_date')
-        weekdays = request.POST.getlist('weekdays')
-        action = request.POST.get('action', 'create')
+                week_days.append(
+                    {
+                        "day": day,
+                        "date": date_obj,
+                        "has_trip": has_trip,
+                    }
+                )
+
+        month_days.append(
+            week_days
+        )
+
+    # ============================================================
+    # POST
+    # ============================================================
+
+    if request.method == "POST":
+
+        is_ajax = (
+            request.headers.get(
+                "X-Requested-With"
+            )
+            == "XMLHttpRequest"
+        )
+
+        route_id = request.POST.get(
+            "route"
+        )
+
+        bus_id = request.POST.get(
+            "bus"
+        )
+
+        driver1_id = (
+            request.POST.get(
+                "driver1"
+            )
+            or None
+        )
+
+        driver2_id = (
+            request.POST.get(
+                "driver2"
+            )
+            or None
+        )
+
+        assistant_id = (
+            request.POST.get(
+                "assistant"
+            )
+            or None
+        )
+
+        departure_hour = (
+            request.POST.get(
+                "departure_hour"
+            )
+        )
+
+        start_date_str = (
+            request.POST.get(
+                "start_date"
+            )
+        )
+
+        end_date_str = (
+            request.POST.get(
+                "end_date"
+            )
+        )
+
+        weekdays = request.POST.getlist(
+            "weekdays"
+        )
+
+        action = request.POST.get(
+            "action",
+            "create",
+        )
 
         errors = []
 
-        # ============================================================
+        # Objetos que serán validados.
+        route = None
+        bus = None
+        driver1 = None
+        driver2 = None
+        assistant = None
+
+        start_date = None
+        end_date = None
+        selected_weekdays = []
+        hour = None
+        minute = None
+
+        # ========================================================
         # VALIDACIONES BÁSICAS
-        # ============================================================
+        # ========================================================
+
         if not route_id:
-            errors.append("Debe seleccionar una ruta.")
+            errors.append(
+                "Debe seleccionar una ruta."
+            )
+
         if not bus_id:
-            errors.append("Debe seleccionar un bus.")
+            errors.append(
+                "Debe seleccionar un bus."
+            )
+
         if not departure_hour:
-            errors.append("Debe ingresar la hora de salida.")
-        if not start_date_str or not end_date_str:
-            errors.append("Debe ingresar fecha inicio y fecha fin.")
+            errors.append(
+                "Debe ingresar la hora de salida."
+            )
+
+        if (
+            not start_date_str
+            or not end_date_str
+        ):
+            errors.append(
+                "Debe ingresar fecha inicio y fecha fin."
+            )
+
         if not weekdays:
-            errors.append("Debe seleccionar al menos un día de la semana.")
+            errors.append(
+                "Debe seleccionar al menos un día de la semana."
+            )
 
-        # ============================================================
+        # ========================================================
         # VALIDACIONES DE FECHAS Y HORARIO
-        # ============================================================
-        if not errors:
-            try:
-                start_date = parse_date(start_date_str)
-                end_date = parse_date(end_date_str)
-                hour, minute = map(int, departure_hour.split(':'))
-                selected_weekdays = [int(d) for d in weekdays]
+        # ========================================================
 
-                if not start_date or not end_date:
-                    errors.append("Formato de fecha inválido.")
+        if not errors:
+
+            try:
+                start_date = parse_date(
+                    start_date_str
+                )
+
+                end_date = parse_date(
+                    end_date_str
+                )
+
+                hour, minute = map(
+                    int,
+                    departure_hour.split(":"),
+                )
+
+                selected_weekdays = [
+                    int(d)
+                    for d in weekdays
+                ]
+
+                if (
+                    not start_date
+                    or not end_date
+                ):
+                    errors.append(
+                        "Formato de fecha inválido."
+                    )
+
                 elif start_date > end_date:
                     errors.append(
-                        "La fecha de inicio no puede ser posterior a la fecha fin."
+                        "La fecha de inicio no puede ser "
+                        "posterior a la fecha fin."
                     )
 
-                if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                if (
+                    hour < 0
+                    or hour > 23
+                    or minute < 0
+                    or minute > 59
+                ):
                     errors.append(
-                        "La hora de salida debe ser válida (00:00 - 23:59)."
+                        "La hora de salida debe ser válida "
+                        "(00:00 - 23:59)."
                     )
 
-                if any(day < 1 or day > 7 for day in selected_weekdays):
-                    errors.append("Los días de la semana seleccionados no son válidos.")
+                if any(
+                    day < 1 or day > 7
+                    for day in selected_weekdays
+                ):
+                    errors.append(
+                        "Los días de la semana seleccionados "
+                        "no son válidos."
+                    )
 
             except ValueError:
-                errors.append("Formato de fecha u hora inválido.")
+                errors.append(
+                    "Formato de fecha u hora inválido."
+                )
+
             except Exception as e:
-                errors.append(f"Error en datos: {str(e)}")
+                errors.append(
+                    f"Error en datos: {str(e)}"
+                )
 
-        # ============================================================
-        # VALIDACIONES DE NEGOCIO
-        # ============================================================
+        # ========================================================
+        # VALIDACIONES DE NEGOCIO / MULTIEMPRESA
+        # ========================================================
+
         if not errors:
+
             try:
-                route = Route.objects.select_related(
-                    'origin',
-                    'destination',
-                ).get(pk=route_id)
+                # ------------------------------------------------
+                # RUTA
+                # ------------------------------------------------
 
-                bus = Bus.objects.get(pk=bus_id)
+                route = allowed_routes.filter(
+                    pk=route_id
+                ).first()
 
-                driver1 = (
-                    Driver.objects.filter(pk=driver1_id).first()
-                    if driver1_id else None
-                )
-                driver2 = (
-                    Driver.objects.filter(pk=driver2_id).first()
-                    if driver2_id else None
-                )
-
-                if not route.is_active:
-                    errors.append("La ruta seleccionada no está activa.")
-
-                if not bus.is_active:
-                    errors.append("El bus seleccionado no está activo.")
-                else:
-                    operational = _bus_operational_status(bus)
-                    if not operational['can_dispatch']:
-                        errors.append(
-                            f"El bus {bus.plate} está NO OPERATIVO: "
-                            + "; ".join(operational['blockers'])
-                        )
-
-                if route.origin == route.destination:
+                if not route:
                     errors.append(
-                        "El origen y destino de la ruta no pueden ser iguales."
+                        "La ruta seleccionada no pertenece "
+                        "a su empresa o no está activa."
                     )
 
-                if driver1_id and not driver1:
-                    errors.append("El chofer principal seleccionado no existe.")
-                elif driver1 and not driver1.is_active:
-                    errors.append("El chofer principal no está activo.")
+                # ------------------------------------------------
+                # BUS
+                # ------------------------------------------------
 
-                if driver2_id and not driver2:
-                    errors.append("El chofer secundario seleccionado no existe.")
-                elif driver2 and not driver2.is_active:
-                    errors.append("El chofer secundario no está activo.")
+                bus = allowed_buses.filter(
+                    pk=bus_id
+                ).first()
+
+                if not bus:
+                    errors.append(
+                        "El bus seleccionado no pertenece "
+                        "a su empresa o no está activo."
+                    )
+
+                # ------------------------------------------------
+                # CHOFER PRINCIPAL
+                # ------------------------------------------------
+
+                if driver1_id:
+
+                    driver1 = (
+                        allowed_drivers.filter(
+                            pk=driver1_id
+                        ).first()
+                    )
+
+                    if not driver1:
+                        errors.append(
+                            "El chofer principal seleccionado "
+                            "no pertenece a su empresa "
+                            "o no está activo."
+                        )
+
+                # ------------------------------------------------
+                # CHOFER SECUNDARIO
+                # ------------------------------------------------
+
+                if driver2_id:
+
+                    driver2 = (
+                        allowed_drivers.filter(
+                            pk=driver2_id
+                        ).first()
+                    )
+
+                    if not driver2:
+                        errors.append(
+                            "El chofer secundario seleccionado "
+                            "no pertenece a su empresa "
+                            "o no está activo."
+                        )
+
+                # ------------------------------------------------
+                # AUXILIAR
+                # ------------------------------------------------
+
+                if assistant_id:
+
+                    assistant = (
+                        allowed_assistants.filter(
+                            pk=assistant_id
+                        ).first()
+                    )
+
+                    if not assistant:
+                        errors.append(
+                            "El auxiliar seleccionado "
+                            "no pertenece a su empresa "
+                            "o no está activo."
+                        )
+
+                # ------------------------------------------------
+                # EMPRESA RUTA / BUS
+                # ------------------------------------------------
+
+                if route and bus:
+
+                    if (
+                        route.company_id
+                        != bus.company_id
+                    ):
+                        errors.append(
+                            "La ruta y el bus deben pertenecer "
+                            "a la misma empresa."
+                        )
+
+                    if (
+                        route.origin_id
+                        == route.destination_id
+                    ):
+                        errors.append(
+                            "El origen y destino de la ruta "
+                            "no pueden ser iguales."
+                        )
+
+                    operational = (
+                        _bus_operational_status(
+                            bus
+                        )
+                    )
+
+                    if not operational[
+                        "can_dispatch"
+                    ]:
+                        errors.append(
+                            f"El bus {bus.plate} está "
+                            "NO OPERATIVO: "
+                            + "; ".join(
+                                operational[
+                                    "blockers"
+                                ]
+                            )
+                        )
+
+                # ------------------------------------------------
+                # CHOFERES DIFERENTES
+                # ------------------------------------------------
 
                 if (
                     driver1_id
                     and driver2_id
-                    and str(driver1_id) == str(driver2_id)
+                    and str(driver1_id)
+                    == str(driver2_id)
                 ):
                     errors.append(
-                        "El chofer principal y el chofer secundario "
-                        "no pueden ser la misma persona."
+                        "El chofer principal y el chofer "
+                        "secundario no pueden ser "
+                        "la misma persona."
                     )
 
-                if assistant_id:
-                    assistant = Assistant.objects.filter(
-                        pk=assistant_id,
-                        is_active=True,
-                    ).first()
-                    if not assistant:
-                        errors.append(
-                            "El auxiliar seleccionado no existe o no está activo."
-                        )
-
-            except Route.DoesNotExist:
-                errors.append("La ruta seleccionada no existe.")
-            except Bus.DoesNotExist:
-                errors.append("El bus seleccionado no existe.")
             except Exception as e:
-                errors.append(f"Error validando datos: {str(e)}")
+                errors.append(
+                    f"Error validando datos: {str(e)}"
+                )
+
+        # ========================================================
+        # ERRORES
+        # ========================================================
 
         if errors:
-            error_msg = " | ".join(errors)
+
+            error_msg = " | ".join(
+                errors
+            )
 
             if is_ajax:
                 return JsonResponse(
                     {
-                        'success': False,
-                        'error': error_msg,
+                        "success": False,
+                        "error": error_msg,
                     },
                     status=400,
                 )
 
             for err in errors:
-                messages.error(request, err)
+                messages.error(
+                    request,
+                    err,
+                )
 
-            return redirect('coordinator:generate_trips')
+            return redirect(
+                "coordinator:generate_trips"
+            )
 
-        # ============================================================
-        # VISTA PREVIA: analiza la programación sin crear registros
-        # ============================================================
-        if action == 'preview':
+        # ========================================================
+        # VISTA PREVIA
+        # ========================================================
+
+        if action == "preview":
+
             preview_rows = []
+
             preview_stats = {
-                'available': 0,
-                'existing': 0,
-                'bus_conflict': 0,
-                'driver_conflict': 0,
-                'total': 0,
+                "available": 0,
+                "existing": 0,
+                "bus_conflict": 0,
+                "driver_conflict": 0,
+                "total": 0,
             }
 
             current_date = start_date
             delta = timedelta(days=1)
-            total_seats = Seat.objects.filter(bus=bus).count()
+
+            total_seats = Seat.objects.filter(
+                bus=bus
+            ).count()
 
             while current_date <= end_date:
-                if current_date.isoweekday() not in selected_weekdays:
+
+                if (
+                    current_date.isoweekday()
+                    not in selected_weekdays
+                ):
                     current_date += delta
                     continue
 
-                departure_dt = timezone.make_aware(
-                    datetime.combine(
-                        current_date,
-                        datetime.strptime(departure_hour, '%H:%M').time(),
+                departure_dt = (
+                    timezone.make_aware(
+                        datetime.combine(
+                            current_date,
+                            datetime.strptime(
+                                departure_hour,
+                                "%H:%M",
+                            ).time(),
+                        ),
+                        timezone.get_current_timezone(),
                     )
                 )
-                arrival_dt = departure_dt + timedelta(
-                    minutes=route.duration_minutes
+
+                arrival_dt = (
+                    departure_dt
+                    + timedelta(
+                        minutes=(
+                            route.duration_minutes
+                        )
+                    )
                 )
 
-                status = 'available'
-                status_label = 'Disponible'
-                detail = 'Se puede crear'
+                status = "available"
+                status_label = "Disponible"
+                detail = "Se puede crear"
 
-                exact_trip = Trip.objects.filter(
-                    route=route,
-                    bus=bus,
-                    departure__date=current_date,
-                    departure__hour=departure_dt.hour,
-                    departure__minute=departure_dt.minute,
+                # ------------------------------------------------
+                # DUPLICADO EXACTO
+                # ------------------------------------------------
+
+                exact_trip = trips_for_user(
+                    request.user,
+                    Trip.objects.filter(
+                        route=route,
+                        bus=bus,
+                        departure__date=current_date,
+                        departure__hour=(
+                            departure_dt.hour
+                        ),
+                        departure__minute=(
+                            departure_dt.minute
+                        ),
+                    ),
                 ).first()
 
                 if exact_trip:
-                    status = 'existing'
-                    status_label = 'Ya existe'
-                    detail = 'Misma ruta, bus y hora'
-                    preview_stats['existing'] += 1
+
+                    status = "existing"
+                    status_label = "Ya existe"
+                    detail = (
+                        "Misma ruta, bus y hora"
+                    )
+
+                    preview_stats[
+                        "existing"
+                    ] += 1
+
                 else:
-                    bus_conflict = Trip.objects.filter(
-                        bus=bus,
-                        departure__lt=arrival_dt,
-                        arrival__gt=departure_dt,
-                    ).first()
+                    # --------------------------------------------
+                    # CONFLICTO BUS
+                    # --------------------------------------------
+
+                    bus_conflict = (
+                        trips_for_user(
+                            request.user,
+                            Trip.objects.filter(
+                                bus=bus,
+                                departure__lt=arrival_dt,
+                                arrival__gt=departure_dt,
+                            ),
+                        ).first()
+                    )
 
                     if bus_conflict:
-                        status = 'bus_conflict'
-                        status_label = 'Bus ocupado'
-                        detail = (
-                            f'Conflicto con viaje #{bus_conflict.id} '
-                            f'a las {timezone.localtime(bus_conflict.departure).strftime("%H:%M")}'
+
+                        status = "bus_conflict"
+                        status_label = (
+                            "Bus ocupado"
                         )
-                        preview_stats['bus_conflict'] += 1
+
+                        detail = (
+                            f"Conflicto con viaje "
+                            f"#{bus_conflict.id} "
+                            f"a las "
+                            f"{timezone.localtime(bus_conflict.departure).strftime('%H:%M')}"
+                        )
+
+                        preview_stats[
+                            "bus_conflict"
+                        ] += 1
+
                     else:
+                        # ----------------------------------------
+                        # CONFLICTOS DE CHOFERES
+                        # ----------------------------------------
+
                         driver_conflict = None
-                        driver_label = ''
+                        driver_label = ""
 
-                        if driver1_id:
-                            driver_conflict = Trip.objects.filter(
-                                driver1_id=driver1_id,
-                                departure__lt=arrival_dt,
-                                arrival__gt=departure_dt,
-                            ).first()
-                            if driver_conflict:
-                                driver_label = 'Chofer principal ocupado'
+                        if driver1:
 
-                        if not driver_conflict and driver2_id:
-                            driver_conflict = Trip.objects.filter(
-                                driver2_id=driver2_id,
-                                departure__lt=arrival_dt,
-                                arrival__gt=departure_dt,
-                            ).first()
+                            driver_conflict = (
+                                trips_for_user(
+                                    request.user,
+                                    Trip.objects.filter(
+                                        driver1=driver1,
+                                        departure__lt=arrival_dt,
+                                        arrival__gt=departure_dt,
+                                    ),
+                                ).first()
+                            )
+
                             if driver_conflict:
-                                driver_label = 'Chofer secundario ocupado'
+                                driver_label = (
+                                    "Chofer principal ocupado"
+                                )
+
+                        if (
+                            not driver_conflict
+                            and driver2
+                        ):
+
+                            driver_conflict = (
+                                trips_for_user(
+                                    request.user,
+                                    Trip.objects.filter(
+                                        driver2=driver2,
+                                        departure__lt=arrival_dt,
+                                        arrival__gt=departure_dt,
+                                    ),
+                                ).first()
+                            )
+
+                            if driver_conflict:
+                                driver_label = (
+                                    "Chofer secundario ocupado"
+                                )
 
                         if driver_conflict:
-                            status = 'driver_conflict'
-                            status_label = driver_label
-                            detail = (
-                                f'Conflicto con viaje #{driver_conflict.id} '
-                                f'a las {timezone.localtime(driver_conflict.departure).strftime("%H:%M")}'
-                            )
-                            preview_stats['driver_conflict'] += 1
-                        else:
-                            preview_stats['available'] += 1
 
-                preview_stats['total'] += 1
-                preview_rows.append({
-                    'date': current_date.strftime('%d/%m/%Y'),
-                    'date_iso': current_date.isoformat(),
-                    'departure': departure_dt.strftime('%H:%M'),
-                    'arrival': arrival_dt.strftime('%H:%M'),
-                    'status': status,
-                    'status_label': status_label,
-                    'detail': detail,
-                })
+                            status = (
+                                "driver_conflict"
+                            )
+
+                            status_label = (
+                                driver_label
+                            )
+
+                            detail = (
+                                f"Conflicto con viaje "
+                                f"#{driver_conflict.id} "
+                                f"a las "
+                                f"{timezone.localtime(driver_conflict.departure).strftime('%H:%M')}"
+                            )
+
+                            preview_stats[
+                                "driver_conflict"
+                            ] += 1
+
+                        else:
+                            preview_stats[
+                                "available"
+                            ] += 1
+
+                preview_stats[
+                    "total"
+                ] += 1
+
+                preview_rows.append(
+                    {
+                        "date": (
+                            current_date.strftime(
+                                "%d/%m/%Y"
+                            )
+                        ),
+                        "date_iso": (
+                            current_date.isoformat()
+                        ),
+                        "departure": (
+                            departure_dt.strftime(
+                                "%H:%M"
+                            )
+                        ),
+                        "arrival": (
+                            arrival_dt.strftime(
+                                "%H:%M"
+                            )
+                        ),
+                        "status": status,
+                        "status_label": (
+                            status_label
+                        ),
+                        "detail": detail,
+                    }
+                )
 
                 current_date += delta
 
-            return JsonResponse({
-                'success': True,
-                'preview': True,
-                'rows': preview_rows,
-                'stats': preview_stats,
-                'summary': {
-                    'route': str(route),
-                    'bus': f'{bus.plate} - {bus.model or "Sin modelo"}',
-                    'departure_hour': departure_hour,
-                    'start_date': start_date.strftime('%d/%m/%Y'),
-                    'end_date': end_date.strftime('%d/%m/%Y'),
-                    'total_seats': total_seats,
-                },
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "preview": True,
+                    "rows": preview_rows,
+                    "stats": preview_stats,
+                    "summary": {
+                        "route": str(route),
+                        "bus": (
+                            f"{bus.plate} - "
+                            f"{bus.model or 'Sin modelo'}"
+                        ),
+                        "departure_hour": (
+                            departure_hour
+                        ),
+                        "start_date": (
+                            start_date.strftime(
+                                "%d/%m/%Y"
+                            )
+                        ),
+                        "end_date": (
+                            end_date.strftime(
+                                "%d/%m/%Y"
+                            )
+                        ),
+                        "total_seats": (
+                            total_seats
+                        ),
+                    },
+                }
+            )
+
+        # ========================================================
+        # CREACIÓN REAL
+        # ========================================================
 
         created_count = 0
         skipped_count = 0
         conflict_count = 0
+
         current_date = start_date
         delta = timedelta(days=1)
 
         try:
             with transaction.atomic():
-                # Bloqueamos ruta y bus durante la generación para reducir
-                # condiciones de carrera entre dos coordinadores.
-                route = Route.objects.select_for_update().get(pk=route_id)
-                bus = Bus.objects.select_for_update().get(pk=bus_id)
 
-                total_seats = Seat.objects.filter(bus=bus).count()
+                # =================================================
+                # REVALIDAR Y BLOQUEAR RUTA
+                # =================================================
 
-                # Pre-cargar viajes del BUS seleccionado en el rango.
-                # Se utiliza para detectar duplicados exactos sin hacer una
-                # consulta adicional por cada fecha.
-                existing_trips_dict = {}
-
-                trips_in_range = Trip.objects.filter(
-                    bus_id=bus_id,
-                    departure__date__range=(start_date, end_date),
-                ).select_related(
-                    'route',
-                    'bus',
-                    'driver1',
-                    'driver2',
+                locked_routes = routes_for_user(
+                    request.user,
+                    Route.objects.select_for_update()
+                    .select_related(
+                        "origin",
+                        "destination",
+                        "company",
+                    )
+                    .filter(
+                        is_active=True
+                    ),
                 )
 
-                for trip in trips_in_range:
-                    date_key = trip.departure.date()
-                    existing_trips_dict.setdefault(
-                        date_key,
-                        [],
-                    ).append(trip)
+                route = locked_routes.filter(
+                    pk=route_id
+                ).first()
 
-                while current_date <= end_date:
-                    day_of_week = current_date.isoweekday()
+                if not route:
+                    raise ValidationError(
+                        "La ruta seleccionada ya no está "
+                        "disponible para su empresa."
+                    )
 
-                    # Si el día no está marcado en el formulario,
-                    # avanzamos sin realizar ninguna validación adicional.
-                    if day_of_week not in selected_weekdays:
-                        current_date += delta
-                        continue
+                # =================================================
+                # REVALIDAR Y BLOQUEAR BUS
+                # =================================================
 
-                    departure_dt = timezone.make_aware(
-                        datetime.combine(
-                            current_date,
-                            datetime.strptime(
-                                departure_hour,
-                                '%H:%M',
-                            ).time(),
+                locked_buses = buses_for_user(
+                    request.user,
+                    Bus.objects.select_for_update()
+                    .filter(
+                        is_active=True
+                    ),
+                )
+
+                bus = locked_buses.filter(
+                    pk=bus_id
+                ).first()
+
+                if not bus:
+                    raise ValidationError(
+                        "El bus seleccionado ya no está "
+                        "disponible para su empresa."
+                    )
+
+                if (
+                    route.company_id
+                    != bus.company_id
+                ):
+                    raise ValidationError(
+                        "La ruta y el bus deben pertenecer "
+                        "a la misma empresa."
+                    )
+
+                # =================================================
+                # REVALIDAR PERSONAL
+                # =================================================
+
+                driver1 = None
+                driver2 = None
+                assistant = None
+
+                if driver1_id:
+
+                    driver1 = drivers_for_user(
+                        request.user,
+                        Driver.objects.filter(
+                            is_active=True
+                        ),
+                    ).filter(
+                        pk=driver1_id
+                    ).first()
+
+                    if not driver1:
+                        raise ValidationError(
+                            "El chofer principal ya no está "
+                            "disponible para su empresa."
+                        )
+
+                if driver2_id:
+
+                    driver2 = drivers_for_user(
+                        request.user,
+                        Driver.objects.filter(
+                            is_active=True
+                        ),
+                    ).filter(
+                        pk=driver2_id
+                    ).first()
+
+                    if not driver2:
+                        raise ValidationError(
+                            "El chofer secundario ya no está "
+                            "disponible para su empresa."
+                        )
+
+                if assistant_id:
+
+                    assistant = (
+                        assistants_for_user(
+                            request.user,
+                            Assistant.objects.filter(
+                                is_active=True
+                            ),
+                        ).filter(
+                            pk=assistant_id
+                        ).first()
+                    )
+
+                    if not assistant:
+                        raise ValidationError(
+                            "El auxiliar ya no está "
+                            "disponible para su empresa."
+                        )
+
+                if (
+                    driver1
+                    and driver2
+                    and driver1.pk
+                    == driver2.pk
+                ):
+                    raise ValidationError(
+                        "El chofer principal y el chofer "
+                        "secundario no pueden ser "
+                        "la misma persona."
+                    )
+
+                # =================================================
+                # REVALIDAR OPERACIÓN DEL BUS
+                # =================================================
+
+                operational = (
+                    _bus_operational_status(
+                        bus
+                    )
+                )
+
+                if not operational[
+                    "can_dispatch"
+                ]:
+                    raise ValidationError(
+                        f"El bus {bus.plate} está "
+                        "NO OPERATIVO: "
+                        + "; ".join(
+                            operational[
+                                "blockers"
+                            ]
                         )
                     )
 
-                    arrival_dt = departure_dt + timedelta(
-                        minutes=route.duration_minutes
+                # =================================================
+                # TOTAL DE ASIENTOS
+                # =================================================
+
+                total_seats = (
+                    Seat.objects.filter(
+                        bus=bus
+                    ).count()
+                )
+
+                # =================================================
+                # PRECARGAR VIAJES DEL BUS
+                # =================================================
+
+                existing_trips_dict = {}
+
+                trips_in_range = (
+                    trips_for_user(
+                        request.user,
+                        Trip.objects.filter(
+                            bus=bus,
+                            departure__date__range=(
+                                start_date,
+                                end_date,
+                            ),
+                        ),
+                    )
+                    .select_related(
+                        "route",
+                        "bus",
+                        "driver1",
+                        "driver2",
+                    )
+                )
+
+                for trip in trips_in_range:
+
+                    date_key = (
+                        timezone.localtime(
+                            trip.departure
+                        ).date()
+                        if timezone.is_aware(
+                            trip.departure
+                        )
+                        else trip.departure.date()
                     )
 
-                    # ====================================================
-                    # 1. DUPLICADO EXACTO
-                    # ====================================================
-                    # Se considera duplicado sólo si coinciden:
-                    # ruta + bus + fecha + hora de salida.
-                    existing_on_date = existing_trips_dict.get(
-                        current_date,
+                    existing_trips_dict.setdefault(
+                        date_key,
                         [],
+                    ).append(
+                        trip
+                    )
+
+                # =================================================
+                # RECORRER FECHAS
+                # =================================================
+
+                while current_date <= end_date:
+
+                    day_of_week = (
+                        current_date.isoweekday()
+                    )
+
+                    if (
+                        day_of_week
+                        not in selected_weekdays
+                    ):
+                        current_date += delta
+                        continue
+
+                    departure_dt = (
+                        timezone.make_aware(
+                            datetime.combine(
+                                current_date,
+                                datetime.strptime(
+                                    departure_hour,
+                                    "%H:%M",
+                                ).time(),
+                            ),
+                            timezone.get_current_timezone(),
+                        )
+                    )
+
+                    arrival_dt = (
+                        departure_dt
+                        + timedelta(
+                            minutes=(
+                                route.duration_minutes
+                            )
+                        )
+                    )
+
+                    # =============================================
+                    # 1. DUPLICADO EXACTO
+                    # =============================================
+
+                    existing_on_date = (
+                        existing_trips_dict.get(
+                            current_date,
+                            [],
+                        )
                     )
 
                     existing_trip = None
 
                     for trip in existing_on_date:
-                        same_route = trip.route_id == route.id
-                        same_bus = trip.bus_id == bus.id
+
+                        same_route = (
+                            trip.route_id
+                            == route.id
+                        )
+
+                        same_bus = (
+                            trip.bus_id
+                            == bus.id
+                        )
+
+                        trip_departure = (
+                            timezone.localtime(
+                                trip.departure
+                            )
+                            if timezone.is_aware(
+                                trip.departure
+                            )
+                            else trip.departure
+                        )
+
                         same_departure_time = (
-                            trip.departure.hour == departure_dt.hour
-                            and trip.departure.minute == departure_dt.minute
+                            trip_departure.hour
+                            == departure_dt.hour
+                            and
+                            trip_departure.minute
+                            == departure_dt.minute
                         )
 
                         if (
@@ -3022,67 +5340,92 @@ def generate_trips(request):
                             break
 
                     if existing_trip:
+
                         skipped_count += 1
                         current_date += delta
                         continue
 
-                    # ====================================================
+                    # =============================================
                     # 2. CONFLICTO DE BUS
-                    # ====================================================
-                    bus_conflict = Trip.objects.filter(
-                        bus=bus,
-                        departure__lt=arrival_dt,
-                        arrival__gt=departure_dt,
-                    ).exists()
+                    # =============================================
+
+                    bus_conflict = (
+                        trips_for_user(
+                            request.user,
+                            Trip.objects.filter(
+                                bus=bus,
+                                departure__lt=arrival_dt,
+                                arrival__gt=departure_dt,
+                            ),
+                        ).exists()
+                    )
 
                     if bus_conflict:
+
                         conflict_count += 1
                         current_date += delta
                         continue
 
-                    # ====================================================
+                    # =============================================
                     # 3. CONFLICTO CHOFER PRINCIPAL
-                    # ====================================================
+                    # =============================================
+
                     driver1_conflict = False
 
-                    if driver1_id:
-                        driver1_conflict = Trip.objects.filter(
-                            driver1_id=driver1_id,
-                            departure__lt=arrival_dt,
-                            arrival__gt=departure_dt,
-                        ).exists()
+                    if driver1:
+
+                        driver1_conflict = (
+                            trips_for_user(
+                                request.user,
+                                Trip.objects.filter(
+                                    driver1=driver1,
+                                    departure__lt=arrival_dt,
+                                    arrival__gt=departure_dt,
+                                ),
+                            ).exists()
+                        )
 
                     if driver1_conflict:
+
                         conflict_count += 1
                         current_date += delta
                         continue
 
-                    # ====================================================
+                    # =============================================
                     # 4. CONFLICTO CHOFER SECUNDARIO
-                    # ====================================================
+                    # =============================================
+
                     driver2_conflict = False
 
-                    if driver2_id:
-                        driver2_conflict = Trip.objects.filter(
-                            driver2_id=driver2_id,
-                            departure__lt=arrival_dt,
-                            arrival__gt=departure_dt,
-                        ).exists()
+                    if driver2:
+
+                        driver2_conflict = (
+                            trips_for_user(
+                                request.user,
+                                Trip.objects.filter(
+                                    driver2=driver2,
+                                    departure__lt=arrival_dt,
+                                    arrival__gt=departure_dt,
+                                ),
+                            ).exists()
+                        )
 
                     if driver2_conflict:
+
                         conflict_count += 1
                         current_date += delta
                         continue
 
-                    # ====================================================
+                    # =============================================
                     # 5. CREAR VIAJE
-                    # ====================================================
+                    # =============================================
+
                     new_trip = Trip.objects.create(
                         route=route,
                         bus=bus,
-                        driver1_id=driver1_id,
-                        driver2_id=driver2_id,
-                        assistant_id=assistant_id,
+                        driver1=driver1,
+                        driver2=driver2,
+                        assistant=assistant,
                         departure=departure_dt,
                         arrival=arrival_dt,
                         seats_total=total_seats,
@@ -3090,19 +5433,19 @@ def generate_trips(request):
 
                     created_count += 1
 
-                    # Agregar el nuevo viaje al diccionario local.
-                    # Esto permite detectar duplicados dentro de la misma
-                    # ejecución sin volver a consultar la base.
                     existing_trips_dict.setdefault(
                         current_date,
                         [],
-                    ).append(new_trip)
+                    ).append(
+                        new_trip
+                    )
 
                     current_date += delta
 
-            # ============================================================
+            # ====================================================
             # MENSAJE DE RESULTADO
-            # ============================================================
+            # ====================================================
+
             message_parts = []
 
             if created_count > 0:
@@ -3112,46 +5455,87 @@ def generate_trips(request):
 
             if skipped_count > 0:
                 message_parts.append(
-                    f"⏭️ {skipped_count} omitidos (ya existían)"
+                    f"⏭️ {skipped_count} omitidos "
+                    "(ya existían)"
                 )
 
             if conflict_count > 0:
                 message_parts.append(
-                    f"⚠️ {conflict_count} con conflictos de horario "
-                    "(no creados)"
+                    f"⚠️ {conflict_count} con conflictos "
+                    "de horario (no creados)"
                 )
 
             if not message_parts:
                 message_parts.append(
-                    "No se crearon viajes. Verifica los parámetros."
+                    "No se crearon viajes. "
+                    "Verifica los parámetros."
                 )
 
-            message = " | ".join(message_parts)
+            message = " | ".join(
+                message_parts
+            )
 
-            if is_ajax:
-                return JsonResponse({
-                    'success': True,
-                    'message': message,
-                    'stats': {
-                        'created': created_count,
-                        'skipped': skipped_count,
-                        'conflicts': conflict_count,
-                    },
-                })
-
-            if created_count > 0:
-                messages.success(request, message)
-            else:
-                messages.warning(request, message)
-
-            return redirect('coordinator:trips_dashboard')
-
-        except Exception as e:
             if is_ajax:
                 return JsonResponse(
                     {
-                        'success': False,
-                        'error': str(e),
+                        "success": True,
+                        "message": message,
+                        "stats": {
+                            "created": (
+                                created_count
+                            ),
+                            "skipped": (
+                                skipped_count
+                            ),
+                            "conflicts": (
+                                conflict_count
+                            ),
+                        },
+                    }
+                )
+
+            if created_count > 0:
+                messages.success(
+                    request,
+                    message,
+                )
+            else:
+                messages.warning(
+                    request,
+                    message,
+                )
+
+            return redirect(
+                "coordinator:trips_dashboard"
+            )
+
+        except ValidationError as e:
+
+            if is_ajax:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": str(e),
+                    },
+                    status=400,
+                )
+
+            messages.error(
+                request,
+                str(e),
+            )
+
+            return redirect(
+                "coordinator:generate_trips"
+            )
+
+        except Exception as e:
+
+            if is_ajax:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": str(e),
                     },
                     status=500,
                 )
@@ -3160,106 +5544,232 @@ def generate_trips(request):
                 request,
                 f"Error al generar viajes: {str(e)}",
             )
-            return redirect('coordinator:generate_trips')
 
-    routes = Route.objects.select_related(
-        'origin',
-        'destination',
-    ).filter(is_active=True)
+            return redirect(
+                "coordinator:generate_trips"
+            )
+
+    # ============================================================
+    # DATOS DEL FORMULARIO
+    # ============================================================
+
+    routes = allowed_routes.order_by(
+        "origin__name",
+        "destination__name",
+    )
 
     buses = _prepare_bus_dispatch_options(
-
-        Bus.objects.filter(is_active=True)
-
+        allowed_buses.order_by(
+            "plate"
+        )
     )
-    drivers = Driver.objects.filter(is_active=True)
-    assistants = Assistant.objects.filter(is_active=True)
+
+    drivers = allowed_drivers.order_by(
+        "full_name"
+    )
+
+    assistants = (
+        allowed_assistants.order_by(
+            "full_name"
+        )
+    )
 
     context = {
-        'routes': routes,
-        'buses': buses,
-        'drivers': drivers,
-        'assistants': assistants,
-        'year': year,
-        'month': month,
-        'month_days': month_days,
-        'first_day': first_day,
-        'last_day': last_day,
-        'today': today,
-        'existing_dates': existing_dates,
-        'weekday_choices': [
-            (1, 'Lunes'),
-            (2, 'Martes'),
-            (3, 'Miércoles'),
-            (4, 'Jueves'),
-            (5, 'Viernes'),
-            (6, 'Sábado'),
-            (7, 'Domingo'),
+        "routes": routes,
+        "buses": buses,
+        "drivers": drivers,
+        "assistants": assistants,
+        "year": year,
+        "month": month,
+        "month_days": month_days,
+        "first_day": first_day,
+        "last_day": last_day,
+        "today": today,
+        "existing_dates": existing_dates,
+        "weekday_choices": [
+            (1, "Lunes"),
+            (2, "Martes"),
+            (3, "Miércoles"),
+            (4, "Jueves"),
+            (5, "Viernes"),
+            (6, "Sábado"),
+            (7, "Domingo"),
         ],
     }
 
     return render(
         request,
-        'coordinator/generate_trips.html',
+        "coordinator/generate_trips.html",
         context,
     )
+    
 
 
 @login_required
 @coordinator_required
 def api_trips_calendar(request):
     """
-    Endpoint para FullCalendar: devuelve viajes en el rango de fechas.
+    Endpoint para FullCalendar.
+
+    MULTIEMPRESA:
+    - Devuelve únicamente viajes accesibles para la empresa del usuario.
+    - Un coordinador CEJER no verá viajes de La Porteña.
+    - Un coordinador de otra empresa futura verá solo los suyos.
     """
-    start_str = request.GET.get('start')
-    end_str = request.GET.get('end')
+
+    start_str = request.GET.get("start")
+    end_str = request.GET.get("end")
+
     if not start_str or not end_str:
         return JsonResponse([], safe=False)
 
     try:
-        start = timezone.make_aware(datetime.fromisoformat(start_str.replace('Z', '+00:00')))
-        end = timezone.make_aware(datetime.fromisoformat(end_str.replace('Z', '+00:00')))
+        start = timezone.make_aware(
+            datetime.fromisoformat(
+                start_str.replace("Z", "+00:00")
+            )
+        )
+
+        end = timezone.make_aware(
+            datetime.fromisoformat(
+                end_str.replace("Z", "+00:00")
+            )
+        )
+
     except Exception:
         return JsonResponse([], safe=False)
 
-    trips = Trip.objects.filter(departure__range=(start, end)).select_related(
-        'route__origin', 'route__destination', 'bus'
+    # ============================================================
+    # VIAJES FILTRADOS POR EMPRESA / ALCANCE
+    # ============================================================
+    trips = trips_for_user(
+        request.user,
+        Trip.objects.filter(
+            departure__range=(start, end)
+        ).select_related(
+            "route__origin",
+            "route__destination",
+            "bus",
+        ),
     ).annotate(
-        has_tickets=Exists(Ticket.objects.filter(trip=OuterRef('pk')))
+        has_tickets=Exists(
+            Ticket.objects.filter(
+                trip=OuterRef("pk")
+            )
+        )
     )
 
     events = []
+
     for trip in trips:
-        events.append({
-            'id': trip.id,
-            'title': f"{trip.route.origin.name} → {trip.route.destination.name}",
-            'start': trip.departure.isoformat(),
-            'end': trip.arrival.isoformat() if trip.arrival else None,
-            'extendedProps': {
-                'id': trip.id,
-                'route': str(trip.route),
-                'bus': trip.bus.plate,
-                'departure_date': trip.departure.strftime('%Y-%m-%d'),
-                'departure_time': trip.departure.strftime('%H:%M'),
-                'has_tickets': trip.has_tickets,
+        events.append(
+            {
+                "id": trip.id,
+                "title": (
+                    f"{trip.route.origin.name} "
+                    f"→ {trip.route.destination.name}"
+                ),
+                "start": trip.departure.isoformat(),
+                "end": (
+                    trip.arrival.isoformat()
+                    if trip.arrival
+                    else None
+                ),
+                "extendedProps": {
+                    "id": trip.id,
+                    "route": str(trip.route),
+                    "bus": trip.bus.plate,
+                    "departure_date": (
+                        trip.departure.strftime(
+                            "%Y-%m-%d"
+                        )
+                    ),
+                    "departure_time": (
+                        trip.departure.strftime(
+                            "%H:%M"
+                        )
+                    ),
+                    "has_tickets": (
+                        trip.has_tickets
+                    ),
+                },
             }
-        })
-    return JsonResponse(events, safe=False)
+        )
+
+    return JsonResponse(
+        events,
+        safe=False,
+    )
 
 
 @login_required
 @coordinator_required
 @require_POST
 def delete_trip_by_date(request):
-    """Elimina un viaje específico (usado desde el calendario)."""
-    trip_id = request.POST.get('trip_id')
+    """
+    Elimina un viaje específico desde el calendario.
+
+    MULTIEMPRESA:
+    - Solo permite eliminar viajes accesibles para la empresa del usuario.
+    - Impide borrar un viaje de otra empresa manipulando trip_id.
+    - Mantiene la protección existente de tickets vendidos.
+    """
+
+    trip_id = request.POST.get("trip_id")
+
     if not trip_id:
-        return JsonResponse({'success': False, 'error': 'ID de viaje no proporcionado'})
-    trip = get_object_or_404(Trip, pk=trip_id)
-    if Ticket.objects.filter(trip=trip).exists():
-        return JsonResponse({'success': False, 'error': 'El viaje tiene tickets vendidos, no se puede eliminar.'})
+        return JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    "ID de viaje no proporcionado"
+                ),
+            },
+            status=400,
+        )
+
+    # ============================================================
+    # BUSCAR SOLO ENTRE VIAJES PERMITIDOS
+    # ============================================================
+    trip = get_object_or_404(
+        trips_for_user(
+            request.user,
+            Trip.objects.select_related(
+                "route",
+                "bus",
+            ),
+        ),
+        pk=trip_id,
+    )
+
+    # ============================================================
+    # NO ELIMINAR SI YA TIENE TICKETS
+    # ============================================================
+    if Ticket.objects.filter(
+        trip=trip
+    ).exists():
+
+        return JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    "El viaje tiene tickets vendidos, "
+                    "no se puede eliminar."
+                ),
+            },
+            status=400,
+        )
+
     trip.delete()
-    return JsonResponse({'success': True, 'message': 'Viaje eliminado correctamente.'})
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": (
+                "Viaje eliminado correctamente."
+            ),
+        }
+    )
 
 
 # ============================================================================
@@ -3410,98 +5920,429 @@ def terminals_dashboard(request):
 # GESTIÓN DE RUTAS
 # ============================================================================
 
-@login_required
 @coordinator_required
 def route_list(request):
-    routes = Route.objects.select_related("origin", "destination", "origin_terminal", "destination_terminal").all()
-    return render(request, "coordinator/route_list.html", {"routes": routes})
+    """
+    Lista de rutas visible para el usuario según su empresa.
+    """
+
+    routes = routes_for_user(
+        request.user,
+        Route.objects.select_related(
+            "origin",
+            "destination",
+            "origin_terminal",
+            "destination_terminal",
+            "company",
+        ),
+    )
+
+    return render(
+        request,
+        "coordinator/route_list.html",
+        {
+            "routes": routes,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def route_create_edit(request, route_id=None):
-    route = get_object_or_404(Route, pk=route_id) if route_id else Route()
+    """
+    Crear o editar una ruta.
+
+    MULTIEMPRESA:
+    - Al crear, asigna automáticamente la empresa del usuario.
+    - Al editar, solo permite acceder a rutas de su empresa.
+    - Impide editar rutas de otra empresa manipulando la URL.
+    """
+
+    scope = get_user_scope(request.user)
+
+    # ============================================================
+    # RUTA A EDITAR
+    # ============================================================
+    if route_id:
+        route = get_object_or_404(
+            routes_for_user(
+                request.user,
+                Route.objects.select_related(
+                    "origin",
+                    "destination",
+                    "origin_terminal",
+                    "destination_terminal",
+                    "company",
+                ),
+            ),
+            pk=route_id,
+        )
+    else:
+        route = Route()
+
+        # Solo usuarios con empresa pueden crear rutas normales.
+        if scope["type"] != "superuser":
+            if not scope["company"]:
+                raise PermissionDenied(
+                    "Su usuario no tiene una empresa asociada."
+                )
+
+            route.company = scope["company"]
+
+    # ============================================================
+    # POST
+    # ============================================================
     if request.method == "POST":
-        route.origin_id = request.POST.get("origin")
-        route.destination_id = request.POST.get("destination")
-        route.origin_terminal_id = request.POST.get("origin_terminal") or None
-        route.destination_terminal_id = request.POST.get("destination_terminal") or None
-        route.duration_minutes = int(request.POST.get("duration_minutes", 120))
-        route.base_price = Decimal(request.POST.get("base_price", 0))
-        route.save()
-        messages.success(request, f"Ruta {route} guardada.")
-        return redirect("coordinator:route_list")
-    cities = City.objects.all()
-    terminals = Terminal.objects.all()
-    return render(request, "coordinator/route_form.html", {
-        "route": route,
-        "cities": cities,
-        "terminals": terminals
-    })
+        try:
+            route.origin_id = request.POST.get("origin")
+            route.destination_id = request.POST.get("destination")
+
+            route.origin_terminal_id = (
+                request.POST.get("origin_terminal")
+                or None
+            )
+
+            route.destination_terminal_id = (
+                request.POST.get("destination_terminal")
+                or None
+            )
+
+            route.duration_minutes = int(
+                request.POST.get(
+                    "duration_minutes",
+                    120,
+                )
+            )
+
+            route.base_price = Decimal(
+                request.POST.get(
+                    "base_price",
+                    0,
+                )
+            )
+
+            # ====================================================
+            # EMPRESA
+            # ====================================================
+            if scope["type"] != "superuser":
+                route.company = scope["company"]
+
+            elif not route.company_id:
+                raise ValidationError(
+                    "Debe asignar una empresa a la ruta."
+                )
+
+            # ====================================================
+            # VALIDACIONES BÁSICAS
+            # ====================================================
+            if not route.origin_id:
+                raise ValidationError(
+                    "Debe seleccionar una ciudad de origen."
+                )
+
+            if not route.destination_id:
+                raise ValidationError(
+                    "Debe seleccionar una ciudad de destino."
+                )
+
+            if route.origin_id == route.destination_id:
+                raise ValidationError(
+                    "El origen y el destino no pueden ser iguales."
+                )
+
+            route.save()
+
+            messages.success(
+                request,
+                f"Ruta {route} guardada.",
+            )
+
+            return redirect(
+                "coordinator:route_list"
+            )
+
+        except (ValueError, TypeError):
+            messages.error(
+                request,
+                "Los datos ingresados no son válidos.",
+            )
+
+        except ValidationError as e:
+            messages.error(
+                request,
+                str(e),
+            )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"Error al guardar la ruta: {str(e)}",
+            )
+
+    cities = City.objects.all().order_by(
+        "name"
+    )
+
+    terminals = Terminal.objects.select_related(
+        "city"
+    ).filter(
+        is_active=True
+    ).order_by(
+        "city__name",
+        "name",
+    )
+
+    return render(
+        request,
+        "coordinator/route_form.html",
+        {
+            "route": route,
+            "cities": cities,
+            "terminals": terminals,
+        },
+    )
+    
 
 
 @login_required
 @coordinator_required
 def route_delete(request, route_id):
-    route = get_object_or_404(Route, pk=route_id)
-    route.delete()
-    messages.success(request, "Ruta eliminada.")
-    return redirect("coordinator:route_list")
+    """
+    Elimina una ruta únicamente si pertenece al alcance del usuario.
+    """
+
+    route = get_object_or_404(
+        routes_for_user(
+            request.user,
+            Route.objects.all(),
+        ),
+        pk=route_id,
+    )
+
+    try:
+        route.delete()
+
+        messages.success(
+            request,
+            "Ruta eliminada.",
+        )
+
+    except Exception as e:
+        messages.error(
+            request,
+            f"No se pudo eliminar la ruta: {str(e)}",
+        )
+
+    return redirect(
+        "coordinator:route_list"
+    )
+
 
 
 @login_required
 @coordinator_required
 def routes_dashboard(request):
-    route_to_edit = None
-    edit_id = request.GET.get('edit')
-    if edit_id:
-        route_to_edit = get_object_or_404(Route, pk=edit_id)
+    """
+    Dashboard de rutas.
 
-    if request.method == 'POST':
+    MULTIEMPRESA:
+    - Lista únicamente rutas de la empresa del usuario.
+    - Solo permite editar rutas de la empresa.
+    - Las rutas nuevas quedan asociadas automáticamente a la empresa.
+    """
+
+    scope = get_user_scope(request.user)
+
+    # ============================================================
+    # RUTA EN EDICIÓN
+    # ============================================================
+    route_to_edit = None
+
+    edit_id = request.GET.get("edit")
+
+    if edit_id:
+        route_to_edit = get_object_or_404(
+            routes_for_user(
+                request.user,
+                Route.objects.select_related(
+                    "origin",
+                    "destination",
+                    "company",
+                ),
+            ),
+            pk=edit_id,
+        )
+
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
+
         if route_to_edit:
-            form = RouteForm(request.POST, instance=route_to_edit)
-            formset = RouteStopFormSet(request.POST, instance=route_to_edit)
+            form = RouteForm(
+                request.POST,
+                instance=route_to_edit,
+            )
+
+            formset = RouteStopFormSet(
+                request.POST,
+                instance=route_to_edit,
+            )
+
         else:
-            form = RouteForm(request.POST)
-            formset = RouteStopFormSet(request.POST)
+            form = RouteForm(
+                request.POST
+            )
+
+            formset = RouteStopFormSet(
+                request.POST
+            )
 
         if form.is_valid() and formset.is_valid():
-            route = form.save()
+
+            # Guardamos primero sin commit para asignar empresa.
+            route = form.save(
+                commit=False
+            )
+
+            # ====================================================
+            # EMPRESA
+            # ====================================================
+            if scope["type"] != "superuser":
+
+                if not scope["company"]:
+                    messages.error(
+                        request,
+                        "Su usuario no tiene una empresa asociada.",
+                    )
+
+                    return redirect(
+                        "coordinator:routes_dashboard"
+                    )
+
+                route.company = scope["company"]
+
+            elif not route.company_id:
+                messages.error(
+                    request,
+                    "La ruta debe tener una empresa asociada.",
+                )
+
+                return redirect(
+                    "coordinator:routes_dashboard"
+                )
+
+            route.save()
+
+            form.save_m2m()
+
             formset.instance = route
             formset.save()
-            messages.success(request, f'Ruta {route} guardada correctamente.')
-            return redirect('coordinator:routes_dashboard')
+
+            messages.success(
+                request,
+                f"Ruta {route} guardada correctamente.",
+            )
+
+            return redirect(
+                "coordinator:routes_dashboard"
+            )
+
         else:
-            messages.error(request, 'Por favor corrige los errores del formulario.')
+            messages.error(
+                request,
+                "Por favor corrige los errores del formulario.",
+            )
+
+    # ============================================================
+    # GET
+    # ============================================================
     else:
+
         if route_to_edit:
-            form = RouteForm(instance=route_to_edit)
-            formset = RouteStopFormSet(instance=route_to_edit)
+            form = RouteForm(
+                instance=route_to_edit
+            )
+
+            formset = RouteStopFormSet(
+                instance=route_to_edit
+            )
+
         else:
             form = RouteForm()
             formset = RouteStopFormSet()
 
-    query = request.GET.get('q', '').strip()
-    routes_list = Route.objects.select_related('origin', 'destination').all().order_by('origin__name', 'destination__name')
+    # ============================================================
+    # LISTADO
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    routes_list = routes_for_user(
+        request.user,
+        Route.objects.select_related(
+            "origin",
+            "destination",
+            "origin_terminal",
+            "destination_terminal",
+            "company",
+        ),
+    ).order_by(
+        "origin__name",
+        "destination__name",
+    )
+
     if query:
         routes_list = routes_list.filter(
-            Q(origin__name__icontains=query) | Q(destination__name__icontains=query)
+            Q(
+                origin__name__icontains=query
+            )
+            |
+            Q(
+                destination__name__icontains=query
+            )
         )
 
-    paginator = Paginator(routes_list, 10)
-    routes_page = paginator.get_page(request.GET.get('page'))
+    paginator = Paginator(
+        routes_list,
+        10,
+    )
+
+    routes_page = paginator.get_page(
+        request.GET.get("page")
+    )
 
     context = {
-        'form': form,
-        'formset': formset,
-        'routes': routes_page,
-        'query': query,
-        'edit_mode': bool(route_to_edit),
-        'route_edit_id': route_to_edit.id if route_to_edit else None,
-        'cities': City.objects.all(),
-        'terminals': Terminal.objects.all(),
+        "form": form,
+        "formset": formset,
+        "routes": routes_page,
+        "query": query,
+        "edit_mode": bool(route_to_edit),
+        "route_edit_id": (
+            route_to_edit.id
+            if route_to_edit
+            else None
+        ),
+        "cities": City.objects.all().order_by(
+            "name"
+        ),
+        "terminals": Terminal.objects.select_related(
+            "city"
+        ).filter(
+            is_active=True
+        ).order_by(
+            "city__name",
+            "name",
+        ),
     }
-    return render(request, 'rutas/rutas.html', context)
+
+    return render(
+        request,
+        "rutas/rutas.html",
+        context,
+    )
 
 
 # ============================================================================
@@ -3584,42 +6425,205 @@ def _sync_driver_documents(driver):
 @login_required
 @coordinator_required
 def driver_list(request):
-    drivers = Driver.objects.all().order_by("full_name")
-    return render(request, "coordinator/driver_list.html", {"drivers": drivers})
+    """
+    Lista de choferes según la empresa del usuario.
+    """
+
+    drivers = drivers_for_user(
+        request.user,
+        Driver.objects.all(),
+    ).order_by("full_name")
+
+    return render(
+        request,
+        "coordinator/driver_list.html",
+        {
+            "drivers": drivers,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def driver_create_edit(request, driver_id=None):
-    driver = get_object_or_404(Driver, pk=driver_id) if driver_id else Driver()
+    """
+    Crear o editar chofer.
+
+    MULTIEMPRESA:
+    - Solo permite editar choferes accesibles para el usuario.
+    - Los choferes nuevos quedan asociados automáticamente
+      a la empresa del coordinador.
+    """
+
+    scope = get_user_scope(request.user)
+
+    # ============================================================
+    # CHOFER A EDITAR
+    # ============================================================
+    if driver_id:
+        driver = get_object_or_404(
+            drivers_for_user(
+                request.user,
+                Driver.objects.all(),
+            ),
+            pk=driver_id,
+        )
+    else:
+        driver = Driver()
+
+        if scope["type"] != "superuser":
+            if not scope["company"]:
+                raise PermissionDenied(
+                    "Su usuario no tiene una empresa asociada."
+                )
+
+            driver.company = scope["company"]
+
+    # ============================================================
+    # POST
+    # ============================================================
     if request.method == "POST":
-        driver.license_expiry = request.POST.get('license_expiry') or None
-        driver.medical_cert_expiry = request.POST.get('medical_cert_expiry') or None
-        driver.background_check_expiry = request.POST.get('background_check_expiry') or None
-        driver.notes = request.POST.get('notes', '')
-        driver.full_name = request.POST.get("full_name")
-        driver.rut = request.POST.get("rut")
-        driver.email = request.POST.get("email", "")
-        driver.phone = request.POST.get("phone", "")
-        driver.license_number = request.POST.get("license_number", "")
-        driver.is_active = "is_active" in request.POST
-        if 'photo' in request.FILES:
-            driver.photo = request.FILES['photo']
-        with transaction.atomic():
-            driver.save()
-            _sync_driver_documents(driver)
-        messages.success(request, f"Chofer {driver.full_name} guardado.")
-        return redirect("coordinator:driver_list")
-    return render(request, "coordinator/driver_form.html", {"driver": driver})
+
+        driver.license_expiry = (
+            request.POST.get("license_expiry")
+            or None
+        )
+
+        driver.medical_cert_expiry = (
+            request.POST.get("medical_cert_expiry")
+            or None
+        )
+
+        driver.background_check_expiry = (
+            request.POST.get("background_check_expiry")
+            or None
+        )
+
+        driver.notes = request.POST.get(
+            "notes",
+            "",
+        )
+
+        driver.full_name = request.POST.get(
+            "full_name"
+        )
+
+        driver.rut = request.POST.get(
+            "rut"
+        )
+
+        driver.email = request.POST.get(
+            "email",
+            "",
+        )
+
+        driver.phone = request.POST.get(
+            "phone",
+            "",
+        )
+
+        driver.license_number = request.POST.get(
+            "license_number",
+            "",
+        )
+
+        driver.is_active = (
+            "is_active" in request.POST
+        )
+
+        if "photo" in request.FILES:
+            driver.photo = request.FILES[
+                "photo"
+            ]
+
+        # ========================================================
+        # EMPRESA
+        # ========================================================
+        if scope["type"] != "superuser":
+
+            if not scope["company"]:
+                raise PermissionDenied(
+                    "Su usuario no tiene una empresa asociada."
+                )
+
+            driver.company = scope["company"]
+
+        elif not driver.company_id:
+            messages.error(
+                request,
+                "Debe asignar una empresa al chofer.",
+            )
+
+            return render(
+                request,
+                "coordinator/driver_form.html",
+                {
+                    "driver": driver,
+                },
+            )
+
+        try:
+            with transaction.atomic():
+                driver.save()
+                _sync_driver_documents(driver)
+
+            messages.success(
+                request,
+                f"Chofer {driver.full_name} guardado.",
+            )
+
+            return redirect(
+                "coordinator:driver_list"
+            )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"No fue posible guardar el chofer: {str(e)}",
+            )
+
+    return render(
+        request,
+        "coordinator/driver_form.html",
+        {
+            "driver": driver,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def driver_delete(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    driver.delete()
-    messages.success(request, "Chofer eliminado.")
-    return redirect("coordinator:driver_list")
+    """
+    Elimina únicamente choferes accesibles para la empresa.
+    """
+
+    driver = get_object_or_404(
+        drivers_for_user(
+            request.user,
+            Driver.objects.all(),
+        ),
+        pk=driver_id,
+    )
+
+    try:
+        driver.delete()
+
+        messages.success(
+            request,
+            "Chofer eliminado.",
+        )
+
+    except Exception as e:
+        messages.error(
+            request,
+            f"No se pudo eliminar el chofer: {str(e)}",
+        )
+
+    return redirect(
+        "coordinator:driver_list"
+    )
+
 
 
 @login_required
@@ -3627,16 +6631,39 @@ def driver_delete(request, driver_id):
 def drivers_dashboard(request):
     """
     Alta/edición de choferes.
-    Las fechas operacionales se sincronizan con DriverDocument para que
-    alimenten automáticamente el centro de alertas y el dashboard.
+
+    MULTIEMPRESA:
+    - Lista únicamente choferes de la empresa.
+    - Solo permite editar choferes de la empresa.
+    - Los nuevos choferes quedan asociados a la empresa.
+    - Las fechas operacionales se sincronizan con DriverDocument.
     """
+
+    scope = get_user_scope(request.user)
+
     driver_to_edit = None
-    edit_id = request.GET.get('edit')
 
+    edit_id = request.GET.get(
+        "edit"
+    )
+
+    # ============================================================
+    # CHOFER EN EDICIÓN
+    # ============================================================
     if edit_id:
-        driver_to_edit = get_object_or_404(Driver, pk=edit_id)
+        driver_to_edit = get_object_or_404(
+            drivers_for_user(
+                request.user,
+                Driver.objects.all(),
+            ),
+            pk=edit_id,
+        )
 
-    if request.method == 'POST':
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
+
         form = (
             DriverForm(
                 request.POST,
@@ -3644,59 +6671,131 @@ def drivers_dashboard(request):
                 instance=driver_to_edit,
             )
             if driver_to_edit
-            else DriverForm(request.POST, request.FILES)
+            else DriverForm(
+                request.POST,
+                request.FILES,
+            )
         )
 
         if form.is_valid():
+
             try:
                 with transaction.atomic():
-                    driver = form.save()
-                    _sync_driver_documents(driver)
+
+                    # --------------------------------------------
+                    # No guardamos todavía.
+                    # Primero asignamos empresa.
+                    # --------------------------------------------
+                    driver = form.save(
+                        commit=False
+                    )
+
+                    if scope["type"] != "superuser":
+
+                        if not scope["company"]:
+                            raise PermissionDenied(
+                                "Su usuario no tiene una empresa asociada."
+                            )
+
+                        driver.company = scope[
+                            "company"
+                        ]
+
+                    elif not driver.company_id:
+                        raise ValidationError(
+                            "Debe asignar una empresa al chofer."
+                        )
+
+                    driver.save()
+
+                    # En caso de que el ModelForm tenga M2M
+                    form.save_m2m()
+
+                    _sync_driver_documents(
+                        driver
+                    )
 
                 messages.success(
                     request,
-                    f'Chofer {driver.full_name} guardado y documentos sincronizados.'
+                    (
+                        f"Chofer {driver.full_name} guardado "
+                        "y documentos sincronizados."
+                    ),
                 )
-                return redirect('coordinator:drivers_dashboard')
+
+                return redirect(
+                    "coordinator:drivers_dashboard"
+                )
 
             except Exception as e:
                 messages.error(
                     request,
-                    f'No fue posible guardar el chofer: {str(e)}'
+                    f"No fue posible guardar el chofer: {str(e)}",
                 )
+
         else:
             messages.error(
                 request,
-                'Por favor corrige los errores del formulario.'
+                "Por favor corrige los errores del formulario.",
             )
+
+    # ============================================================
+    # GET
+    # ============================================================
     else:
+
         form = (
-            DriverForm(instance=driver_to_edit)
+            DriverForm(
+                instance=driver_to_edit
+            )
             if driver_to_edit
             else DriverForm()
         )
 
-    query = request.GET.get('q', '').strip()
-    drivers_list = Driver.objects.all().order_by(
-        '-is_active',
-        'full_name',
+    # ============================================================
+    # LISTADO MULTIEMPRESA
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    drivers_list = drivers_for_user(
+        request.user,
+        Driver.objects.all(),
+    ).order_by(
+        "-is_active",
+        "full_name",
     )
 
     if query:
         drivers_list = drivers_list.filter(
-            Q(full_name__icontains=query)
-            | Q(rut__icontains=query)
+            Q(
+                full_name__icontains=query
+            )
+            |
+            Q(
+                rut__icontains=query
+            )
         )
 
-    paginator = Paginator(drivers_list, 10)
-    drivers_page = paginator.get_page(request.GET.get('page'))
+    paginator = Paginator(
+        drivers_list,
+        10,
+    )
+
+    drivers_page = paginator.get_page(
+        request.GET.get("page")
+    )
 
     context = {
-        'form': form,
-        'drivers': drivers_page,
-        'query': query,
-        'edit_mode': bool(driver_to_edit),
-        'driver_edit_id': (
+        "form": form,
+        "drivers": drivers_page,
+        "query": query,
+        "edit_mode": bool(
+            driver_to_edit
+        ),
+        "driver_edit_id": (
             driver_to_edit.id
             if driver_to_edit
             else None
@@ -3705,7 +6804,7 @@ def drivers_dashboard(request):
 
     return render(
         request,
-        'choferes/choferes.html',
+        "choferes/choferes.html",
         context,
     )
 
@@ -3717,73 +6816,360 @@ def drivers_dashboard(request):
 @login_required
 @coordinator_required
 def assistant_list(request):
-    assistants = Assistant.objects.all().order_by("full_name")
-    return render(request, "coordinator/assistant_list.html", {"assistants": assistants})
+    """
+    Lista de auxiliares según empresa.
+    """
+
+    assistants = assistants_for_user(
+        request.user,
+        Assistant.objects.all(),
+    ).order_by(
+        "full_name"
+    )
+
+    return render(
+        request,
+        "coordinator/assistant_list.html",
+        {
+            "assistants": assistants,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def assistant_create_edit(request, assistant_id=None):
-    assistant = get_object_or_404(Assistant, pk=assistant_id) if assistant_id else Assistant()
+    """
+    Crear o editar auxiliar.
+
+    MULTIEMPRESA:
+    - Solo permite editar auxiliares de la empresa.
+    - Los nuevos auxiliares quedan asociados automáticamente
+      a la empresa del usuario.
+    """
+
+    scope = get_user_scope(request.user)
+
+    # ============================================================
+    # AUXILIAR A EDITAR
+    # ============================================================
+    if assistant_id:
+
+        assistant = get_object_or_404(
+            assistants_for_user(
+                request.user,
+                Assistant.objects.all(),
+            ),
+            pk=assistant_id,
+        )
+
+    else:
+        assistant = Assistant()
+
+        if scope["type"] != "superuser":
+
+            if not scope["company"]:
+                raise PermissionDenied(
+                    "Su usuario no tiene una empresa asociada."
+                )
+
+            assistant.company = scope[
+                "company"
+            ]
+
+    # ============================================================
+    # POST
+    # ============================================================
     if request.method == "POST":
-        assistant.full_name = request.POST.get("full_name")
-        assistant.rut = request.POST.get("rut")
-        assistant.email = request.POST.get("email", "")
-        assistant.phone = request.POST.get("phone", "")
-        assistant.is_active = "is_active" in request.POST
-        if 'photo' in request.FILES:
-            assistant.photo = request.FILES['photo']
-        assistant.save()
-        messages.success(request, f"Auxiliar {assistant.full_name} guardado.")
-        return redirect("coordinator:assistant_list")
-    return render(request, "coordinator/assistant_form.html", {"assistant": assistant})
+
+        assistant.full_name = request.POST.get(
+            "full_name"
+        )
+
+        assistant.rut = request.POST.get(
+            "rut"
+        )
+
+        assistant.email = request.POST.get(
+            "email",
+            "",
+        )
+
+        assistant.phone = request.POST.get(
+            "phone",
+            "",
+        )
+
+        assistant.notes = request.POST.get(
+            "notes",
+            "",
+        )
+
+        assistant.is_active = (
+            "is_active" in request.POST
+        )
+
+        if "photo" in request.FILES:
+            assistant.photo = request.FILES[
+                "photo"
+            ]
+
+        # ========================================================
+        # EMPRESA
+        # ========================================================
+        if scope["type"] != "superuser":
+
+            if not scope["company"]:
+                raise PermissionDenied(
+                    "Su usuario no tiene una empresa asociada."
+                )
+
+            assistant.company = scope[
+                "company"
+            ]
+
+        elif not assistant.company_id:
+
+            messages.error(
+                request,
+                "Debe asignar una empresa al auxiliar.",
+            )
+
+            return render(
+                request,
+                "coordinator/assistant_form.html",
+                {
+                    "assistant": assistant,
+                },
+            )
+
+        try:
+            assistant.save()
+
+            messages.success(
+                request,
+                f"Auxiliar {assistant.full_name} guardado.",
+            )
+
+            return redirect(
+                "coordinator:assistant_list"
+            )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"No fue posible guardar el auxiliar: {str(e)}",
+            )
+
+    return render(
+        request,
+        "coordinator/assistant_form.html",
+        {
+            "assistant": assistant,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def assistant_delete(request, assistant_id):
-    assistant = get_object_or_404(Assistant, pk=assistant_id)
-    assistant.delete()
-    messages.success(request, "Auxiliar eliminado.")
-    return redirect("coordinator:assistant_list")
+    """
+    Elimina únicamente auxiliares accesibles para la empresa.
+    """
+
+    assistant = get_object_or_404(
+        assistants_for_user(
+            request.user,
+            Assistant.objects.all(),
+        ),
+        pk=assistant_id,
+    )
+
+    try:
+        assistant.delete()
+
+        messages.success(
+            request,
+            "Auxiliar eliminado.",
+        )
+
+    except Exception as e:
+        messages.error(
+            request,
+            f"No se pudo eliminar el auxiliar: {str(e)}",
+        )
+
+    return redirect(
+        "coordinator:assistant_list"
+    )
 
 
 @login_required
 @coordinator_required
 def assistants_dashboard(request):
-    """Tablero de gestión de auxiliares con paginación y búsqueda."""
+    """
+    Tablero multiempresa de auxiliares.
+    """
+
+    scope = get_user_scope(
+        request.user
+    )
+
     assistant_to_edit = None
-    edit_id = request.GET.get('edit')
+
+    edit_id = request.GET.get(
+        "edit"
+    )
+
+    # ============================================================
+    # AUXILIAR EN EDICIÓN
+    # ============================================================
     if edit_id:
-        assistant_to_edit = get_object_or_404(Assistant, pk=edit_id)
 
-    if request.method == 'POST':
-        form = AssistantForm(request.POST, request.FILES, instance=assistant_to_edit) if assistant_to_edit else AssistantForm(request.POST, request.FILES)
+        assistant_to_edit = get_object_or_404(
+            assistants_for_user(
+                request.user,
+                Assistant.objects.all(),
+            ),
+            pk=edit_id,
+        )
+
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
+
+        form = (
+            AssistantForm(
+                request.POST,
+                request.FILES,
+                instance=assistant_to_edit,
+            )
+            if assistant_to_edit
+            else AssistantForm(
+                request.POST,
+                request.FILES,
+            )
+        )
+
         if form.is_valid():
-            assistant = form.save()
-            messages.success(request, f'Auxiliar {assistant.full_name} guardado.')
-            return redirect('coordinator:assistants_dashboard')
+
+            try:
+                with transaction.atomic():
+
+                    assistant = form.save(
+                        commit=False
+                    )
+
+                    if scope["type"] != "superuser":
+
+                        if not scope["company"]:
+                            raise PermissionDenied(
+                                "Su usuario no tiene una empresa asociada."
+                            )
+
+                        assistant.company = scope[
+                            "company"
+                        ]
+
+                    elif not assistant.company_id:
+                        raise ValidationError(
+                            "Debe asignar una empresa al auxiliar."
+                        )
+
+                    assistant.save()
+
+                    form.save_m2m()
+
+                messages.success(
+                    request,
+                    f"Auxiliar {assistant.full_name} guardado.",
+                )
+
+                return redirect(
+                    "coordinator:assistants_dashboard"
+                )
+
+            except Exception as e:
+                messages.error(
+                    request,
+                    f"No fue posible guardar el auxiliar: {str(e)}",
+                )
+
         else:
-            messages.error(request, 'Por favor corrige los errores del formulario.')
+            messages.error(
+                request,
+                "Por favor corrige los errores del formulario.",
+            )
+
+    # ============================================================
+    # GET
+    # ============================================================
     else:
-        form = AssistantForm(instance=assistant_to_edit) if assistant_to_edit else AssistantForm()
 
-    query = request.GET.get('q', '').strip()
-    assistants_list = Assistant.objects.all().order_by('-is_active', 'full_name')
+        form = (
+            AssistantForm(
+                instance=assistant_to_edit
+            )
+            if assistant_to_edit
+            else AssistantForm()
+        )
+
+    # ============================================================
+    # LISTADO MULTIEMPRESA
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    assistants_list = assistants_for_user(
+        request.user,
+        Assistant.objects.all(),
+    ).order_by(
+        "-is_active",
+        "full_name",
+    )
+
     if query:
-        assistants_list = assistants_list.filter(Q(full_name__icontains=query) | Q(rut__icontains=query))
+        assistants_list = assistants_list.filter(
+            Q(
+                full_name__icontains=query
+            )
+            |
+            Q(
+                rut__icontains=query
+            )
+        )
 
-    paginator = Paginator(assistants_list, 10)
-    assistants_page = paginator.get_page(request.GET.get('page'))
+    paginator = Paginator(
+        assistants_list,
+        10,
+    )
+
+    assistants_page = paginator.get_page(
+        request.GET.get("page")
+    )
 
     context = {
-        'form': form,
-        'assistants': assistants_page,
-        'query': query,
-        'edit_mode': bool(assistant_to_edit),
-        'assistant_edit_id': assistant_to_edit.id if assistant_to_edit else None,
+        "form": form,
+        "assistants": assistants_page,
+        "query": query,
+        "edit_mode": bool(
+            assistant_to_edit
+        ),
+        "assistant_edit_id": (
+            assistant_to_edit.id
+            if assistant_to_edit
+            else None
+        ),
     }
-    return render(request, 'auxiliares/assistants.html', context)
+
+    return render(
+        request,
+        "auxiliares/assistants.html",
+        context,
+    )
 
 
 # ============================================================================
@@ -3793,49 +7179,237 @@ def assistants_dashboard(request):
 @login_required
 @coordinator_required
 def agencies_dashboard(request):
-    agency_to_edit = None
-    edit_id = request.GET.get('edit')
-    if edit_id:
-        agency_to_edit = get_object_or_404(Agency, pk=edit_id)
+    """
+    Gestión de agencias.
 
-    if request.method == 'POST':
-        form = AgencyForm(request.POST, instance=agency_to_edit) if agency_to_edit else AgencyForm(request.POST)
-        if form.is_valid():
-            agency = form.save()
-            messages.success(request, f'Agencia "{agency.name}" guardada.')
-            return redirect('coordinator:agencies_dashboard')
-        else:
-            messages.error(request, 'Por favor corrige los errores del formulario.')
-    else:
-        form = AgencyForm(instance=agency_to_edit) if agency_to_edit else AgencyForm()
+    MULTIEMPRESA:
+    - Superuser puede ver todas las agencias.
+    - Resto solo ve, crea y edita agencias de su empresa.
+    - La empresa se asigna desde el usuario, no desde el POST.
+    """
 
-    query = request.GET.get('q', '').strip()
-    agencies_list = Agency.objects.select_related('city').all().order_by('name')
-    if query:
-        agencies_list = agencies_list.filter(
-            Q(name__icontains=query) | Q(city__name__icontains=query) | Q(address__icontains=query)
+    scope = get_user_scope(
+        request.user
+    )
+
+    company = scope.get(
+        "company"
+    )
+
+    # ============================================================
+    # AGENCIAS AUTORIZADAS
+    # ============================================================
+    agencies_allowed = (
+        Agency.objects
+        .select_related(
+            "city",
+            "company",
+        )
+    )
+
+    if not request.user.is_superuser:
+
+        if not company:
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asignada."
+            )
+
+        agencies_allowed = (
+            agencies_allowed.filter(
+                company=company
+            )
         )
 
-    paginator = Paginator(agencies_list, 10)
-    agencies_page = paginator.get_page(request.GET.get('page'))
+    # ============================================================
+    # EDICIÓN
+    # ============================================================
+    agency_to_edit = None
+
+    edit_id = request.GET.get(
+        "edit"
+    )
+
+    if edit_id:
+        agency_to_edit = get_object_or_404(
+            agencies_allowed,
+            pk=edit_id,
+        )
+
+    # ============================================================
+    # FORMULARIO
+    # ============================================================
+    if request.method == "POST":
+
+        form = (
+            AgencyForm(
+                request.POST,
+                instance=agency_to_edit,
+            )
+            if agency_to_edit
+            else AgencyForm(
+                request.POST
+            )
+        )
+
+        if form.is_valid():
+
+            agency = form.save(
+                commit=False
+            )
+
+            if not request.user.is_superuser:
+                agency.company = company
+
+            elif not agency.company_id:
+                raise ValidationError(
+                    "Debe definir la empresa de la agencia."
+                )
+
+            agency.save()
+
+            messages.success(
+                request,
+                (
+                    f'Agencia "{agency.name}" '
+                    "guardada correctamente."
+                ),
+            )
+
+            return redirect(
+                "coordinator:agencies_dashboard"
+            )
+
+        messages.error(
+            request,
+            "Por favor corrige los errores del formulario.",
+        )
+
+    else:
+
+        form = (
+            AgencyForm(
+                instance=agency_to_edit
+            )
+            if agency_to_edit
+            else AgencyForm()
+        )
+
+    # ============================================================
+    # LISTADO
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    agencies_list = (
+        agencies_allowed
+        .order_by(
+            "name"
+        )
+    )
+
+    if query:
+        agencies_list = (
+            agencies_list.filter(
+                Q(
+                    name__icontains=query
+                )
+                |
+                Q(
+                    city__name__icontains=query
+                )
+                |
+                Q(
+                    address__icontains=query
+                )
+            )
+        )
+
+    paginator = Paginator(
+        agencies_list,
+        10,
+    )
+
+    agencies_page = paginator.get_page(
+        request.GET.get(
+            "page"
+        )
+    )
 
     context = {
-        'form': form,
-        'agencies': agencies_page,
-        'query': query,
-        'edit_mode': bool(agency_to_edit),
-        'agency_edit_id': agency_to_edit.id if agency_to_edit else None,
+        "form": form,
+        "agencies": agencies_page,
+        "query": query,
+        "edit_mode": bool(
+            agency_to_edit
+        ),
+        "agency_edit_id": (
+            agency_to_edit.id
+            if agency_to_edit
+            else None
+        ),
     }
-    return render(request, 'agencias/agencias.html', context)
+
+    return render(
+        request,
+        "agencias/agencias.html",
+        context,
+    )
 
 
 @login_required
 @coordinator_required
+@require_POST
 def agency_delete(request, agency_id):
-    agency = get_object_or_404(Agency, pk=agency_id)
+    """
+    Elimina una agencia únicamente dentro
+    del alcance empresarial del usuario.
+    """
+
+    scope = get_user_scope(
+        request.user
+    )
+
+    company = scope.get(
+        "company"
+    )
+
+    agencies_allowed = (
+        Agency.objects
+        .select_related(
+            "company"
+        )
+    )
+
+    if not request.user.is_superuser:
+
+        if not company:
+            raise PermissionDenied(
+                "El usuario no tiene una empresa asignada."
+            )
+
+        agencies_allowed = (
+            agencies_allowed.filter(
+                company=company
+            )
+        )
+
+    agency = get_object_or_404(
+        agencies_allowed,
+        pk=agency_id,
+    )
+
     agency.delete()
-    messages.success(request, "Agencia eliminada correctamente.")
-    return redirect('coordinator:agencies_dashboard')
+
+    messages.success(
+        request,
+        "Agencia eliminada correctamente.",
+    )
+
+    return redirect(
+        "coordinator:agencies_dashboard"
+    )
 
 
 # ============================================================================
@@ -3845,105 +7419,392 @@ def agency_delete(request, agency_id):
 @login_required
 @coordinator_required
 def driver_documents(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    documents = DriverDocument.objects.filter(driver=driver).order_by('expiry_date')
-    return render(request, 'coordinator/driver_documents.html', {'driver': driver, 'documents': documents})
+    """
+    Documentos de un chofer accesible para la empresa.
+    """
+
+    driver = get_object_or_404(
+        drivers_for_user(
+            request.user,
+            Driver.objects.all(),
+        ),
+        pk=driver_id,
+    )
+
+    documents = DriverDocument.objects.filter(
+        driver=driver
+    ).order_by(
+        "expiry_date"
+    )
+
+    return render(
+        request,
+        "coordinator/driver_documents.html",
+        {
+            "driver": driver,
+            "documents": documents,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def driver_document_create(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    if request.method == 'POST':
+    """
+    Agregar documento únicamente a un chofer accesible.
+    """
+
+    driver = get_object_or_404(
+        drivers_for_user(
+            request.user,
+            Driver.objects.all(),
+        ),
+        pk=driver_id,
+    )
+
+    if request.method == "POST":
+
         DriverDocument.objects.create(
             driver=driver,
-            doc_type=request.POST.get('doc_type'),
-            document_number=request.POST.get('doc_number', ''),
-            issue_date=request.POST.get('issue_date') or None,
-            expiry_date=request.POST.get('expiry_date'),
-            notes=request.POST.get('notes', '')
+            doc_type=request.POST.get(
+                "doc_type"
+            ),
+            document_number=request.POST.get(
+                "doc_number",
+                "",
+            ),
+            issue_date=(
+                request.POST.get(
+                    "issue_date"
+                )
+                or None
+            ),
+            expiry_date=request.POST.get(
+                "expiry_date"
+            ),
+            notes=request.POST.get(
+                "notes",
+                "",
+            ),
         )
-        messages.success(request, f'Documento agregado a {driver.full_name}')
-        return redirect('coordinator:driver_documents', driver_id=driver.id)
-    return render(request, 'coordinator/driver_document_form.html', {'driver': driver})
+
+        messages.success(
+            request,
+            f"Documento agregado a {driver.full_name}",
+        )
+
+        return redirect(
+            "coordinator:driver_documents",
+            driver_id=driver.id,
+        )
+
+    return render(
+        request,
+        "coordinator/driver_document_form.html",
+        {
+            "driver": driver,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def driver_document_edit(request, doc_id):
-    doc = get_object_or_404(DriverDocument, pk=doc_id)
-    if request.method == 'POST':
-        doc.doc_type = request.POST.get('doc_type')
-        doc.document_number = request.POST.get('doc_number', '')
-        doc.issue_date = request.POST.get('issue_date') or None
-        doc.expiry_date = request.POST.get('expiry_date')
-        doc.notes = request.POST.get('notes', '')
+    """
+    Edita únicamente documentos pertenecientes
+    a choferes accesibles para el usuario.
+    """
+
+    allowed_drivers = drivers_for_user(
+        request.user,
+        Driver.objects.all(),
+    )
+
+    doc = get_object_or_404(
+        DriverDocument.objects.select_related(
+            "driver"
+        ).filter(
+            driver__in=allowed_drivers
+        ),
+        pk=doc_id,
+    )
+
+    if request.method == "POST":
+
+        doc.doc_type = request.POST.get(
+            "doc_type"
+        )
+
+        doc.document_number = request.POST.get(
+            "doc_number",
+            "",
+        )
+
+        doc.issue_date = (
+            request.POST.get(
+                "issue_date"
+            )
+            or None
+        )
+
+        doc.expiry_date = request.POST.get(
+            "expiry_date"
+        )
+
+        doc.notes = request.POST.get(
+            "notes",
+            "",
+        )
+
         doc.save()
-        messages.success(request, 'Documento actualizado')
-        return redirect('coordinator:driver_documents', driver_id=doc.driver.id)
-    return render(request, 'coordinator/driver_document_form.html', {'doc': doc, 'driver': doc.driver})
+
+        messages.success(
+            request,
+            "Documento actualizado",
+        )
+
+        return redirect(
+            "coordinator:driver_documents",
+            driver_id=doc.driver.id,
+        )
+
+    return render(
+        request,
+        "coordinator/driver_document_form.html",
+        {
+            "doc": doc,
+            "driver": doc.driver,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def driver_document_delete(request, doc_id):
-    doc = get_object_or_404(DriverDocument, pk=doc_id)
+    """
+    Elimina únicamente documentos de choferes
+    accesibles para la empresa.
+    """
+
+    allowed_drivers = drivers_for_user(
+        request.user,
+        Driver.objects.all(),
+    )
+
+    doc = get_object_or_404(
+        DriverDocument.objects.select_related(
+            "driver"
+        ).filter(
+            driver__in=allowed_drivers
+        ),
+        pk=doc_id,
+    )
+
     driver_id = doc.driver.id
+
     doc.delete()
-    messages.success(request, 'Documento eliminado')
-    return redirect('coordinator:driver_documents', driver_id=driver_id)
+
+    messages.success(
+        request,
+        "Documento eliminado",
+    )
+
+    return redirect(
+        "coordinator:driver_documents",
+        driver_id=driver_id,
+    )
 
 
 @login_required
 @coordinator_required
 def bus_documents(request, bus_id):
-    bus = get_object_or_404(Bus, pk=bus_id)
-    documents = BusDocument.objects.filter(bus=bus).order_by('expiry_date')
-    return render(request, 'coordinator/bus_documents.html', {'bus': bus, 'documents': documents})
+    """
+    Documentos de un bus accesible para la empresa del usuario.
+    """
+
+    bus = get_object_or_404(
+        buses_for_user(
+            request.user,
+            Bus.objects.all(),
+        ),
+        pk=bus_id,
+    )
+
+    documents = BusDocument.objects.filter(
+        bus=bus
+    ).order_by("expiry_date")
+
+    return render(
+        request,
+        "coordinator/bus_documents.html",
+        {
+            "bus": bus,
+            "documents": documents,
+        },
+    )
+
 
 
 @login_required
 @coordinator_required
 def bus_document_create(request, bus_id):
-    bus = get_object_or_404(Bus, pk=bus_id)
-    if request.method == 'POST':
+    """
+    Agrega un documento únicamente a un bus accesible.
+    """
+
+    bus = get_object_or_404(
+        buses_for_user(
+            request.user,
+            Bus.objects.all(),
+        ),
+        pk=bus_id,
+    )
+
+    if request.method == "POST":
         BusDocument.objects.create(
             bus=bus,
-            doc_type=request.POST.get('doc_type'),
-            document_number=request.POST.get('doc_number', ''),
-            issue_date=request.POST.get('issue_date') or None,
-            expiry_date=request.POST.get('expiry_date'),
-            notes=request.POST.get('notes', '')
+            doc_type=request.POST.get("doc_type"),
+            document_number=request.POST.get(
+                "doc_number",
+                "",
+            ),
+            issue_date=(
+                request.POST.get("issue_date")
+                or None
+            ),
+            expiry_date=request.POST.get(
+                "expiry_date"
+            ),
+            notes=request.POST.get(
+                "notes",
+                "",
+            ),
         )
-        messages.success(request, f'Documento agregado a bus {bus.plate}')
-        return redirect('coordinator:bus_documents', bus_id=bus.id)
-    return render(request, 'coordinator/bus_document_form.html', {'bus': bus})
+
+        messages.success(
+            request,
+            f"Documento agregado a bus {bus.plate}",
+        )
+
+        return redirect(
+            "coordinator:bus_documents",
+            bus_id=bus.id,
+        )
+
+    return render(
+        request,
+        "coordinator/bus_document_form.html",
+        {
+            "bus": bus,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def bus_document_edit(request, doc_id):
-    doc = get_object_or_404(BusDocument, pk=doc_id)
-    if request.method == 'POST':
-        doc.doc_type = request.POST.get('doc_type')
-        doc.document_number = request.POST.get('doc_number', '')
-        doc.issue_date = request.POST.get('issue_date') or None
-        doc.expiry_date = request.POST.get('expiry_date')
-        doc.notes = request.POST.get('notes', '')
+    """
+    Edita únicamente documentos pertenecientes
+    a buses accesibles para el usuario.
+    """
+
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
+    doc = get_object_or_404(
+        BusDocument.objects.select_related(
+            "bus"
+        ).filter(
+            bus__in=allowed_buses
+        ),
+        pk=doc_id,
+    )
+
+    if request.method == "POST":
+        doc.doc_type = request.POST.get(
+            "doc_type"
+        )
+
+        doc.document_number = request.POST.get(
+            "doc_number",
+            "",
+        )
+
+        doc.issue_date = (
+            request.POST.get(
+                "issue_date"
+            )
+            or None
+        )
+
+        doc.expiry_date = request.POST.get(
+            "expiry_date"
+        )
+
+        doc.notes = request.POST.get(
+            "notes",
+            "",
+        )
+
         doc.save()
-        messages.success(request, 'Documento actualizado')
-        return redirect('coordinator:bus_documents', bus_id=doc.bus.id)
-    return render(request, 'coordinator/bus_document_form.html', {'doc': doc, 'bus': doc.bus})
+
+        messages.success(
+            request,
+            "Documento actualizado",
+        )
+
+        return redirect(
+            "coordinator:bus_documents",
+            bus_id=doc.bus.id,
+        )
+
+    return render(
+        request,
+        "coordinator/bus_document_form.html",
+        {
+            "doc": doc,
+            "bus": doc.bus,
+        },
+    )
 
 
 @login_required
 @coordinator_required
 def bus_document_delete(request, doc_id):
-    doc = get_object_or_404(BusDocument, pk=doc_id)
+    """
+    Elimina únicamente documentos pertenecientes
+    a buses accesibles para el usuario.
+    """
+
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
+    doc = get_object_or_404(
+        BusDocument.objects.select_related(
+            "bus"
+        ).filter(
+            bus__in=allowed_buses
+        ),
+        pk=doc_id,
+    )
+
     bus_id = doc.bus.id
+
     doc.delete()
-    messages.success(request, 'Documento eliminado')
-    return redirect('coordinator:bus_documents', bus_id=bus_id)
+
+    messages.success(
+        request,
+        "Documento eliminado",
+    )
+
+    return redirect(
+        "coordinator:bus_documents",
+        bus_id=bus_id,
+    )
 
 
 @login_required
@@ -3951,67 +7812,160 @@ def bus_document_delete(request, doc_id):
 def expiring_documents(request):
     """
     Centro de alertas documentales.
-    Clasifica documentos vencidos, urgentes (<= 7 días) y próximos (<= 30 días).
+
+    MULTIEMPRESA:
+    - Solo muestra documentos de choferes accesibles para el usuario.
+    - Solo muestra documentos de buses accesibles para el usuario.
+    - Mantiene la clasificación:
+      vencidos, urgentes y próximos.
     """
+
     today = timezone.localdate()
     warning_days = 30
     urgent_days = 7
     expiry_limit = today + timedelta(days=warning_days)
 
+    # ============================================================
+    # CHOFERES PERMITIDOS
+    # ============================================================
+    allowed_drivers = drivers_for_user(
+        request.user,
+        Driver.objects.all(),
+    )
+
+    # ============================================================
+    # BUSES PERMITIDOS
+    # ============================================================
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
+    # ============================================================
+    # DOCUMENTOS DE CHOFERES
+    # ============================================================
     driver_docs = list(
         DriverDocument.objects.filter(
+            driver__in=allowed_drivers,
             expiry_date__isnull=False,
             expiry_date__lte=expiry_limit,
         )
-        .select_related('driver')
-        .order_by('expiry_date', 'driver__full_name')
+        .select_related(
+            "driver",
+            "driver__company",
+        )
+        .order_by(
+            "expiry_date",
+            "driver__full_name",
+        )
     )
 
+    # ============================================================
+    # DOCUMENTOS DE BUSES
+    # ============================================================
     bus_docs = list(
         BusDocument.objects.filter(
+            bus__in=allowed_buses,
             expiry_date__isnull=False,
             expiry_date__lte=expiry_limit,
         )
-        .select_related('bus')
-        .order_by('expiry_date', 'bus__plate')
+        .select_related(
+            "bus",
+            "bus__company",
+        )
+        .order_by(
+            "expiry_date",
+            "bus__plate",
+        )
     )
 
+    # ============================================================
+    # DECORAR DOCUMENTOS PARA EL TEMPLATE
+    # ============================================================
     def decorate_document(doc, owner_type):
-        days = (doc.expiry_date - today).days
+        days = (
+            doc.expiry_date - today
+        ).days
+
         doc.days_remaining = days
         doc.owner_type = owner_type
 
-        if owner_type == 'driver':
-            doc.owner_name = doc.driver.full_name
-            doc.owner_detail = doc.driver.rut
+        if owner_type == "driver":
+            doc.owner_name = (
+                doc.driver.full_name
+            )
+
+            doc.owner_detail = (
+                doc.driver.rut
+            )
+
         else:
-            doc.owner_name = doc.bus.plate
-            doc.owner_detail = doc.bus.model or ''
+            doc.owner_name = (
+                doc.bus.plate
+            )
+
+            doc.owner_detail = (
+                doc.bus.model or ""
+            )
 
         if days < 0:
-            doc.alert_status = 'expired'
-            doc.alert_label = 'Vencido'
-            doc.remaining_label = f'Venció hace {abs(days)} día{"s" if abs(days) != 1 else ""}'
+            doc.alert_status = "expired"
+            doc.alert_label = "Vencido"
+
+            doc.remaining_label = (
+                f'Venció hace {abs(days)} día'
+                f'{"s" if abs(days) != 1 else ""}'
+            )
+
             doc.alert_order = 0
+
         elif days <= urgent_days:
-            doc.alert_status = 'urgent'
-            doc.alert_label = 'Urgente'
+            doc.alert_status = "urgent"
+            doc.alert_label = "Urgente"
+
             if days == 0:
-                doc.remaining_label = 'Vence hoy'
+                doc.remaining_label = (
+                    "Vence hoy"
+                )
             else:
-                doc.remaining_label = f'{days} día{"s" if days != 1 else ""}'
+                doc.remaining_label = (
+                    f'{days} día'
+                    f'{"s" if days != 1 else ""}'
+                )
+
             doc.alert_order = 1
+
         else:
-            doc.alert_status = 'warning'
-            doc.alert_label = 'Por vencer'
-            doc.remaining_label = f'{days} días'
+            doc.alert_status = "warning"
+            doc.alert_label = "Por vencer"
+
+            doc.remaining_label = (
+                f"{days} días"
+            )
+
             doc.alert_order = 2
 
         return doc
 
-    driver_docs = [decorate_document(doc, 'driver') for doc in driver_docs]
-    bus_docs = [decorate_document(doc, 'bus') for doc in bus_docs]
+    driver_docs = [
+        decorate_document(
+            doc,
+            "driver",
+        )
+        for doc in driver_docs
+    ]
 
+    bus_docs = [
+        decorate_document(
+            doc,
+            "bus",
+        )
+        for doc in bus_docs
+    ]
+
+    # ============================================================
+    # UNIR Y ORDENAR
+    # ============================================================
     all_docs = sorted(
         driver_docs + bus_docs,
         key=lambda doc: (
@@ -4021,23 +7975,44 @@ def expiring_documents(request):
         ),
     )
 
-    expired_count = sum(1 for doc in all_docs if doc.alert_status == 'expired')
-    urgent_count = sum(1 for doc in all_docs if doc.alert_status == 'urgent')
-    warning_count = sum(1 for doc in all_docs if doc.alert_status == 'warning')
+    expired_count = sum(
+        1
+        for doc in all_docs
+        if doc.alert_status == "expired"
+    )
+
+    urgent_count = sum(
+        1
+        for doc in all_docs
+        if doc.alert_status == "urgent"
+    )
+
+    warning_count = sum(
+        1
+        for doc in all_docs
+        if doc.alert_status == "warning"
+    )
 
     context = {
-        'all_docs': all_docs,
-        'driver_docs': driver_docs,
-        'bus_docs': bus_docs,
-        'expired_count': expired_count,
-        'urgent_count': urgent_count,
-        'warning_count': warning_count,
-        'attention_count': len(all_docs),
-        'warning_days': warning_days,
-        'urgent_days': urgent_days,
-        'today': today,
+        "all_docs": all_docs,
+        "driver_docs": driver_docs,
+        "bus_docs": bus_docs,
+        "expired_count": expired_count,
+        "urgent_count": urgent_count,
+        "warning_count": warning_count,
+        "attention_count": len(
+            all_docs
+        ),
+        "warning_days": warning_days,
+        "urgent_days": urgent_days,
+        "today": today,
     }
-    return render(request, 'coordinator/expiring_documents.html', context)
+
+    return render(
+        request,
+        "coordinator/expiring_documents.html",
+        context,
+    )
 
 
 # ============================================================================
@@ -4056,25 +8031,33 @@ def trip_detail(request, trip_id):
     - estado operacional integral,
     - disponibilidad del despacho.
     """
+
     trip = get_object_or_404(
-        Trip.objects.select_related(
-            'route__origin',
-            'route__destination',
-            'bus',
-            'driver1',
-            'driver2',
-            'assistant',
-            'dispatched_by',
-            'completed_by',
-        ).annotate(
-            total_tickets=Count('tickets'),
-            lower_tickets=Count(
-                'tickets',
-                filter=Q(tickets__seat__deck=1),
-            ),
-            upper_tickets=Count(
-                'tickets',
-                filter=Q(tickets__seat__deck=2),
+        trips_for_user(
+            request.user,
+            Trip.objects.select_related(
+                "route__origin",
+                "route__destination",
+                "bus",
+                "driver1",
+                "driver2",
+                "assistant",
+                "dispatched_by",
+                "completed_by",
+            ).annotate(
+                total_tickets=Count("tickets"),
+                lower_tickets=Count(
+                    "tickets",
+                    filter=Q(
+                        tickets__seat__deck=1
+                    ),
+                ),
+                upper_tickets=Count(
+                    "tickets",
+                    filter=Q(
+                        tickets__seat__deck=2
+                    ),
+                ),
             ),
         ),
         pk=trip_id,
@@ -4083,12 +8066,21 @@ def trip_detail(request, trip_id):
     tickets = (
         Ticket.objects
         .filter(trip=trip)
-        .select_related('seat', 'customer')
-        .order_by('seat__deck', 'seat__row', 'seat__number')
+        .select_related(
+            "seat",
+            "customer",
+        )
+        .order_by(
+            "seat__deck",
+            "seat__row",
+            "seat__number",
+        )
     )
 
     total_tickets = trip.total_tickets
+
     lower_occupied = trip.lower_tickets
+
     upper_occupied = (
         trip.upper_tickets
         if trip.bus.floors == 2
@@ -4114,20 +8106,26 @@ def trip_detail(request, trip_id):
         if trip.seats_total
         else 0
     )
+
     lower_occupancy = (
         lower_occupied / lower_seats * 100
         if lower_seats
         else 0
     )
+
     upper_occupancy = (
         upper_occupied / upper_seats * 100
         if upper_seats
         else 0
     )
 
-    no_show_count = tickets.filter(checked_in=False).count()
+    no_show_count = tickets.filter(
+        checked_in=False
+    ).count()
 
-    operational = _trip_operational_status(trip)
+    operational = _trip_operational_status(
+        trip
+    )
 
     pending_close = bool(
         trip.status == Trip.STATUS_IN_PROGRESS
@@ -4136,41 +8134,39 @@ def trip_detail(request, trip_id):
     )
 
     overdue_close_minutes = 0
+
     if pending_close:
         overdue_close_minutes = max(
-            int((timezone.now() - trip.arrival).total_seconds() // 60),
+            int(
+                (
+                    timezone.now()
+                    - trip.arrival
+                ).total_seconds()
+                // 60
+            ),
             0,
         )
 
     context = {
-        'trip': trip,
-        'tickets': tickets,
-        'occupancy_rate': round(occupancy_rate, 1),
-        'lower_occupancy': round(lower_occupancy, 1),
-        'upper_occupancy': round(upper_occupancy, 1),
-        'no_show_count': no_show_count,
-
-        # FASE 2.18
-        'operational': operational,
-        'dispatch_can_start': (
-            trip.status == Trip.STATUS_SCHEDULED
-            and operational['can_dispatch']
-        ),
-        'dispatch_is_attention': (
-            trip.status == Trip.STATUS_SCHEDULED
-            and operational['key'] == 'attention'
-        ),
-        'dispatch_is_blocked': (
-            trip.status == Trip.STATUS_SCHEDULED
-            and not operational['can_dispatch']
-        ),
-        'pending_close': pending_close,
-        'overdue_close_minutes': overdue_close_minutes,
+        "trip": trip,
+        "tickets": tickets,
+        "total_tickets": total_tickets,
+        "lower_occupied": lower_occupied,
+        "upper_occupied": upper_occupied,
+        "lower_seats": lower_seats,
+        "upper_seats": upper_seats,
+        "occupancy_rate": occupancy_rate,
+        "lower_occupancy": lower_occupancy,
+        "upper_occupancy": upper_occupancy,
+        "no_show_count": no_show_count,
+        "operational": operational,
+        "pending_close": pending_close,
+        "overdue_close_minutes": overdue_close_minutes,
     }
 
     return render(
         request,
-        'coordinator/trip_detail.html',
+        "coordinator/trip_detail.html",
         context,
     )
 
@@ -5470,62 +9466,171 @@ def _maintenance_status_for_bus(bus):
 @login_required
 @coordinator_required
 def maintenance_list(request):
-    bus_id = request.GET.get('bus')
-    maint_type = request.GET.get('type')
-    status_filter = request.GET.get('status')
+    """
+    Listado de mantenciones.
 
-    maintenances_qs = (
-        Maintenance.objects
-        .select_related('bus', 'created_by')
-        .order_by('-date', '-created_at', '-id')
+    MULTIEMPRESA:
+    - Solo muestra mantenciones de buses accesibles para el usuario.
+    - El filtro de buses solo contiene buses de su empresa.
+    - Los indicadores se calculan únicamente sobre esos buses.
+    """
+
+    bus_id = request.GET.get("bus")
+    maint_type = request.GET.get("type")
+    status_filter = request.GET.get("status")
+
+    # ============================================================
+    # BUSES AUTORIZADOS
+    # ============================================================
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
     )
 
-    if bus_id:
-        maintenances_qs = maintenances_qs.filter(bus_id=bus_id)
+    # ============================================================
+    # MANTENCIONES AUTORIZADAS
+    # ============================================================
+    maintenances_qs = (
+        Maintenance.objects
+        .filter(
+            bus__in=allowed_buses
+        )
+        .select_related(
+            "bus",
+            "bus__company",
+            "created_by",
+        )
+        .order_by(
+            "-date",
+            "-created_at",
+            "-id",
+        )
+    )
 
-    if maint_type:
-        maintenances_qs = maintenances_qs.filter(
-            maintenance_type=maint_type
+    # ============================================================
+    # FILTRO POR BUS
+    # ============================================================
+    if bus_id:
+        maintenances_qs = (
+            maintenances_qs.filter(
+                bus_id=bus_id
+            )
         )
 
-    maintenances = list(maintenances_qs)
+    # ============================================================
+    # FILTRO POR TIPO
+    # ============================================================
+    if maint_type:
+        maintenances_qs = (
+            maintenances_qs.filter(
+                maintenance_type=maint_type
+            )
+        )
 
-    # Marcar sólo la mantención más reciente de cada bus como estado actual.
+    maintenances = list(
+        maintenances_qs
+    )
+
+    # ============================================================
+    # ÚLTIMA MANTENCIÓN POR BUS
+    # ============================================================
     latest_id_by_bus = {}
+
     for item in (
         Maintenance.objects
-        .order_by('bus_id', '-date', '-created_at', '-id')
-        .values('id', 'bus_id')
+        .filter(
+            bus__in=allowed_buses
+        )
+        .order_by(
+            "bus_id",
+            "-date",
+            "-created_at",
+            "-id",
+        )
+        .values(
+            "id",
+            "bus_id",
+        )
     ):
-        latest_id_by_bus.setdefault(item['bus_id'], item['id'])
+        latest_id_by_bus.setdefault(
+            item["bus_id"],
+            item["id"],
+        )
 
+    # ============================================================
+    # ESTADO DE CADA REGISTRO
+    # ============================================================
     for maintenance in maintenances:
+
         maintenance.is_latest = (
-            latest_id_by_bus.get(maintenance.bus_id) == maintenance.id
+            latest_id_by_bus.get(
+                maintenance.bus_id
+            )
+            == maintenance.id
         )
 
         if maintenance.is_latest:
-            status = _maintenance_status_for_bus(maintenance.bus)
-            maintenance.status_key = status['key']
-            maintenance.status_label = status['label']
-            maintenance.status_color = status['color']
-            maintenance.remaining_km = status['remaining_km']
+
+            status = (
+                _maintenance_status_for_bus(
+                    maintenance.bus
+                )
+            )
+
+            maintenance.status_key = (
+                status["key"]
+            )
+
+            maintenance.status_label = (
+                status["label"]
+            )
+
+            maintenance.status_color = (
+                status["color"]
+            )
+
+            maintenance.remaining_km = (
+                status["remaining_km"]
+            )
+
         else:
-            maintenance.status_key = 'history'
-            maintenance.status_label = 'Histórico'
-            maintenance.status_color = 'secondary'
+            maintenance.status_key = (
+                "history"
+            )
+
+            maintenance.status_label = (
+                "Histórico"
+            )
+
+            maintenance.status_color = (
+                "secondary"
+            )
+
             maintenance.remaining_km = None
 
+    # ============================================================
+    # FILTRO POR ESTADO
+    # ============================================================
     if status_filter:
         maintenances = [
-            m for m in maintenances
-            if m.status_key == status_filter
+            maintenance
+            for maintenance in maintenances
+            if maintenance.status_key
+            == status_filter
         ]
 
+    # ============================================================
+    # BUSES PARA FILTROS / INDICADORES
+    # ============================================================
     buses = list(
-        Bus.objects
-        .filter(is_active=True)
-        .order_by('plate')
+        buses_for_user(
+            request.user,
+            Bus.objects.filter(
+                is_active=True
+            ),
+        ).order_by(
+            "plate"
+        )
     )
 
     overdue_buses = 0
@@ -5534,43 +9639,77 @@ def maintenance_list(request):
     unplanned_buses = 0
 
     for bus in buses:
-        status = _maintenance_status_for_bus(bus)
-        bus.maintenance_status_key = status['key']
-        bus.maintenance_status_label = status['label']
-        bus.maintenance_status_color = status['color']
-        bus.maintenance_remaining_km = status['remaining_km']
 
-        if status['key'] == 'overdue':
+        status = (
+            _maintenance_status_for_bus(
+                bus
+            )
+        )
+
+        bus.maintenance_status_key = (
+            status["key"]
+        )
+
+        bus.maintenance_status_label = (
+            status["label"]
+        )
+
+        bus.maintenance_status_color = (
+            status["color"]
+        )
+
+        bus.maintenance_remaining_km = (
+            status["remaining_km"]
+        )
+
+        if status["key"] == "overdue":
             overdue_buses += 1
-        elif status['key'] == 'soon':
+
+        elif status["key"] == "soon":
             soon_buses += 1
-        elif status['key'] == 'ok':
+
+        elif status["key"] == "ok":
             ok_buses += 1
+
         else:
             unplanned_buses += 1
 
-    total_records = len(maintenances)
-    total_cost = sum((m.cost or Decimal('0')) for m in maintenances)
+    # ============================================================
+    # RESUMEN
+    # ============================================================
+    total_records = len(
+        maintenances
+    )
+
+    total_cost = sum(
+        (
+            maintenance.cost
+            or Decimal("0")
+        )
+        for maintenance
+        in maintenances
+    )
 
     context = {
-        'maintenances': maintenances,
-        'buses': buses,
-        'bus_filter': bus_id,
-        'type_filter': maint_type,
-        'status_filter': status_filter,
-        'total_records': total_records,
-        'total_cost': total_cost,
-        'overdue_buses': overdue_buses,
-        'soon_buses': soon_buses,
-        'ok_buses': ok_buses,
-        'unplanned_buses': unplanned_buses,
+        "maintenances": maintenances,
+        "buses": buses,
+        "bus_filter": bus_id,
+        "type_filter": maint_type,
+        "status_filter": status_filter,
+        "total_records": total_records,
+        "total_cost": total_cost,
+        "overdue_buses": overdue_buses,
+        "soon_buses": soon_buses,
+        "ok_buses": ok_buses,
+        "unplanned_buses": unplanned_buses,
     }
 
     return render(
         request,
-        'coordinator/maintenance_list.html',
+        "coordinator/maintenance_list.html",
         context,
     )
+
 
 @login_required
 @coordinator_required
@@ -5578,104 +9717,250 @@ def maintenance_create(request, bus_id=None):
     """
     Registra una mantención usando los campos reales del modelo Maintenance
     y sincroniza los datos operacionales principales del bus.
+
+    MULTIEMPRESA:
+    - Solo permite buses accesibles para el usuario.
+    - Impide enviar manualmente un bus_id de otra empresa.
     """
+
+    # ============================================================
+    # BUSES AUTORIZADOS
+    # ============================================================
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
     bus = None
-    selected_bus_id = bus_id or request.GET.get('bus')
+
+    selected_bus_id = (
+        bus_id
+        or request.GET.get("bus")
+    )
+
     if selected_bus_id:
-        bus = get_object_or_404(Bus, pk=selected_bus_id)
+        bus = get_object_or_404(
+            allowed_buses,
+            pk=selected_bus_id,
+        )
 
-    if request.method == 'POST':
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
         try:
-            bus_post_id = request.POST.get('bus')
+            bus_post_id = request.POST.get(
+                "bus"
+            )
+
             if not bus_post_id:
-                raise ValidationError("Debe seleccionar un bus.")
-
-            maintenance_bus = get_object_or_404(Bus, pk=bus_post_id)
-
-            mileage_raw = request.POST.get('mileage')
-            if mileage_raw in (None, ''):
-                raise ValidationError("Debe ingresar el kilometraje de la mantención.")
-
-            mileage = int(mileage_raw)
-            if mileage < 0:
-                raise ValidationError("El kilometraje no puede ser negativo.")
-
-            # FASE 2.10:
-            # una mantención nueva no puede registrar menos kilometraje
-            # que el mayor valor operacional ya conocido del bus.
-            minimum_allowed = _highest_known_bus_mileage(maintenance_bus)
-            if mileage < minimum_allowed:
                 raise ValidationError(
-                    f"Kilometraje inválido. El mayor kilometraje conocido "
-                    f"del bus {maintenance_bus.plate} es {minimum_allowed:,} km. "
-                    "La mantención no puede registrar un valor inferior."
+                    "Debe seleccionar un bus."
                 )
 
-            # Compatibilidad con el template actual:
-            # acepta next_due y también next_maintenance_km.
+            # ----------------------------------------------------
+            # BUS AUTORIZADO
+            # ----------------------------------------------------
+            maintenance_bus = get_object_or_404(
+                buses_for_user(
+                    request.user,
+                    Bus.objects.filter(
+                        is_active=True
+                    ),
+                ),
+                pk=bus_post_id,
+            )
+
+            # ----------------------------------------------------
+            # KILOMETRAJE
+            # ----------------------------------------------------
+            mileage_raw = request.POST.get(
+                "mileage"
+            )
+
+            if mileage_raw in (None, ""):
+                raise ValidationError(
+                    "Debe ingresar el kilometraje de la mantención."
+                )
+
+            mileage = int(
+                mileage_raw
+            )
+
+            if mileage < 0:
+                raise ValidationError(
+                    "El kilometraje no puede ser negativo."
+                )
+
+            # ====================================================
+            # FASE 2.10
+            # No retroceder kilometraje operacional.
+            # ====================================================
+            minimum_allowed = (
+                _highest_known_bus_mileage(
+                    maintenance_bus
+                )
+            )
+
+            if mileage < minimum_allowed:
+                raise ValidationError(
+                    f"Kilometraje inválido. "
+                    f"El mayor kilometraje conocido "
+                    f"del bus {maintenance_bus.plate} "
+                    f"es {minimum_allowed:,} km. "
+                    "La mantención no puede registrar "
+                    "un valor inferior."
+                )
+
+            # ----------------------------------------------------
+            # PRÓXIMO MANTENIMIENTO
+            # ----------------------------------------------------
             next_km_raw = (
-                request.POST.get('next_maintenance_km')
-                or request.POST.get('next_due')
+                request.POST.get(
+                    "next_maintenance_km"
+                )
+                or request.POST.get(
+                    "next_due"
+                )
                 or 0
             )
-            next_maintenance_km = int(next_km_raw)
+
+            next_maintenance_km = int(
+                next_km_raw
+            )
 
             if next_maintenance_km < 0:
                 raise ValidationError(
-                    "El próximo mantenimiento no puede ser negativo."
+                    "El próximo mantenimiento "
+                    "no puede ser negativo."
                 )
 
-            if next_maintenance_km and next_maintenance_km <= mileage:
+            if (
+                next_maintenance_km
+                and next_maintenance_km <= mileage
+            ):
                 raise ValidationError(
-                    "El próximo mantenimiento debe ser mayor al kilometraje actual."
+                    "El próximo mantenimiento debe ser "
+                    "mayor al kilometraje actual."
                 )
 
-            cost_raw = request.POST.get('cost') or '0'
-            cost = Decimal(cost_raw)
+            # ----------------------------------------------------
+            # COSTO
+            # ----------------------------------------------------
+            cost_raw = (
+                request.POST.get("cost")
+                or "0"
+            )
 
+            cost = Decimal(
+                cost_raw
+            )
+
+            # ====================================================
+            # CREAR
+            # ====================================================
             with transaction.atomic():
-                maintenance = Maintenance.objects.create(
-                    bus=maintenance_bus,
-                    maintenance_type=request.POST.get('maintenance_type'),
-                    date=request.POST.get('date'),
-                    mileage=mileage,
-                    description=request.POST.get('description', ''),
-                    cost=cost,
-                    workshop=request.POST.get('workshop', ''),
-                    next_maintenance_km=next_maintenance_km,
-                    technician=request.POST.get('technician', ''),
-                    notes=request.POST.get('notes', ''),
-                    created_by=request.user,
+
+                maintenance = (
+                    Maintenance.objects.create(
+                        bus=maintenance_bus,
+                        maintenance_type=(
+                            request.POST.get(
+                                "maintenance_type"
+                            )
+                        ),
+                        date=request.POST.get(
+                            "date"
+                        ),
+                        mileage=mileage,
+                        description=request.POST.get(
+                            "description",
+                            "",
+                        ),
+                        cost=cost,
+                        workshop=request.POST.get(
+                            "workshop",
+                            "",
+                        ),
+                        next_maintenance_km=(
+                            next_maintenance_km
+                        ),
+                        technician=request.POST.get(
+                            "technician",
+                            "",
+                        ),
+                        notes=request.POST.get(
+                            "notes",
+                            "",
+                        ),
+                        created_by=request.user,
+                    )
                 )
 
-                # Sincronización central FASE 2.10.
-                _sync_bus_operational_mileage(maintenance_bus)
-                _sync_bus_maintenance_summary(maintenance_bus)
+                # -----------------------------------------------
+                # Sincronización central FASE 2.10
+                # -----------------------------------------------
+                _sync_bus_operational_mileage(
+                    maintenance_bus
+                )
+
+                _sync_bus_maintenance_summary(
+                    maintenance_bus
+                )
 
             messages.success(
                 request,
-                f'Mantenimiento registrado para {maintenance.bus.plate}.'
+                (
+                    "Mantenimiento registrado para "
+                    f"{maintenance.bus.plate}."
+                ),
             )
-            return redirect('coordinator:maintenance_list')
+
+            return redirect(
+                "coordinator:maintenance_list"
+            )
 
         except (ValueError, TypeError):
             messages.error(
                 request,
-                'Kilometraje, próximo mantenimiento o costo tienen un formato inválido.'
+                (
+                    "Kilometraje, próximo mantenimiento "
+                    "o costo tienen un formato inválido."
+                ),
             )
-        except ValidationError as e:
-            messages.error(request, str(e))
-        except Exception as e:
-            messages.error(request, f'Error: {str(e)}')
 
-    buses = Bus.objects.filter(is_active=True).order_by('plate')
+        except ValidationError as e:
+            messages.error(
+                request,
+                str(e),
+            )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"Error: {str(e)}",
+            )
+
+    # ============================================================
+    # BUSES PARA FORMULARIO
+    # ============================================================
+    buses = buses_for_user(
+        request.user,
+        Bus.objects.filter(
+            is_active=True
+        ),
+    ).order_by(
+        "plate"
+    )
+
     context = {
-        'buses': buses,
-        'selected_bus': bus,
+        "buses": buses,
+        "selected_bus": bus,
     }
+
     return render(
         request,
-        'coordinator/maintenance_form.html',
+        "coordinator/maintenance_form.html",
         context,
     )
 
@@ -5792,8 +10077,25 @@ def maintenance_edit(request, pk):
 @coordinator_required
 @require_POST
 def maintenance_delete(request, pk):
+    """
+    Elimina una mantención únicamente si pertenece
+    a un bus accesible para el usuario.
+    """
+
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
     maintenance = get_object_or_404(
-        Maintenance.objects.select_related('bus'),
+        Maintenance.objects
+        .select_related(
+            "bus",
+            "bus__company",
+        )
+        .filter(
+            bus__in=allowed_buses
+        ),
         pk=pk,
     )
 
@@ -5801,18 +10103,43 @@ def maintenance_delete(request, pk):
     plate = maintenance.bus.plate
 
     with transaction.atomic():
+
         maintenance.delete()
 
-        bus = Bus.objects.select_for_update().get(pk=bus_id)
-        _sync_bus_maintenance_summary(bus)
-        _sync_bus_fuel_summary(bus)
-        _sync_bus_operational_mileage(bus)
+        # ========================================================
+        # Reobtener y bloquear únicamente un bus autorizado
+        # ========================================================
+        bus = get_object_or_404(
+            buses_for_user(
+                request.user,
+                Bus.objects.select_for_update(),
+            ),
+            pk=bus_id,
+        )
+
+        _sync_bus_maintenance_summary(
+            bus
+        )
+
+        _sync_bus_fuel_summary(
+            bus
+        )
+
+        _sync_bus_operational_mileage(
+            bus
+        )
 
     messages.success(
         request,
-        f'Mantenimiento de {plate} eliminado y resumen recalculado.'
+        (
+            f"Mantenimiento del bus {plate} "
+            "eliminado correctamente."
+        ),
     )
-    return redirect('coordinator:maintenance_list')
+
+    return redirect(
+        "coordinator:maintenance_list"
+    )
 
 @login_required
 @coordinator_required
@@ -5820,26 +10147,57 @@ def fuel_list(request):
     """
     Centro operacional de combustible.
 
-    Calcula rendimiento entre cargas consecutivas del mismo bus:
-        km recorridos / litros de la carga actual
-
-    También calcula costo por km y costo promedio por litro.
+    MULTIEMPRESA:
+    - Solo muestra cargas de combustible de buses accesibles.
+    - Los indicadores se calculan únicamente sobre esos registros.
+    - El filtro de buses solo contiene buses de la empresa.
     """
-    bus_id = request.GET.get('bus')
 
-    qs = FuelRecord.objects.select_related('bus', 'created_by')
+    bus_id = request.GET.get("bus")
+
+    # ============================================================
+    # BUSES AUTORIZADOS
+    # ============================================================
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
+    # ============================================================
+    # REGISTROS AUTORIZADOS
+    # ============================================================
+    qs = (
+        FuelRecord.objects
+        .filter(
+            bus__in=allowed_buses
+        )
+        .select_related(
+            "bus",
+            "bus__company",
+            "created_by",
+        )
+    )
+
     if bus_id:
-        qs = qs.filter(bus_id=bus_id)
+        qs = qs.filter(
+            bus_id=bus_id
+        )
 
     records_asc = list(
-        qs.order_by('bus_id', 'date', 'created_at', 'id')
+        qs.order_by(
+            "bus_id",
+            "date",
+            "created_at",
+            "id",
+        )
     )
 
     previous_by_bus = {}
     efficiencies = []
     cost_per_km_values = []
-    total_liters = Decimal('0')
-    total_cost = Decimal('0')
+
+    total_liters = Decimal("0")
+    total_cost = Decimal("0")
     total_distance = 0
 
     for record in records_asc:
@@ -5848,255 +10206,515 @@ def fuel_list(request):
         record.cost_per_km = None
         record.cost_per_liter = None
 
-        liters = record.liters or Decimal('0')
-        cost = record.cost or Decimal('0')
+        liters = (
+            record.liters
+            or Decimal("0")
+        )
+
+        cost = (
+            record.cost
+            or Decimal("0")
+        )
 
         total_liters += liters
         total_cost += cost
 
         if liters > 0:
-            record.cost_per_liter = round(cost / liters, 2)
+            record.cost_per_liter = round(
+                cost / liters,
+                2,
+            )
 
-        previous = previous_by_bus.get(record.bus_id)
+        previous = previous_by_bus.get(
+            record.bus_id
+        )
 
         if previous:
-            distance = record.mileage - previous.mileage
+            distance = (
+                record.mileage
+                - previous.mileage
+            )
 
-            # No calcular rendimiento con kilometraje repetido o regresivo.
-            if distance > 0 and liters > 0:
+            if (
+                distance > 0
+                and liters > 0
+            ):
                 record.distance_since_previous = distance
+
                 record.efficiency_kml = round(
-                    Decimal(distance) / liters,
-                    2,
-                )
-                record.cost_per_km = round(
-                    cost / Decimal(distance),
+                    Decimal(distance)
+                    / liters,
                     2,
                 )
 
-                efficiencies.append(record.efficiency_kml)
-                cost_per_km_values.append(record.cost_per_km)
+                record.cost_per_km = round(
+                    cost
+                    / Decimal(distance),
+                    2,
+                )
+
+                efficiencies.append(
+                    record.efficiency_kml
+                )
+
+                cost_per_km_values.append(
+                    record.cost_per_km
+                )
+
                 total_distance += distance
 
-        previous_by_bus[record.bus_id] = record
+        previous_by_bus[
+            record.bus_id
+        ] = record
 
     records = sorted(
         records_asc,
-        key=lambda r: (r.date, r.created_at, r.id),
+        key=lambda r: (
+            r.date,
+            r.created_at,
+            r.id,
+        ),
         reverse=True,
     )
 
     avg_efficiency = (
         round(
-            sum(efficiencies, Decimal('0'))
-            / Decimal(len(efficiencies)),
+            sum(
+                efficiencies,
+                Decimal("0"),
+            )
+            / Decimal(
+                len(efficiencies)
+            ),
             2,
         )
-        if efficiencies else None
+        if efficiencies
+        else None
     )
 
     avg_cost_per_km = (
         round(
-            sum(cost_per_km_values, Decimal('0'))
-            / Decimal(len(cost_per_km_values)),
+            sum(
+                cost_per_km_values,
+                Decimal("0"),
+            )
+            / Decimal(
+                len(cost_per_km_values)
+            ),
             2,
         )
-        if cost_per_km_values else None
+        if cost_per_km_values
+        else None
     )
 
     avg_cost_per_liter = (
-        round(total_cost / total_liters, 2)
-        if total_liters > 0 else None
+        round(
+            total_cost
+            / total_liters,
+            2,
+        )
+        if total_liters > 0
+        else None
     )
 
-    buses = Bus.objects.filter(is_active=True).order_by('plate')
+    buses = buses_for_user(
+        request.user,
+        Bus.objects.filter(
+            is_active=True
+        ),
+    ).order_by(
+        "plate"
+    )
 
     return render(
         request,
-        'coordinator/fuel_list.html',
+        "coordinator/fuel_list.html",
         {
-            'records': records,
-            'buses': buses,
-            'bus_filter': bus_id,
-            'total_liters': total_liters,
-            'total_cost': total_cost,
-            'avg_efficiency': avg_efficiency,
-            'avg_cost_per_km': avg_cost_per_km,
-            'avg_cost_per_liter': avg_cost_per_liter,
-            'total_distance': total_distance,
-            'records_count': len(records),
+            "records": records,
+            "buses": buses,
+            "bus_filter": bus_id,
+            "total_liters": total_liters,
+            "total_cost": total_cost,
+            "avg_efficiency": avg_efficiency,
+            "avg_cost_per_km": avg_cost_per_km,
+            "avg_cost_per_liter": avg_cost_per_liter,
+            "total_distance": total_distance,
+            "records_count": len(
+                records
+            ),
         },
     )
+
+
 @login_required
 @coordinator_required
 def fuel_create(request, bus_id=None):
     """
-    Registra una carga de combustible protegiendo la integridad
-    del kilometraje del bus.
+    Registra una carga de combustible protegiendo
+    la integridad del kilometraje del bus.
+
+    MULTIEMPRESA:
+    - Solo permite buses accesibles para el usuario.
+    - Impide forzar un bus_id de otra empresa.
     """
+
     selected_bus = None
-    selected_bus_id = bus_id or request.GET.get('bus')
+
+    selected_bus_id = (
+        bus_id
+        or request.GET.get("bus")
+    )
+
     if selected_bus_id:
         selected_bus = get_object_or_404(
-            Bus,
+            buses_for_user(
+                request.user,
+                Bus.objects.filter(
+                    is_active=True
+                ),
+            ),
             pk=selected_bus_id,
-            is_active=True,
         )
 
-    if request.method == 'POST':
+    if request.method == "POST":
         try:
-            bus_id = request.POST.get('bus')
-            if not bus_id:
-                raise ValidationError("Debe seleccionar un bus.")
+            bus_id = request.POST.get(
+                "bus"
+            )
 
-            liters_raw = request.POST.get('liters')
-            cost_raw = request.POST.get('cost')
-            mileage_raw = request.POST.get('mileage')
-            date_raw = request.POST.get('date')
+            if not bus_id:
+                raise ValidationError(
+                    "Debe seleccionar un bus."
+                )
+
+            liters_raw = request.POST.get(
+                "liters"
+            )
+
+            cost_raw = request.POST.get(
+                "cost"
+            )
+
+            mileage_raw = request.POST.get(
+                "mileage"
+            )
+
+            date_raw = request.POST.get(
+                "date"
+            )
 
             if not date_raw:
-                raise ValidationError("Debe ingresar la fecha.")
-            if liters_raw in (None, ''):
-                raise ValidationError("Debe ingresar los litros cargados.")
-            if cost_raw in (None, ''):
-                raise ValidationError("Debe ingresar el costo de la carga.")
-            if mileage_raw in (None, ''):
-                raise ValidationError("Debe ingresar el kilometraje actual.")
+                raise ValidationError(
+                    "Debe ingresar la fecha."
+                )
 
-            liters = Decimal(liters_raw)
-            cost = Decimal(cost_raw)
-            mileage = int(mileage_raw)
+            if liters_raw in (
+                None,
+                "",
+            ):
+                raise ValidationError(
+                    "Debe ingresar los litros cargados."
+                )
+
+            if cost_raw in (
+                None,
+                "",
+            ):
+                raise ValidationError(
+                    "Debe ingresar el costo de la carga."
+                )
+
+            if mileage_raw in (
+                None,
+                "",
+            ):
+                raise ValidationError(
+                    "Debe ingresar el kilometraje actual."
+                )
+
+            liters = Decimal(
+                liters_raw
+            )
+
+            cost = Decimal(
+                cost_raw
+            )
+
+            mileage = int(
+                mileage_raw
+            )
 
             if liters <= 0:
-                raise ValidationError("Los litros deben ser mayores que 0.")
+                raise ValidationError(
+                    "Los litros deben ser mayores que 0."
+                )
+
             if cost < 0:
-                raise ValidationError("El costo no puede ser negativo.")
+                raise ValidationError(
+                    "El costo no puede ser negativo."
+                )
+
             if mileage < 0:
-                raise ValidationError("El kilometraje no puede ser negativo.")
+                raise ValidationError(
+                    "El kilometraje no puede ser negativo."
+                )
 
             with transaction.atomic():
+
                 bus = get_object_or_404(
-                    Bus.objects.select_for_update(),
+                    buses_for_user(
+                        request.user,
+                        Bus.objects.select_for_update()
+                        .filter(
+                            is_active=True
+                        ),
+                    ),
                     pk=bus_id,
                 )
 
-                # FASE 2.10: piso único de kilometraje operacional.
-                minimum_allowed = _highest_known_bus_mileage(bus)
+                minimum_allowed = (
+                    _highest_known_bus_mileage(
+                        bus
+                    )
+                )
 
                 if mileage < minimum_allowed:
                     raise ValidationError(
-                        f"Kilometraje inválido. El mayor kilometraje conocido "
-                        f"del bus {bus.plate} es {minimum_allowed:,} km. "
-                        "La nueva carga no puede registrar un valor inferior."
+                        f"Kilometraje inválido. "
+                        f"El mayor kilometraje conocido "
+                        f"del bus {bus.plate} es "
+                        f"{minimum_allowed:,} km. "
+                        "La nueva carga no puede registrar "
+                        "un valor inferior."
                     )
 
-                record = FuelRecord.objects.create(
-                    bus=bus,
-                    date=date_raw,
-                    liters=liters,
-                    cost=cost,
-                    mileage=mileage,
-                    created_by=request.user,
+                record = (
+                    FuelRecord.objects.create(
+                        bus=bus,
+                        date=date_raw,
+                        liters=liters,
+                        cost=cost,
+                        mileage=mileage,
+                        created_by=request.user,
+                    )
                 )
 
-                # Sincronizar kilometraje y resumen de combustible.
-                _sync_bus_operational_mileage(bus)
-                _sync_bus_fuel_summary(bus)
+                _sync_bus_operational_mileage(
+                    bus
+                )
+
+                _sync_bus_fuel_summary(
+                    bus
+                )
 
             messages.success(
                 request,
-                f'Carga de combustible registrada para {record.bus.plate}.'
+                (
+                    "Carga de combustible registrada "
+                    f"para {record.bus.plate}."
+                ),
             )
-            return redirect('coordinator:fuel_list')
+
+            return redirect(
+                "coordinator:fuel_list"
+            )
 
         except ValidationError as e:
-            messages.error(request, str(e))
+            messages.error(
+                request,
+                str(e),
+            )
+
         except (ValueError, TypeError):
             messages.error(
                 request,
-                'Litros, costo o kilometraje tienen un formato inválido.'
+                (
+                    "Litros, costo o kilometraje "
+                    "tienen un formato inválido."
+                ),
             )
-        except Exception as e:
-            messages.error(request, f'Error: {str(e)}')
 
-    buses = Bus.objects.filter(is_active=True).order_by('plate')
+        except Exception as e:
+            messages.error(
+                request,
+                f"Error: {str(e)}",
+            )
+
+    buses = buses_for_user(
+        request.user,
+        Bus.objects.filter(
+            is_active=True
+        ),
+    ).order_by(
+        "plate"
+    )
+
     return render(
         request,
-        'coordinator/fuel_form.html',
+        "coordinator/fuel_form.html",
         {
-            'buses': buses,
-            'selected_bus': selected_bus,
+            "buses": buses,
+            "selected_bus": selected_bus,
         },
     )
+
 
 @login_required
 @coordinator_required
 @require_POST
 def fuel_delete(request, pk):
     """
-    Elimina un registro de combustible y vuelve a dejar el kilometraje
-    operacional del bus al menos en el mayor kilometraje histórico conocido.
+    Elimina un registro de combustible únicamente
+    si pertenece a un bus accesible para el usuario.
     """
+
+    allowed_buses = buses_for_user(
+        request.user,
+        Bus.objects.all(),
+    )
+
     record = get_object_or_404(
-        FuelRecord.objects.select_related('bus'),
+        FuelRecord.objects
+        .select_related(
+            "bus",
+            "bus__company",
+        )
+        .filter(
+            bus__in=allowed_buses
+        ),
         pk=pk,
     )
 
+    bus_id = record.bus_id
+
     with transaction.atomic():
-        bus = Bus.objects.select_for_update().get(pk=record.bus_id)
+
+        bus = get_object_or_404(
+            buses_for_user(
+                request.user,
+                Bus.objects.select_for_update(),
+            ),
+            pk=bus_id,
+        )
+
         record.delete()
 
-        _sync_bus_fuel_summary(bus)
-        _sync_bus_maintenance_summary(bus)
-        _sync_bus_operational_mileage(bus)
+        _sync_bus_fuel_summary(
+            bus
+        )
 
-    messages.success(request, 'Registro de combustible eliminado.')
-    return redirect('coordinator:fuel_list')
+        _sync_bus_maintenance_summary(
+            bus
+        )
+
+        _sync_bus_operational_mileage(
+            bus
+        )
+
+    messages.success(
+        request,
+        "Registro de combustible eliminado.",
+    )
+
+    return redirect(
+        "coordinator:fuel_list"
+    )
 
 @login_required
 @coordinator_required
 def bus_maintenance_history(request, bus_id):
+    """
+    Historial completo de mantenciones de un bus.
+
+    MULTIEMPRESA:
+    - Solo permite acceder a buses autorizados para el usuario.
+    - Impide consultar por URL el historial de un bus de otra empresa.
+    """
+
+    # ============================================================
+    # BUS AUTORIZADO
+    # ============================================================
     bus = get_object_or_404(
-        Bus.objects.select_related('company'),
+        buses_for_user(
+            request.user,
+            Bus.objects.select_related(
+                "company"
+            ),
+        ),
         pk=bus_id,
     )
 
+    # ============================================================
+    # HISTORIAL DEL BUS
+    # ============================================================
     maintenances = list(
         Maintenance.objects
-        .filter(bus=bus)
-        .select_related('created_by')
-        .order_by('-date', '-created_at', '-id')
+        .filter(
+            bus=bus
+        )
+        .select_related(
+            "created_by"
+        )
+        .order_by(
+            "-date",
+            "-created_at",
+            "-id",
+        )
     )
 
-    status = _maintenance_status_for_bus(bus)
+    # ============================================================
+    # ESTADO OPERACIONAL
+    # ============================================================
+    status = _maintenance_status_for_bus(
+        bus
+    )
 
+    # ============================================================
+    # COSTO TOTAL
+    # ============================================================
     total_cost = sum(
-        (m.cost or Decimal('0'))
-        for m in maintenances
+        (
+            maintenance.cost
+            or Decimal("0")
+        )
+        for maintenance
+        in maintenances
     )
 
+    # ============================================================
+    # CONTADORES
+    # ============================================================
     preventive_count = sum(
-        1 for m in maintenances
-        if m.maintenance_type == 'preventive'
+        1
+        for maintenance
+        in maintenances
+        if maintenance.maintenance_type
+        == "preventive"
     )
+
     corrective_count = sum(
-        1 for m in maintenances
-        if m.maintenance_type == 'corrective'
+        1
+        for maintenance
+        in maintenances
+        if maintenance.maintenance_type
+        == "corrective"
     )
 
     context = {
-        'bus': bus,
-        'maintenances': maintenances,
-        'maintenance_status': status,
-        'total_cost': total_cost,
-        'preventive_count': preventive_count,
-        'corrective_count': corrective_count,
-        'maintenance_count': len(maintenances),
+        "bus": bus,
+        "maintenances": maintenances,
+        "maintenance_status": status,
+        "total_cost": total_cost,
+        "preventive_count": preventive_count,
+        "corrective_count": corrective_count,
+        "maintenance_count": len(
+            maintenances
+        ),
     }
 
     return render(
         request,
-        'coordinator/bus_maintenance_history.html',
+        "coordinator/bus_maintenance_history.html",
         context,
     )
 
@@ -6104,142 +10722,383 @@ def bus_maintenance_history(request, bus_id):
 # MÓDULO DE SEGURIDAD Y LEY 21.719
 # ============================================================================
 
+
+def _security_logs_for_user(user):
+    """
+    Devuelve los registros de auditoría visibles para el usuario.
+
+    SUPERUSER:
+        Puede ver toda la auditoría.
+
+    USUARIO DE EMPRESA:
+        Solo ve eventos asociados a usuarios de su empresa.
+
+    NOTA:
+        Los logs sin usuario no pueden atribuirse de forma segura
+        a una empresa porque AuditLog todavía no posee company.
+    """
+
+    qs = AuditLog.objects.select_related(
+        "user",
+        "user__profile",
+        "user__profile__company",
+    )
+
+    if user.is_superuser:
+        return qs
+
+    scope = get_user_scope(user)
+
+    company = scope.get("company")
+
+    if not company:
+        return qs.none()
+
+    return qs.filter(
+        user__profile__company=company
+    )
+
+
+def _require_global_backup_access(user):
+    """
+    Los respaldos contienen la base de datos completa.
+
+    Por seguridad multiempresa únicamente un superusuario
+    puede crear, listar, descargar o eliminar respaldos globales.
+    """
+
+    if not user.is_superuser:
+        raise PermissionDenied(
+            "No tiene permisos para administrar respaldos globales."
+        )
+
+
 @login_required
 @coordinator_required
 def seguridad_dashboard(request):
-    """Panel principal de seguridad con estadísticas y resumen."""
-    total_logs = AuditLog.objects.count()
-    login_failed = AuditLog.objects.filter(action='login_failed').count()
-    recent_logs = AuditLog.objects.all()[:10]
+    """
+    Panel principal de seguridad.
+
+    MULTIEMPRESA:
+    - Superuser: auditoría global.
+    - Resto: auditoría únicamente de su empresa.
+    """
+
+    logs = _security_logs_for_user(
+        request.user
+    )
+
+    total_logs = logs.count()
+
+    login_failed = logs.filter(
+        action="login_failed"
+    ).count()
+
+    recent_logs = logs.order_by(
+        "-timestamp"
+    )[:10]
 
     today = timezone.now().date()
-    usuarios_activos = AuditLog.objects.filter(
-        action='login',
-        timestamp__date=today
-    ).values_list('user_id', flat=True).distinct().count()
+
+    usuarios_activos = (
+        logs.filter(
+            action="login",
+            timestamp__date=today,
+        )
+        .exclude(
+            user_id__isnull=True
+        )
+        .values_list(
+            "user_id",
+            flat=True,
+        )
+        .distinct()
+        .count()
+    )
 
     context = {
-        'title': 'Ley 21.719 - Seguridad y Protección de Datos',
-        'total_logs': total_logs,
-        'login_failed': login_failed,
-        'usuarios_activos': usuarios_activos,
-        'recent_logs': recent_logs,
+        "title": (
+            "Ley 21.719 - Seguridad y Protección de Datos"
+        ),
+        "total_logs": total_logs,
+        "login_failed": login_failed,
+        "usuarios_activos": usuarios_activos,
+        "recent_logs": recent_logs,
     }
-    return render(request, 'coordinator/seguridad/dashboard.html', context)
+
+    return render(
+        request,
+        "coordinator/seguridad/dashboard.html",
+        context,
+    )
 
 
 @login_required
+@login_required
 @coordinator_required
 def seguridad_auditoria(request):
-    """Lista de logs de auditoría con filtros."""
-    query = request.GET.get('q', '')
-    action_filter = request.GET.get('action', '')
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
+    """
+    Lista de logs de auditoría con filtros.
 
-    logs = AuditLog.objects.select_related('user').all()
+    MULTIEMPRESA:
+    - Superuser ve toda la auditoría.
+    - Resto solo ve auditoría de usuarios de su empresa.
+    """
+
+    query = request.GET.get("q", "").strip()
+    action_filter = request.GET.get("action", "")
+    date_from = request.GET.get("date_from", "")
+    date_to = request.GET.get("date_to", "")
+
+    logs = _security_logs_for_user(
+        request.user
+    )
 
     if query:
         logs = logs.filter(
-            Q(user__username__icontains=query) |
-            Q(object_repr__icontains=query) |
+            Q(user__username__icontains=query)
+            |
+            Q(object_repr__icontains=query)
+            |
             Q(model_name__icontains=query)
         )
-    if action_filter:
-        logs = logs.filter(action=action_filter)
-    if date_from:
-        logs = logs.filter(timestamp__date__gte=date_from)
-    if date_to:
-        logs = logs.filter(timestamp__date__lte=date_to)
 
-    paginator = Paginator(logs, 50)
-    page = request.GET.get('page')
-    logs_page = paginator.get_page(page)
+    if action_filter:
+        logs = logs.filter(
+            action=action_filter
+        )
+
+    if date_from:
+        logs = logs.filter(
+            timestamp__date__gte=date_from
+        )
+
+    if date_to:
+        logs = logs.filter(
+            timestamp__date__lte=date_to
+        )
+
+    logs = logs.order_by(
+        "-timestamp"
+    )
+
+    paginator = Paginator(
+        logs,
+        50,
+    )
+
+    page = request.GET.get("page")
+
+    logs_page = paginator.get_page(
+        page
+    )
 
     context = {
-        'title': 'Auditoría - Ley 21.719',
-        'logs': logs_page,
-        'action_choices': AuditLog.ACTION_CHOICES,
-        'query': query,
-        'action_filter': action_filter,
-        'date_from': date_from,
-        'date_to': date_to,
+        "title": "Auditoría - Ley 21.719",
+        "logs": logs_page,
+        "action_choices": AuditLog.ACTION_CHOICES,
+        "query": query,
+        "action_filter": action_filter,
+        "date_from": date_from,
+        "date_to": date_to,
     }
-    return render(request, 'coordinator/seguridad/auditoria.html', context)
+
+    return render(
+        request,
+        "coordinator/seguridad/auditoria.html",
+        context,
+    )
 
 
 @login_required
 @coordinator_required
 def seguridad_respaldos(request):
-    """Gestión de respaldos de la base de datos."""
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        if action == 'download_backup':
+    """
+    Gestión de respaldos completos de la base de datos.
+
+    SEGURIDAD:
+    Los respaldos contienen información global del sistema,
+    por lo que su administración queda reservada al superusuario.
+    """
+
+    _require_global_backup_access(
+        request.user
+    )
+
+    if request.method == "POST":
+
+        action = request.POST.get(
+            "action"
+        )
+
+        if action == "download_backup":
+
             backup_file = create_backup()
+
             if backup_file:
+
                 AuditLog.objects.create(
                     user=request.user,
-                    action='download_backup',
-                    ip_address=request.META.get('REMOTE_ADDR'),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    action="download_backup",
+                    ip_address=request.META.get(
+                        "REMOTE_ADDR"
+                    ),
+                    user_agent=request.META.get(
+                        "HTTP_USER_AGENT",
+                        "",
+                    ),
+                    object_repr=(
+                        f"Respaldo: "
+                        f"{os.path.basename(backup_file)}"
+                    ),
                 )
+
                 return FileResponse(
-                    open(backup_file, 'rb'),
+                    open(
+                        backup_file,
+                        "rb",
+                    ),
                     as_attachment=True,
-                    filename=os.path.basename(backup_file)
+                    filename=os.path.basename(
+                        backup_file
+                    ),
                 )
-            else:
-                messages.error(request, 'Error al generar el respaldo.')
-        elif action == 'create_backup':
+
+            messages.error(
+                request,
+                "Error al generar el respaldo.",
+            )
+
+        elif action == "create_backup":
+
             backup_file = create_backup()
+
             if backup_file:
+
                 AuditLog.objects.create(
                     user=request.user,
-                    action='backup_created',
-                    ip_address=request.META.get('REMOTE_ADDR'),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                    action="backup_created",
+                    ip_address=request.META.get(
+                        "REMOTE_ADDR"
+                    ),
+                    user_agent=request.META.get(
+                        "HTTP_USER_AGENT",
+                        "",
+                    ),
+                    object_repr=(
+                        f"Respaldo: "
+                        f"{os.path.basename(backup_file)}"
+                    ),
                 )
-                messages.success(request, f'Respaldo creado: {os.path.basename(backup_file)}')
+
+                messages.success(
+                    request,
+                    (
+                        "Respaldo creado: "
+                        f"{os.path.basename(backup_file)}"
+                    ),
+                )
+
             else:
-                messages.error(request, 'Error al crear el respaldo.')
+                messages.error(
+                    request,
+                    "Error al crear el respaldo.",
+                )
 
     backup_dir = get_backup_dir()
+
     backups = []
-    if os.path.exists(backup_dir):
-        for f in sorted(os.listdir(backup_dir), reverse=True):
-            if f.endswith('.sql') or f.endswith('.dump'):
-                path = os.path.join(backup_dir, f)
-                backups.append({
-                    'name': f,
-                    'size': os.path.getsize(path),
-                    'modified': os.path.getmtime(path),
-                    'path': path
-                })
+
+    if os.path.exists(
+        backup_dir
+    ):
+
+        for filename in sorted(
+            os.listdir(backup_dir),
+            reverse=True,
+        ):
+
+            if not (
+                filename.endswith(".sql")
+                or filename.endswith(".dump")
+            ):
+                continue
+
+            path = os.path.join(
+                backup_dir,
+                filename,
+            )
+
+            if not os.path.isfile(path):
+                continue
+
+            backups.append(
+                {
+                    "name": filename,
+                    "size": os.path.getsize(path),
+                    "modified": os.path.getmtime(path),
+                    "path": path,
+                }
+            )
 
     context = {
-        'title': 'Respaldos - Ley 21.719',
-        'backups': backups[:10],
+        "title": "Respaldos - Ley 21.719",
+        "backups": backups[:10],
     }
-    return render(request, 'coordinator/seguridad/respaldos.html', context)
+
+    return render(
+        request,
+        "coordinator/seguridad/respaldos.html",
+        context,
+    )
 
 
 @login_required
 @coordinator_required
 def seguridad_incidentes(request):
-    """Registro de incidentes de seguridad (intentos fallidos, accesos sospechosos)."""
-    logs = AuditLog.objects.filter(
-        Q(action='login_failed')
-    ).select_related('user').order_by('-timestamp')
+    """
+    Registro de incidentes de seguridad.
 
-    paginator = Paginator(logs, 50)
-    page = request.GET.get('page')
-    logs_page = paginator.get_page(page)
+    MULTIEMPRESA:
+    - Superuser: incidentes globales.
+    - Resto: incidentes atribuibles a usuarios de su empresa.
+    """
+
+    logs = (
+        _security_logs_for_user(
+            request.user
+        )
+        .filter(
+            action="login_failed"
+        )
+        .order_by(
+            "-timestamp"
+        )
+    )
+
+    paginator = Paginator(
+        logs,
+        50,
+    )
+
+    page = request.GET.get(
+        "page"
+    )
+
+    logs_page = paginator.get_page(
+        page
+    )
 
     context = {
-        'title': 'Incidentes de Seguridad',
-        'logs': logs_page,
+        "title": "Incidentes de Seguridad",
+        "logs": logs_page,
     }
-    return render(request, 'coordinator/seguridad/incidentes.html', context)
+
+    return render(
+        request,
+        "coordinator/seguridad/incidentes.html",
+        context,
+    )
 
 
 @login_required
@@ -6259,17 +11118,107 @@ def seguridad_descargar_respaldo(request, filename):
 @login_required
 @coordinator_required
 @require_POST
-def seguridad_eliminar_respaldo(request, filename):
-    """Elimina un archivo de respaldo."""
+def seguridad_eliminar_respaldo(
+    request,
+    filename,
+):
+    """
+    Elimina un respaldo completo.
+
+    Solo superusuario.
+    """
+
+    _require_global_backup_access(
+        request.user
+    )
+
+    safe_filename = os.path.basename(
+        filename
+    )
+
+    if safe_filename != filename:
+        raise PermissionDenied(
+            "Nombre de archivo inválido."
+        )
+
+    if not (
+        safe_filename.endswith(".sql")
+        or safe_filename.endswith(".dump")
+    ):
+        return JsonResponse(
+            {
+                "error": "Tipo de archivo no permitido."
+            },
+            status=400,
+        )
+
     try:
-        backup_dir = os.path.join(settings.BASE_DIR, 'backups')
-        file_path = os.path.join(backup_dir, filename)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            os.remove(file_path)
-            return JsonResponse({'success': True})
-        return JsonResponse({'error': 'Archivo no encontrado'}, status=404)
+
+        backup_dir = os.path.realpath(
+            get_backup_dir()
+        )
+
+        file_path = os.path.realpath(
+            os.path.join(
+                backup_dir,
+                safe_filename,
+            )
+        )
+
+        if os.path.dirname(file_path) != backup_dir:
+            raise PermissionDenied(
+                "Ruta de respaldo inválida."
+            )
+
+        if not (
+            os.path.exists(file_path)
+            and os.path.isfile(file_path)
+        ):
+            return JsonResponse(
+                {
+                    "error": "Archivo no encontrado"
+                },
+                status=404,
+            )
+
+        os.remove(
+            file_path
+        )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="delete",
+            model_name="Backup",
+            object_repr=(
+                f"Respaldo: {safe_filename}"
+            ),
+            ip_address=request.META.get(
+                "REMOTE_ADDR"
+            ),
+            user_agent=request.META.get(
+                "HTTP_USER_AGENT",
+                "",
+            ),
+        )
+
+        return JsonResponse(
+            {
+                "success": True
+            }
+        )
+
+    except PermissionDenied:
+        raise
+
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+        return JsonResponse(
+            {
+                "success": False,
+                "error": str(e),
+            },
+            status=500,
+        )
 
 
 @login_required
@@ -6299,19 +11248,64 @@ def seguridad_resolver_incidente(request, incident_id):
 @coordinator_required
 @require_POST
 def seguridad_crear_respaldo(request):
-    """Crea un respaldo de la base de datos y devuelve JSON."""
+    """
+    Crea un respaldo completo de la base de datos.
+
+    Solo superusuario.
+    """
+
+    _require_global_backup_access(
+        request.user
+    )
+
     try:
+
         backup_file = create_backup()
-        if backup_file:
-            AuditLog.objects.create(
-                user=request.user,
-                action='backup_created',
-                ip_address=request.META.get('REMOTE_ADDR'),
-                user_agent=request.META.get('HTTP_USER_AGENT', ''),
-                object_repr=f"Respaldo: {os.path.basename(backup_file)}"
+
+        if not backup_file:
+
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        "Error al crear el respaldo"
+                    ),
+                },
+                status=500,
             )
-            return JsonResponse({'success': True, 'message': 'Respaldo creado correctamente'})
-        else:
-            return JsonResponse({'success': False, 'error': 'Error al crear el respaldo'}, status=500)
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="backup_created",
+            model_name="Backup",
+            ip_address=request.META.get(
+                "REMOTE_ADDR"
+            ),
+            user_agent=request.META.get(
+                "HTTP_USER_AGENT",
+                "",
+            ),
+            object_repr=(
+                f"Respaldo: "
+                f"{os.path.basename(backup_file)}"
+            ),
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": (
+                    "Respaldo creado correctamente"
+                ),
+            }
+        )
+
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+        return JsonResponse(
+            {
+                "success": False,
+                "error": str(e),
+            },
+            status=500,
+        )

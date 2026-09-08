@@ -165,10 +165,19 @@ class FleetOwner(models.Model):
         return f"{self.display_name} — {self.company.name}"
 
 
+
 # =========================================================
 # Chofer (Conductor)
 # =========================================================
 class Driver(models.Model):
+    company = models.ForeignKey(
+        "Company",
+        verbose_name="Empresa",
+        on_delete=models.PROTECT,
+        related_name="drivers",
+        
+    )
+
     full_name = models.CharField("Nombre completo", max_length=140)
     rut = models.CharField("RUT", max_length=20, unique=True, db_index=True)
     email = models.EmailField("Correo electrónico", blank=True, default="")
@@ -177,10 +186,29 @@ class Driver(models.Model):
     license_expiry = models.DateField("Vencimiento licencia", null=True, blank=True)
     is_active = models.BooleanField("Activo", default=True)
 
-    photo = models.ImageField("Foto", upload_to='drivers/photos/', null=True, blank=True)
-    medical_cert_expiry = models.DateField("Vencimiento certificado médico", null=True, blank=True)
-    background_check_expiry = models.DateField("Vencimiento antecedentes", null=True, blank=True)
-    notes = models.TextField("Observaciones", blank=True)
+    photo = models.ImageField(
+        "Foto",
+        upload_to="drivers/photos/",
+        null=True,
+        blank=True,
+    )
+
+    medical_cert_expiry = models.DateField(
+        "Vencimiento certificado médico",
+        null=True,
+        blank=True,
+    )
+
+    background_check_expiry = models.DateField(
+        "Vencimiento antecedentes",
+        null=True,
+        blank=True,
+    )
+
+    notes = models.TextField(
+        "Observaciones",
+        blank=True,
+    )
 
     class Meta:
         verbose_name = "Chofer"
@@ -191,14 +219,35 @@ class Driver(models.Model):
         return f"{self.full_name} ({self.rut})"
 
 
+# =========================================================
+# Auxiliar
+# =========================================================
 class Assistant(models.Model):
+    company = models.ForeignKey(
+        "Company",
+        verbose_name="Empresa",
+        on_delete=models.PROTECT,
+        related_name="assistants",
+        
+    )
+
     full_name = models.CharField("Nombre completo", max_length=140)
     rut = models.CharField("RUT", max_length=20, unique=True, db_index=True)
     email = models.EmailField("Correo electrónico", blank=True, default="")
     phone = models.CharField("Teléfono", max_length=20, blank=True, default="")
     is_active = models.BooleanField("Activo", default=True)
-    photo = models.ImageField("Foto", upload_to='assistants/photos/', null=True, blank=True)
-    notes = models.TextField("Observaciones", blank=True)
+
+    photo = models.ImageField(
+        "Foto",
+        upload_to="assistants/photos/",
+        null=True,
+        blank=True,
+    )
+
+    notes = models.TextField(
+        "Observaciones",
+        blank=True,
+    )
 
     class Meta:
         verbose_name = "Auxiliar"
@@ -209,32 +258,142 @@ class Assistant(models.Model):
         return f"{self.full_name} ({self.rut})"
 
 
+
 # =========================================================
-# Plantilla de diseño de bus (BusLayout)
+# Plantilla visual / estructural de diseño de bus
 # =========================================================
 class BusLayout(models.Model):
-    name = models.CharField("Nombre del mapa", max_length=120, unique=True)
-    slug = models.SlugField(max_length=140, unique=True, blank=True)
+    """
+    Plantilla reutilizable para el editor de buses.
 
-    floors = models.PositiveSmallIntegerField(default=1)
-    rows_lower = models.PositiveSmallIntegerField(default=0)
-    rows_upper = models.PositiveSmallIntegerField(default=0)
-    cols = models.PositiveSmallIntegerField(default=4)
+    Define:
+    - configuración base de pisos / filas / columnas
+    - layout inicial opcional
+    - imagen visual de fondo por piso
+    - zonas estructurales y configuración del editor
 
-    layout_lower = models.JSONField(default=list, blank=True)
-    layout_upper = models.JSONField(default=list, blank=True)
-    numbers_lower = models.JSONField(default=list, blank=True)
-    numbers_upper = models.JSONField(default=list, blank=True)
+    El Bus conserva su layout concreto y sus Seat físicos.
+    Esta clase funciona como plantilla/preset.
+    """
 
-    prefix_lower = models.CharField(max_length=10, blank=True, default="")
-    prefix_upper = models.CharField(max_length=10, blank=True, default="")
+    name = models.CharField(
+        "Nombre de la plantilla",
+        max_length=120,
+        unique=True,
+    )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    slug = models.SlugField(
+        max_length=140,
+        unique=True,
+        blank=True,
+    )
+
+    floors = models.PositiveSmallIntegerField(
+        "Pisos",
+        default=1,
+    )
+
+    rows_lower = models.PositiveSmallIntegerField(
+        "Filas piso inferior",
+        default=0,
+    )
+
+    rows_upper = models.PositiveSmallIntegerField(
+        "Filas piso superior",
+        default=0,
+    )
+
+    cols = models.PositiveSmallIntegerField(
+        "Columnas",
+        default=4,
+    )
+
+    layout_lower = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    layout_upper = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    numbers_lower = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    numbers_upper = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    prefix_lower = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+    )
+
+    prefix_upper = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+    )
+
+    # Fondo visual del bus
+    # Ejemplo: img/bus-generico.png
+    background_lower = models.CharField(
+        "Fondo piso inferior",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Ruta relativa dentro de static. Ejemplo: img/bus-generico.png",
+    )
+
+    background_upper = models.CharField(
+        "Fondo piso superior",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Ruta relativa dentro de static. Ejemplo: img/bus-piso2.png",
+    )
+
+    # Configuración visual del editor
+    editor_config = models.JSONField(
+        "Configuración visual del editor",
+        default=dict,
+        blank=True,
+    )
+
+    # Zonas estructurales / bloqueadas
+    structure_config = models.JSONField(
+        "Configuración estructural",
+        default=dict,
+        blank=True,
+    )
+
+    is_active = models.BooleanField(
+        "Activa",
+        default=True,
+    )
+
+    is_system = models.BooleanField(
+        "Plantilla del sistema",
+        default=False,
+        help_text="Identifica plantillas base provistas por el sistema.",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     class Meta:
-        verbose_name = "Mapa de bus"
-        verbose_name_plural = "Mapas de bus"
+        verbose_name = "Plantilla de bus"
+        verbose_name_plural = "Plantillas de buses"
         ordering = ("name",)
 
     def __str__(self):
@@ -245,12 +404,19 @@ class BusLayout(models.Model):
             base = slugify(self.name)[:130]
             slug = base
             i = 1
-            while BusLayout.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+
+            while (
+                BusLayout.objects
+                .filter(slug=slug)
+                .exclude(pk=self.pk)
+                .exists()
+            ):
                 slug = f"{base}-{i}"
                 i += 1
-            self.slug = slug
-        super().save(*args, **kwargs)
 
+            self.slug = slug
+
+        super().save(*args, **kwargs)
 
 # =========================================================
 # Bus con diseño de asientos (layout)
@@ -606,35 +772,98 @@ class BusDocument(models.Model):
 # Rutas y viajes
 # =========================================================
 class Route(models.Model):
-    origin = models.ForeignKey(City, verbose_name="Origen", on_delete=models.PROTECT, related_name="routes_from")
-    destination = models.ForeignKey(City, verbose_name="Destino", on_delete=models.PROTECT, related_name="routes_to")
+    company = models.ForeignKey(
+        "Company",
+        verbose_name="Empresa",
+        on_delete=models.PROTECT,
+        related_name="routes"
+    )
+
+    origin = models.ForeignKey(
+        City,
+        verbose_name="Origen",
+        on_delete=models.PROTECT,
+        related_name="routes_from"
+    )
+
+    destination = models.ForeignKey(
+        City,
+        verbose_name="Destino",
+        on_delete=models.PROTECT,
+        related_name="routes_to"
+    )
+
     origin_terminal = models.ForeignKey(
-        Terminal, verbose_name="Terminal origen",
-        on_delete=models.PROTECT, related_name="routes_from", null=True, blank=True
+        Terminal,
+        verbose_name="Terminal origen",
+        on_delete=models.PROTECT,
+        related_name="routes_from",
+        null=True,
+        blank=True
     )
+
     destination_terminal = models.ForeignKey(
-        Terminal, verbose_name="Terminal destino",
-        on_delete=models.PROTECT, related_name="routes_to", null=True, blank=True
+        Terminal,
+        verbose_name="Terminal destino",
+        on_delete=models.PROTECT,
+        related_name="routes_to",
+        null=True,
+        blank=True
     )
-    duration_minutes = models.PositiveIntegerField("Duración (min)", default=120)
-    base_price = models.DecimalField("Precio base", max_digits=10, decimal_places=2)
-    is_active = models.BooleanField("Activa", default=True)
+
+    duration_minutes = models.PositiveIntegerField(
+        "Duración (min)",
+        default=120
+    )
+
+    base_price = models.DecimalField(
+        "Precio base",
+        max_digits=10,
+        decimal_places=2
+    )
+
+    is_active = models.BooleanField(
+        "Activa",
+        default=True
+    )
 
     class Meta:
-        unique_together = ("origin", "destination", "origin_terminal", "destination_terminal")
+        unique_together = (
+            "company",
+            "origin",
+            "destination",
+            "origin_terminal",
+            "destination_terminal",
+        )
         verbose_name = "Ruta"
         verbose_name_plural = "Rutas"
-        ordering = ("origin__name", "destination__name")
+        ordering = (
+            "company__name",
+            "origin__name",
+            "destination__name",
+        )
 
     def __str__(self) -> str:
         base = f"{self.origin} → {self.destination}"
+
         if self.origin_terminal or self.destination_terminal:
-            t1 = f" ({self.origin_terminal.name})" if self.origin_terminal else ""
-            t2 = f" ({self.destination_terminal.name})" if self.destination_terminal else ""
+            t1 = (
+                f" ({self.origin_terminal.name})"
+                if self.origin_terminal
+                else ""
+            )
+
+            t2 = (
+                f" ({self.destination_terminal.name})"
+                if self.destination_terminal
+                else ""
+            )
+
             base += f"{t1} →{t2}"
+
         return base
-
-
+    
+    
 class Trip(models.Model):
     route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name="trips")
     bus = models.ForeignKey(Bus, on_delete=models.PROTECT, related_name="trips")
@@ -1917,14 +2146,55 @@ class RouteStop(models.Model):
 # Agencias
 # =========================================================
 class Agency(models.Model):
-    name = models.CharField("Nombre de la agencia", max_length=120, unique=True)
-    city = models.ForeignKey(City, on_delete=models.PROTECT, verbose_name="Ciudad")
-    address = models.CharField("Dirección", max_length=200, blank=True)
-    phone = models.CharField("Teléfono", max_length=20, blank=True)
-    email = models.EmailField("Correo electrónico", blank=True)
-    is_active = models.BooleanField("Activa", default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    company = models.ForeignKey(
+        Company,
+        verbose_name="Empresa",
+        on_delete=models.PROTECT,
+        related_name="agencies",
+        db_index=True,
+    )
+
+    name = models.CharField(
+        "Nombre de la agencia",
+        max_length=120,
+        unique=True,
+    )
+
+    city = models.ForeignKey(
+        City,
+        on_delete=models.PROTECT,
+        verbose_name="Ciudad",
+    )
+
+    address = models.CharField(
+        "Dirección",
+        max_length=200,
+        blank=True,
+    )
+
+    phone = models.CharField(
+        "Teléfono",
+        max_length=20,
+        blank=True,
+    )
+
+    email = models.EmailField(
+        "Correo electrónico",
+        blank=True,
+    )
+
+    is_active = models.BooleanField(
+        "Activa",
+        default=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
 
     class Meta:
         verbose_name = "Agencia"
