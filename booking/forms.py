@@ -825,26 +825,78 @@ class BusFullForm(forms.ModelForm):
         return instance
 
 class AgencyForm(forms.ModelForm):
+
     class Meta:
         model = Agency
-        fields = ['name', 'city', 'address', 'phone', 'email', 'is_active']
+
+        fields = [
+            'company',
+            'name',
+            'city',
+            'address',
+            'phone',
+            'email',
+            'is_active',
+        ]
+
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Agencia Central'}),
-            'city': forms.Select(attrs={'class': 'form-select'}),
-            'address': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Calle, número, etc.'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'agencia@ejemplo.cl'}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+            'company': forms.Select(
+                attrs={
+                    'class': 'form-select',
+                }
+            ),
+
+            'name': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'Ej: Agencia Central',
+                }
+            ),
+
+            'city': forms.Select(
+                attrs={
+                    'class': 'form-select',
+                }
+            ),
+
+            'address': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'Calle, número, etc.',
+                }
+            ),
+
+            'phone': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '+56 9 1234 5678',
+                }
+            ),
+
+            'email': forms.EmailInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'agencia@ejemplo.cl',
+                }
+            ),
+
+            'is_active': forms.CheckboxInput(
+                attrs={
+                    'class': 'form-check-input',
+                    'role': 'switch',
+                }
+            ),
         }
+
         labels = {
+            'company': 'EMPRESA',
             'name': 'NOMBRE DE LA AGENCIA',
             'city': 'CIUDAD',
             'address': 'DIRECCIÓN',
             'phone': 'TELÉFONO',
             'email': 'CORREO ELECTRÓNICO',
             'is_active': 'ACTIVA',
-        }        
-        
+        }
 
 class TripForm(forms.ModelForm):
     # ===== DECLARAR EL CAMPO COMO NO REQUERIDO =====

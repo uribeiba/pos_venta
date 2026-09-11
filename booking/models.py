@@ -2157,7 +2157,7 @@ class Agency(models.Model):
     name = models.CharField(
         "Nombre de la agencia",
         max_length=120,
-        unique=True,
+
     )
 
     city = models.ForeignKey(
@@ -2201,9 +2201,15 @@ class Agency(models.Model):
         verbose_name_plural = "Agencias"
         ordering = ("name",)
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "name"],
+                name="unique_agency_name_per_company",
+            ),
+        ]
+
     def __str__(self):
         return self.name
-
 
 # =========================================================
 # Tarifas dinámicas y promociones (unificado)
