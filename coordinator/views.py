@@ -1891,7 +1891,6 @@ def _decorate_trip_operational_statuses(trips):
 # ============================================================================
 # VISTAS DE BUSES
 # ============================================================================
-
 @login_required
 @coordinator_required
 def bus_list(request):
@@ -1903,6 +1902,13 @@ def bus_list(request):
     - Superuser puede ver todos.
     - Coordinador/empresa solo ve buses de su empresa.
     - Owner solo ve sus buses.
+
+    LISTADO:
+    - Búsqueda por patente, modelo, marca o empresa.
+    - Filtro por estado.
+    - Paginación configurable: 10, 20 o 50 buses.
+    - Las métricas se calculan sobre el conjunto completo filtrado,
+      no solamente sobre la página visible.
 
     Mantiene capacidad física, actividad, historial,
     mantenimiento y accesos operacionales.
@@ -1920,6 +1926,32 @@ def bus_list(request):
         "status",
         "all",
     )
+
+    # ============================================================
+    # CANTIDAD DE BUSES POR PÁGINA
+    # ============================================================
+    per_page = request.GET.get(
+        "per_page",
+        "10",
+    )
+
+    try:
+        per_page = int(
+            per_page
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        per_page = 10
+
+    if per_page not in (
+        10,
+        20,
+        50,
+    ):
+        per_page = 10
 
     # ============================================================
     # BUSES AUTORIZADOS
@@ -1993,18 +2025,23 @@ def bus_list(request):
         )
 
     # ============================================================
-    # FILTRO DE ESTADO
+    # FILTRO ACTIVO / INACTIVO
     # ============================================================
     if status_filter == "active":
+
         buses_qs = buses_qs.filter(
             is_active=True
         )
 
     elif status_filter == "inactive":
+
         buses_qs = buses_qs.filter(
             is_active=False
         )
 
+    # ============================================================
+    # CONVERTIR A LISTA PARA CALCULAR ESTADO OPERACIONAL
+    # ============================================================
     buses = list(
         buses_qs
     )
@@ -2014,6 +2051,9 @@ def bus_list(request):
     # ============================================================
     for bus in buses:
 
+        # --------------------------------------------------------
+        # HISTORIAL
+        # --------------------------------------------------------
         bus.has_history = bool(
             bus.trip_count
             or bus.ticket_count
@@ -2022,6 +2062,9 @@ def bus_list(request):
             or bus.fuel_record_count
         )
 
+        # --------------------------------------------------------
+        # MANTENIMIENTO
+        # --------------------------------------------------------
         bus.maintenance_status = "ok"
         bus.maintenance_label = "Sin alerta"
 
@@ -2072,6 +2115,9 @@ def bus_list(request):
                     f"{remaining:,} km restantes"
                 )
 
+        # --------------------------------------------------------
+        # ESTADO OPERACIONAL
+        # --------------------------------------------------------
         operational = (
             _bus_operational_status(
                 bus,
@@ -2120,6 +2166,9 @@ def bus_list(request):
 
     # ============================================================
     # CONTADORES
+    # IMPORTANTE:
+    # Se calculan ANTES de paginar para representar toda
+    # la flota filtrada.
     # ============================================================
     total_buses = len(
         buses
@@ -2168,16 +2217,38 @@ def bus_list(request):
         for bus in buses
     )
 
+    # ============================================================
+    # PAGINACIÓN
+    # ============================================================
+    paginator = Paginator(
+        buses,
+        per_page,
+    )
+
+    buses_page = paginator.get_page(
+        request.GET.get(
+            "page"
+        )
+    )
+
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
-        "buses": buses,
+        "buses": buses_page,
+
         "query": query,
         "status_filter": status_filter,
+        "per_page": per_page,
+
         "total_buses": total_buses,
         "active_count": active_count,
         "inactive_count": inactive_count,
+
         "operational_count": operational_count,
         "attention_count": attention_count,
         "no_operational_count": no_operational_count,
+
         "total_seats": total_seats,
         "future_trips": future_trips,
     }
@@ -4063,7 +4134,6 @@ def _bus_history_summary(bus):
 
 
 
-
 @login_required
 @coordinator_required
 @require_POST
@@ -4071,80 +4141,85 @@ def bus_delete_massive(request):
     """
     Eliminación masiva segura y multiempresa.
 
-    - Solo procesa buses accesibles para el usuario.
-    - Nunca elimina buses con historial operacional.
-    - No permite operar buses de otra empresa mediante IDs manipulados.
+    - Solo elimina buses accesibles para el usuario.
+    - No elimina buses con historial operacional.
+    - Bloquea únicamente la fila principal de Bus.
+    - Los Seat se eliminan automáticamente por CASCADE.
     """
 
     try:
         data = json.loads(request.body)
-        ids = data.get("ids", [])
+        raw_ids = data.get("ids", [])
 
-        if not ids:
+        if not raw_ids:
             return JsonResponse(
                 {
                     "success": False,
-                    "error": "No se seleccionaron buses",
+                    "error": "No se seleccionaron buses.",
+                },
+                status=400,
+            )
+
+        try:
+            ids = [int(bus_id) for bus_id in raw_ids]
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Uno o más IDs de buses son inválidos.",
                 },
                 status=400,
             )
 
         # ========================================================
-        # BUSES AUTORIZADOS
+        # BUSES AUTORIZADOS PARA EL USUARIO
         # ========================================================
-
-        buses = buses_for_user(
-            request.user,
-            Bus.objects.filter(
-                id__in=ids
-            ).select_related(
-                "company",
-                "owner",
-            ),
+        authorized = list(
+            buses_for_user(
+                request.user,
+                Bus.objects.filter(pk__in=ids),
+            ).values_list("pk", "plate")
         )
+
+        authorized_ids = {bus_id for bus_id, _plate in authorized}
 
         deleted_count = 0
         errors = []
 
-        # ========================================================
-        # PROCESAR SOLO BUSES AUTORIZADOS
-        # ========================================================
-
-        for bus in buses:
-
-            references = _bus_history_summary(
-                bus
-            )
-
-            if references:
+        # IDs manipulados o buses fuera de la empresa.
+        for requested_id in ids:
+            if requested_id not in authorized_ids:
                 errors.append(
-                    f"{bus.plate}: "
-                    + ", ".join(references)
+                    f"Bus ID {requested_id}: no existe o no tienes acceso."
                 )
-                continue
+
+        # ========================================================
+        # ELIMINAR UNO POR UNO BAJO TRANSACCIÓN
+        # ========================================================
+        for bus_id, original_plate in authorized:
 
             try:
                 with transaction.atomic():
 
-                    locked_buses = buses_for_user(
+                    locked_queryset = buses_for_user(
                         request.user,
-                        Bus.objects.select_for_update(),
+                        Bus.objects.select_for_update(of=("self",)),
                     )
 
                     locked_bus = (
-                        locked_buses
-                        .filter(pk=bus.pk)
+                        locked_queryset
+                        .filter(pk=bus_id)
                         .first()
                     )
 
                     if not locked_bus:
+                        errors.append(
+                            f"{original_plate}: no fue posible bloquear "
+                            "el bus para eliminarlo."
+                        )
                         continue
 
-                    # Revalidar historial dentro
-                    # de la transacción.
-                    references = _bus_history_summary(
-                        locked_bus
-                    )
+                    references = _bus_history_summary(locked_bus)
 
                     if references:
                         errors.append(
@@ -4153,33 +4228,31 @@ def bus_delete_massive(request):
                         )
                         continue
 
-                    Seat.objects.filter(
-                        bus=locked_bus
-                    ).delete()
+                    plate = locked_bus.plate
 
+                    # Seat tiene CASCADE hacia Bus.
+                    # Django elimina automáticamente los asientos.
                     locked_bus.delete()
 
                     deleted_count += 1
 
-            except ProtectedError:
+            except ProtectedError as e:
                 errors.append(
-                    f"{bus.plate}: "
-                    "tiene referencias protegidas"
+                    f"{original_plate}: tiene referencias protegidas. {e}"
                 )
 
             except Exception as e:
                 errors.append(
-                    f"{bus.plate}: {str(e)}"
+                    f"{original_plate}: {type(e).__name__}: {e}"
                 )
 
         # ========================================================
         # RESPUESTA
         # ========================================================
-
         if errors:
             return JsonResponse(
                 {
-                    "success": False,
+                    "success": deleted_count > 0,
                     "partial": deleted_count > 0,
                     "deleted": deleted_count,
                     "errors": errors,
@@ -4190,6 +4263,10 @@ def bus_delete_massive(request):
             {
                 "success": True,
                 "deleted": deleted_count,
+                "message": (
+                    f"Se eliminaron correctamente "
+                    f"{deleted_count} bus(es)."
+                ),
             }
         )
 
@@ -4206,12 +4283,10 @@ def bus_delete_massive(request):
         return JsonResponse(
             {
                 "success": False,
-                "error": str(e),
+                "error": f"{type(e).__name__}: {e}",
             },
             status=400,
         )
-
-
 
 
 @login_required
@@ -4219,20 +4294,18 @@ def bus_delete_massive(request):
 @require_POST
 def bus_delete(request, bus_id):
     """
-    Eliminación segura y multiempresa.
+    Eliminación individual segura y multiempresa.
 
     - Solo permite eliminar buses accesibles para el usuario.
-    - Si existe historial operacional, el bus NO se elimina.
-    - Debe desactivarse para preservar trazabilidad.
+    - No elimina buses con historial operacional.
+    - Bloquea solamente la fila Bus.
+    - Los Seat asociados se eliminan automáticamente por CASCADE.
     """
 
     bus = get_object_or_404(
         buses_for_user(
             request.user,
-            Bus.objects.select_related(
-                "company",
-                "owner",
-            ),
+            Bus.objects.all(),
         ),
         pk=bus_id,
     )
@@ -4248,8 +4321,7 @@ def bus_delete(request, bus_id):
                     f"El bus {bus.plate} tiene historial: "
                     + ", ".join(references)
                     + ". No se puede eliminar. "
-                      "Desactívalo para conservar "
-                      "la trazabilidad operacional."
+                      "Desactívalo para conservar la trazabilidad operacional."
                 ),
             },
             status=409,
@@ -4258,20 +4330,17 @@ def bus_delete(request, bus_id):
     try:
         with transaction.atomic():
 
-            # Volver a validar y bloquear el bus
-            # dentro de la transacción.
-            locked_buses = buses_for_user(
+            locked_queryset = buses_for_user(
                 request.user,
-                Bus.objects.select_for_update(),
+                Bus.objects.select_for_update(of=("self",)),
             )
 
-            bus = get_object_or_404(
-                locked_buses,
+            locked_bus = get_object_or_404(
+                locked_queryset,
                 pk=bus_id,
             )
 
-            # Revalidar historial después del bloqueo.
-            references = _bus_history_summary(bus)
+            references = _bus_history_summary(locked_bus)
 
             if references:
                 return JsonResponse(
@@ -4279,7 +4348,7 @@ def bus_delete(request, bus_id):
                         "success": False,
                         "protected": True,
                         "message": (
-                            f"El bus {bus.plate} tiene historial: "
+                            f"El bus {locked_bus.plate} tiene historial: "
                             + ", ".join(references)
                             + ". No se puede eliminar. "
                               "Desactívalo para conservar "
@@ -4289,32 +4358,26 @@ def bus_delete(request, bus_id):
                     status=409,
                 )
 
-            Seat.objects.filter(
-                bus=bus
-            ).delete()
+            plate = locked_bus.plate
 
-            plate = bus.plate
-
-            bus.delete()
+            # Los Seat asociados se eliminan por CASCADE.
+            locked_bus.delete()
 
         return JsonResponse(
             {
                 "success": True,
-                "message": (
-                    f"Bus {plate} eliminado correctamente."
-                ),
+                "message": f"Bus {plate} eliminado correctamente.",
             }
         )
 
-    except ProtectedError:
+    except ProtectedError as e:
         return JsonResponse(
             {
                 "success": False,
                 "protected": True,
                 "message": (
-                    f"El bus {bus.plate} tiene "
-                    "referencias protegidas. "
-                    "Desactívalo en lugar de eliminarlo."
+                    f"El bus no puede eliminarse porque "
+                    f"tiene referencias protegidas. {e}"
                 ),
             },
             status=409,
@@ -4324,10 +4387,11 @@ def bus_delete(request, bus_id):
         return JsonResponse(
             {
                 "success": False,
-                "error": str(e),
+                "error": f"{type(e).__name__}: {e}",
             },
             status=400,
         )
+
 
 @login_required
 @coordinator_required
@@ -7813,9 +7877,21 @@ def routes_dashboard(request):
     - Lista únicamente rutas de la empresa del usuario.
     - Solo permite editar rutas de la empresa.
     - Las rutas nuevas quedan asociadas automáticamente a la empresa.
+    - Superuser puede seleccionar empresa desde RouteForm.
+    - Usuarios normales quedan restringidos a su empresa.
     """
 
     scope = get_user_scope(request.user)
+
+    company = scope.get("company")
+
+    # ============================================================
+    # VALIDAR EMPRESA PARA USUARIO NORMAL
+    # ============================================================
+    if scope["type"] != "superuser" and not company:
+        raise PermissionDenied(
+            "Su usuario no tiene una empresa asociada."
+        )
 
     # ============================================================
     # RUTA EN EDICIÓN
@@ -7831,6 +7907,8 @@ def routes_dashboard(request):
                 Route.objects.select_related(
                     "origin",
                     "destination",
+                    "origin_terminal",
+                    "destination_terminal",
                     "company",
                 ),
             ),
@@ -7838,11 +7916,12 @@ def routes_dashboard(request):
         )
 
     # ============================================================
-    # POST
+    # CONSTRUIR FORMULARIO Y FORMSET
     # ============================================================
     if request.method == "POST":
 
         if route_to_edit:
+
             form = RouteForm(
                 request.POST,
                 instance=route_to_edit,
@@ -7854,6 +7933,7 @@ def routes_dashboard(request):
             )
 
         else:
+
             form = RouteForm(
                 request.POST
             )
@@ -7862,9 +7942,56 @@ def routes_dashboard(request):
                 request.POST
             )
 
+    else:
+
+        if route_to_edit:
+
+            form = RouteForm(
+                instance=route_to_edit
+            )
+
+            formset = RouteStopFormSet(
+                instance=route_to_edit
+            )
+
+        else:
+
+            form = RouteForm()
+
+            formset = RouteStopFormSet()
+
+    # ============================================================
+    # RESTRINGIR EMPRESA ANTES DE form.is_valid()
+    # ============================================================
+    if scope["type"] != "superuser":
+
+        company_field = form.fields.get(
+            "company"
+        )
+
+        if company_field:
+
+            company_field.queryset = (
+                company_field
+                .queryset
+                .filter(
+                    pk=company.pk
+                )
+            )
+
+            company_field.initial = company
+
+            # El coordinador normal no envía company desde HTML.
+            # La empresa se fuerza posteriormente desde backend.
+            company_field.required = False
+
+    # ============================================================
+    # PROCESAR POST
+    # ============================================================
+    if request.method == "POST":
+
         if form.is_valid() and formset.is_valid():
 
-            # Guardamos primero sin commit para asignar empresa.
             route = form.save(
                 commit=False
             )
@@ -7874,67 +8001,52 @@ def routes_dashboard(request):
             # ====================================================
             if scope["type"] != "superuser":
 
-                if not scope["company"]:
-                    messages.error(
-                        request,
-                        "Su usuario no tiene una empresa asociada.",
-                    )
-
-                    return redirect(
-                        "coordinator:routes_dashboard"
-                    )
-
-                route.company = scope["company"]
+                # No confiar en el POST.
+                # Siempre usar la empresa real del usuario.
+                route.company = company
 
             elif not route.company_id:
+
+                form.add_error(
+                    "company",
+                    "Debe seleccionar una empresa para la ruta.",
+                )
+
                 messages.error(
                     request,
-                    "La ruta debe tener una empresa asociada.",
+                    "Debe seleccionar una empresa para la ruta.",
+                )
+
+            # ====================================================
+            # GUARDAR
+            # ====================================================
+            if not form.errors:
+
+                with transaction.atomic():
+
+                    route.save()
+
+                    form.save_m2m()
+
+                    formset.instance = route
+
+                    formset.save()
+
+                messages.success(
+                    request,
+                    f"Ruta {route} guardada correctamente.",
                 )
 
                 return redirect(
                     "coordinator:routes_dashboard"
                 )
 
-            route.save()
-
-            form.save_m2m()
-
-            formset.instance = route
-            formset.save()
-
-            messages.success(
-                request,
-                f"Ruta {route} guardada correctamente.",
-            )
-
-            return redirect(
-                "coordinator:routes_dashboard"
-            )
-
         else:
+
             messages.error(
                 request,
                 "Por favor corrige los errores del formulario.",
             )
-
-    # ============================================================
-    # GET
-    # ============================================================
-    else:
-
-        if route_to_edit:
-            form = RouteForm(
-                instance=route_to_edit
-            )
-
-            formset = RouteStopFormSet(
-                instance=route_to_edit
-            )
-
-        else:
-            form = RouteForm()
-            formset = RouteStopFormSet()
 
     # ============================================================
     # LISTADO
@@ -7959,6 +8071,7 @@ def routes_dashboard(request):
     )
 
     if query:
+
         routes_list = routes_list.filter(
             Q(
                 origin__name__icontains=query
@@ -7975,31 +8088,53 @@ def routes_dashboard(request):
     )
 
     routes_page = paginator.get_page(
-        request.GET.get("page")
+        request.GET.get(
+            "page"
+        )
     )
 
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
         "form": form,
         "formset": formset,
         "routes": routes_page,
         "query": query,
-        "edit_mode": bool(route_to_edit),
+        "edit_mode": bool(
+            route_to_edit
+        ),
         "route_edit_id": (
             route_to_edit.id
             if route_to_edit
             else None
         ),
-        "cities": City.objects.all().order_by(
-            "name"
+
+        # Geografía global del sistema.
+        "cities": (
+            City.objects
+            .all()
+            .order_by(
+                "name"
+            )
         ),
-        "terminals": Terminal.objects.select_related(
-            "city"
-        ).filter(
-            is_active=True
-        ).order_by(
-            "city__name",
-            "name",
+
+        "terminals": (
+            Terminal.objects
+            .select_related(
+                "city"
+            )
+            .filter(
+                is_active=True
+            )
+            .order_by(
+                "city__name",
+                "name",
+            )
         ),
+
+        "current_company": company,
+        "is_superuser": request.user.is_superuser,
     }
 
     return render(
@@ -8288,8 +8423,6 @@ def driver_delete(request, driver_id):
         "coordinator:driver_list"
     )
 
-
-
 @login_required
 @coordinator_required
 def drivers_dashboard(request):
@@ -8300,31 +8433,45 @@ def drivers_dashboard(request):
     - Lista únicamente choferes de la empresa.
     - Solo permite editar choferes de la empresa.
     - Los nuevos choferes quedan asociados a la empresa.
+    - Superuser puede seleccionar empresa desde DriverForm.
+    - Usuarios normales quedan restringidos a su empresa.
     - Las fechas operacionales se sincronizan con DriverDocument.
     """
 
     scope = get_user_scope(request.user)
 
+    company = scope.get("company")
+
+    # ============================================================
+    # VALIDAR EMPRESA PARA USUARIO NORMAL
+    # ============================================================
+    if scope["type"] != "superuser" and not company:
+        raise PermissionDenied(
+            "Su usuario no tiene una empresa asociada."
+        )
+
+    # ============================================================
+    # CHOFER EN EDICIÓN
+    # ============================================================
     driver_to_edit = None
 
     edit_id = request.GET.get(
         "edit"
     )
 
-    # ============================================================
-    # CHOFER EN EDICIÓN
-    # ============================================================
     if edit_id:
         driver_to_edit = get_object_or_404(
             drivers_for_user(
                 request.user,
-                Driver.objects.all(),
+                Driver.objects.select_related(
+                    "company"
+                ),
             ),
             pk=edit_id,
         )
 
     # ============================================================
-    # POST
+    # CONSTRUIR FORMULARIO
     # ============================================================
     if request.method == "POST":
 
@@ -8341,38 +8488,87 @@ def drivers_dashboard(request):
             )
         )
 
+    else:
+
+        form = (
+            DriverForm(
+                instance=driver_to_edit
+            )
+            if driver_to_edit
+            else DriverForm()
+        )
+
+    # ============================================================
+    # RESTRINGIR EMPRESA ANTES DE form.is_valid()
+    # ============================================================
+    if scope["type"] != "superuser":
+
+        company_field = form.fields.get(
+            "company"
+        )
+
+        if company_field:
+
+            company_field.queryset = (
+                company_field
+                .queryset
+                .filter(
+                    pk=company.pk
+                )
+            )
+
+            company_field.initial = company
+
+            # El coordinador normal no envía company desde HTML.
+            # La empresa se fuerza posteriormente desde backend.
+            company_field.required = False
+
+    # ============================================================
+    # PROCESAR POST
+    # ============================================================
+    if request.method == "POST":
+
         if form.is_valid():
 
             try:
+
                 with transaction.atomic():
 
-                    # --------------------------------------------
+                    # ------------------------------------------------
                     # No guardamos todavía.
-                    # Primero asignamos empresa.
-                    # --------------------------------------------
+                    # Primero asignamos/validamos empresa.
+                    # ------------------------------------------------
                     driver = form.save(
                         commit=False
                     )
 
+                    # ------------------------------------------------
+                    # USUARIO NORMAL
+                    # ------------------------------------------------
                     if scope["type"] != "superuser":
 
-                        if not scope["company"]:
-                            raise PermissionDenied(
-                                "Su usuario no tiene una empresa asociada."
-                            )
+                        # Nunca confiar en company enviado por POST.
+                        driver.company = company
 
-                        driver.company = scope[
-                            "company"
-                        ]
-
+                    # ------------------------------------------------
+                    # SUPERUSER
+                    # ------------------------------------------------
                     elif not driver.company_id:
-                        raise ValidationError(
-                            "Debe asignar una empresa al chofer."
+
+                        form.add_error(
+                            "company",
+                            "Debe seleccionar una empresa para el chofer.",
                         )
 
+                        raise ValidationError(
+                            "Debe seleccionar una empresa para el chofer."
+                        )
+
+                    # ------------------------------------------------
+                    # GUARDAR
+                    # ------------------------------------------------
                     driver.save()
 
-                    # En caso de que el ModelForm tenga M2M
                     form.save_m2m()
 
                     _sync_driver_documents(
@@ -8391,30 +8587,29 @@ def drivers_dashboard(request):
                     "coordinator:drivers_dashboard"
                 )
 
-            except Exception as e:
+            except ValidationError as e:
+
                 messages.error(
                     request,
-                    f"No fue posible guardar el chofer: {str(e)}",
+                    str(e),
+                )
+
+            except Exception as e:
+
+                messages.error(
+                    request,
+                    (
+                        "No fue posible guardar el chofer: "
+                        f"{str(e)}"
+                    ),
                 )
 
         else:
+
             messages.error(
                 request,
                 "Por favor corrige los errores del formulario.",
             )
-
-    # ============================================================
-    # GET
-    # ============================================================
-    else:
-
-        form = (
-            DriverForm(
-                instance=driver_to_edit
-            )
-            if driver_to_edit
-            else DriverForm()
-        )
 
     # ============================================================
     # LISTADO MULTIEMPRESA
@@ -8426,13 +8621,16 @@ def drivers_dashboard(request):
 
     drivers_list = drivers_for_user(
         request.user,
-        Driver.objects.all(),
+        Driver.objects.select_related(
+            "company"
+        ),
     ).order_by(
         "-is_active",
         "full_name",
     )
 
     if query:
+
         drivers_list = drivers_list.filter(
             Q(
                 full_name__icontains=query
@@ -8449,9 +8647,14 @@ def drivers_dashboard(request):
     )
 
     drivers_page = paginator.get_page(
-        request.GET.get("page")
+        request.GET.get(
+            "page"
+        )
     )
 
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
         "form": form,
         "drivers": drivers_page,
@@ -8464,6 +8667,8 @@ def drivers_dashboard(request):
             if driver_to_edit
             else None
         ),
+        "current_company": company,
+        "is_superuser": request.user.is_superuser,
     }
 
     return render(
@@ -8471,7 +8676,6 @@ def drivers_dashboard(request):
         "choferes/choferes.html",
         context,
     )
-
 
 # ============================================================================
 # GESTIÓN DE AUXILIARES
@@ -8667,39 +8871,59 @@ def assistant_delete(request, assistant_id):
         "coordinator:assistant_list"
     )
 
-
 @login_required
 @coordinator_required
 def assistants_dashboard(request):
     """
     Tablero multiempresa de auxiliares.
+
+    MULTIEMPRESA:
+    - Lista únicamente auxiliares de la empresa.
+    - Solo permite editar auxiliares de la empresa.
+    - Los nuevos auxiliares quedan asociados a la empresa.
+    - Superuser puede seleccionar empresa desde AssistantForm.
+    - Usuarios normales quedan restringidos a su empresa.
     """
 
     scope = get_user_scope(
         request.user
     )
 
+    company = scope.get(
+        "company"
+    )
+
+    # ============================================================
+    # VALIDAR EMPRESA PARA USUARIO NORMAL
+    # ============================================================
+    if scope["type"] != "superuser" and not company:
+        raise PermissionDenied(
+            "Su usuario no tiene una empresa asociada."
+        )
+
+    # ============================================================
+    # AUXILIAR EN EDICIÓN
+    # ============================================================
     assistant_to_edit = None
 
     edit_id = request.GET.get(
         "edit"
     )
 
-    # ============================================================
-    # AUXILIAR EN EDICIÓN
-    # ============================================================
     if edit_id:
 
         assistant_to_edit = get_object_or_404(
             assistants_for_user(
                 request.user,
-                Assistant.objects.all(),
+                Assistant.objects.select_related(
+                    "company"
+                ),
             ),
             pk=edit_id,
         )
 
     # ============================================================
-    # POST
+    # CONSTRUIR FORMULARIO
     # ============================================================
     if request.method == "POST":
 
@@ -8716,31 +8940,81 @@ def assistants_dashboard(request):
             )
         )
 
+    else:
+
+        form = (
+            AssistantForm(
+                instance=assistant_to_edit
+            )
+            if assistant_to_edit
+            else AssistantForm()
+        )
+
+    # ============================================================
+    # RESTRINGIR EMPRESA ANTES DE form.is_valid()
+    # ============================================================
+    if scope["type"] != "superuser":
+
+        company_field = form.fields.get(
+            "company"
+        )
+
+        if company_field:
+
+            company_field.queryset = (
+                company_field
+                .queryset
+                .filter(
+                    pk=company.pk
+                )
+            )
+
+            company_field.initial = company
+
+            # El coordinador normal no envía company desde HTML.
+            # La empresa se fuerza posteriormente desde backend.
+            company_field.required = False
+
+    # ============================================================
+    # PROCESAR POST
+    # ============================================================
+    if request.method == "POST":
+
         if form.is_valid():
 
             try:
+
                 with transaction.atomic():
 
                     assistant = form.save(
                         commit=False
                     )
 
+                    # ------------------------------------------------
+                    # USUARIO NORMAL
+                    # ------------------------------------------------
                     if scope["type"] != "superuser":
 
-                        if not scope["company"]:
-                            raise PermissionDenied(
-                                "Su usuario no tiene una empresa asociada."
-                            )
+                        # No confiar en company enviado por POST.
+                        assistant.company = company
 
-                        assistant.company = scope[
-                            "company"
-                        ]
-
+                    # ------------------------------------------------
+                    # SUPERUSER
+                    # ------------------------------------------------
                     elif not assistant.company_id:
-                        raise ValidationError(
-                            "Debe asignar una empresa al auxiliar."
+
+                        form.add_error(
+                            "company",
+                            "Debe seleccionar una empresa para el auxiliar.",
                         )
 
+                        raise ValidationError(
+                            "Debe seleccionar una empresa para el auxiliar."
+                        )
+
+                    # ------------------------------------------------
+                    # GUARDAR
+                    # ------------------------------------------------
                     assistant.save()
 
                     form.save_m2m()
@@ -8754,30 +9028,29 @@ def assistants_dashboard(request):
                     "coordinator:assistants_dashboard"
                 )
 
-            except Exception as e:
+            except ValidationError as e:
+
                 messages.error(
                     request,
-                    f"No fue posible guardar el auxiliar: {str(e)}",
+                    str(e),
+                )
+
+            except Exception as e:
+
+                messages.error(
+                    request,
+                    (
+                        "No fue posible guardar el auxiliar: "
+                        f"{str(e)}"
+                    ),
                 )
 
         else:
+
             messages.error(
                 request,
                 "Por favor corrige los errores del formulario.",
             )
-
-    # ============================================================
-    # GET
-    # ============================================================
-    else:
-
-        form = (
-            AssistantForm(
-                instance=assistant_to_edit
-            )
-            if assistant_to_edit
-            else AssistantForm()
-        )
 
     # ============================================================
     # LISTADO MULTIEMPRESA
@@ -8789,13 +9062,16 @@ def assistants_dashboard(request):
 
     assistants_list = assistants_for_user(
         request.user,
-        Assistant.objects.all(),
+        Assistant.objects.select_related(
+            "company"
+        ),
     ).order_by(
         "-is_active",
         "full_name",
     )
 
     if query:
+
         assistants_list = assistants_list.filter(
             Q(
                 full_name__icontains=query
@@ -8812,9 +9088,14 @@ def assistants_dashboard(request):
     )
 
     assistants_page = paginator.get_page(
-        request.GET.get("page")
+        request.GET.get(
+            "page"
+        )
     )
 
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
         "form": form,
         "assistants": assistants_page,
@@ -8827,6 +9108,8 @@ def assistants_dashboard(request):
             if assistant_to_edit
             else None
         ),
+        "current_company": company,
+        "is_superuser": request.user.is_superuser,
     }
 
     return render(

@@ -53,6 +53,33 @@
         max-width:220px;
     }
 
+    /* Permitir que el menú "Más" no quede recortado por la tabla */
+    .fleet-table-responsive {
+        overflow: visible !important;
+    }
+
+    .fleet-table-responsive .dropdown-menu {
+        z-index: 1080 !important;
+    }
+
+    .pagination-wrap {
+        border-top: 1px solid #e2e8f0;
+        background: #fff;
+        padding: 14px 16px;
+    }
+
+    .pagination-info {
+        color: #64748b;
+        font-size: .85rem;
+    }
+
+    @media (max-width: 991.98px) {
+        .fleet-table-responsive {
+            overflow-x: auto !important;
+            overflow-y: visible !important;
+        }
+    }
+
 </style>
 {% endblock %}
 
@@ -112,7 +139,7 @@
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end">
-                <div class="col-md-7">
+                <div class="col-md-5">
                     <label class="form-label small fw-semibold">Buscar</label>
                     <input type="search"
                            class="form-control"
@@ -126,6 +153,14 @@
                         <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Todos</option>
                         <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Activos</option>
                         <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactivos</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-semibold">Mostrar</label>
+                    <select name="per_page" class="form-select">
+                        <option value="10" {% if per_page == 10 %}selected{% endif %}>10 buses</option>
+                        <option value="20" {% if per_page == 20 %}selected{% endif %}>20 buses</option>
+                        <option value="50" {% if per_page == 50 %}selected{% endif %}>50 buses</option>
                     </select>
                 </div>
                 <div class="col-md-2 d-grid">
@@ -149,7 +184,7 @@
             </button>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive fleet-table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
@@ -330,6 +365,65 @@
                 </tbody>
             </table>
         </div>
+
+        {% if buses.has_other_pages %}
+        <div class="pagination-wrap">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                <div class="pagination-info">
+                    Mostrando {{ buses.start_index }}–{{ buses.end_index }} de {{ buses.paginator.count }} buses
+                </div>
+
+                <nav aria-label="Paginación de buses">
+                    <ul class="pagination pagination-sm mb-0 flex-wrap">
+                        {% if buses.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link"
+                               href="?page={{ buses.previous_page_number }}&q={{ query|urlencode }}&status={{ status_filter|urlencode }}&per_page={{ per_page }}">
+                                <i class="fas fa-chevron-left"></i> Anterior
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="fas fa-chevron-left"></i> Anterior</span>
+                        </li>
+                        {% endif %}
+
+                        {% for num in buses.paginator.page_range %}
+                            {% if num == buses.number %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                            {% elif num >= buses.number|add:'-2' and num <= buses.number|add:'2' %}
+                            <li class="page-item">
+                                <a class="page-link"
+                                   href="?page={{ num }}&q={{ query|urlencode }}&status={{ status_filter|urlencode }}&per_page={{ per_page }}">{{ num }}</a>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if buses.has_next %}
+                        <li class="page-item">
+                            <a class="page-link"
+                               href="?page={{ buses.next_page_number }}&q={{ query|urlencode }}&status={{ status_filter|urlencode }}&per_page={{ per_page }}">
+                                Siguiente <i class="fas fa-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Siguiente <i class="fas fa-chevron-right"></i></span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        {% elif buses.paginator %}
+        <div class="pagination-wrap">
+            <div class="pagination-info">
+                Mostrando {{ buses.paginator.count }} bus{% if buses.paginator.count != 1 %}es{% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -363,7 +457,7 @@ document.querySelectorAll('.toggle-active').forEach(btn => {
         if (!confirm(`¿Deseas ${action} el bus ${plate}?`)) return;
 
         const response = await fetch(
-            `/coordinador/buses/estado/${id}/`,
+            `/coordinator/buses/estado/${id}/`,
             {
                 method: 'POST',
                 headers: {'X-CSRFToken': getCsrfToken()}
@@ -392,7 +486,7 @@ document.querySelectorAll('.delete-single').forEach(btn => {
         )) return;
 
         const response = await fetch(
-            `/coordinador/buses/eliminar/${id}/`,
+            `/coordinator/buses/eliminar/${id}/`,
             {
                 method: 'POST',
                 headers: {'X-CSRFToken': getCsrfToken()}
@@ -423,7 +517,7 @@ if (deleteSelectedBtn) {
         )) return;
 
         const response = await fetch(
-            '/coordinador/buses/eliminar-masivo/',
+            '/coordinator/buses/eliminar-masivo/',
             {
                 method: 'POST',
                 headers: {

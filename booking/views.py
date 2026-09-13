@@ -83,37 +83,97 @@ def _get_role_choices():
 
 def _resolve_user_profile_scope(request):
     """
-    FASE 2.18.3-A2.2
+    Valida y resuelve el alcance empresarial enviado desde
+    Crear/Editar Usuario.
 
-    Valida el alcance empresarial enviado desde Crear/Editar Usuario.
-
-    Reglas:
-    - Todo usuario operativo debe quedar asociado a una empresa.
-    - role='owner' exige propietario/socio.
-    - El propietario debe estar activo y pertenecer a la misma empresa.
-    - Para otros roles fleet_owner se limpia para evitar alcances ambiguos.
+    MULTIEMPRESA:
+    - Superuser puede seleccionar cualquier empresa.
+    - Usuario administrativo normal queda forzado a su empresa.
+    - role='owner' exige propietario/socio activo de esa empresa.
+    - Para otros roles fleet_owner se limpia.
     """
-    role = (request.POST.get("role") or "").strip()
-    company_id = (request.POST.get("company") or "").strip()
-    fleet_owner_id = (request.POST.get("fleet_owner") or "").strip()
 
-    valid_roles = {value for value, _label in _get_role_choices()}
+    role = (
+        request.POST.get("role")
+        or ""
+    ).strip()
+
+    posted_company_id = (
+        request.POST.get("company")
+        or ""
+    ).strip()
+
+    fleet_owner_id = (
+        request.POST.get("fleet_owner")
+        or ""
+    ).strip()
+
+    # ============================================================
+    # VALIDAR ROL
+    # ============================================================
+    valid_roles = {
+        value
+        for value, _label in _get_role_choices()
+    }
+
     if role not in valid_roles:
-        raise ValidationError("Debe seleccionar un rol válido.")
+        raise ValidationError(
+            "Debe seleccionar un rol válido."
+        )
 
-    if not company_id:
-        raise ValidationError("Debe seleccionar una empresa operadora.")
+    # ============================================================
+    # RESOLVER EMPRESA
+    # ============================================================
+    if request.user.is_superuser:
 
-    company = Company.objects.filter(pk=company_id).first()
-    if not company:
-        raise ValidationError("La empresa operadora seleccionada no existe.")
+        if not posted_company_id:
+            raise ValidationError(
+                "Debe seleccionar una empresa operadora."
+            )
 
+        company = (
+            Company.objects
+            .filter(
+                pk=posted_company_id
+            )
+            .first()
+        )
+
+        if not company:
+            raise ValidationError(
+                "La empresa operadora seleccionada no existe."
+            )
+
+    else:
+
+        actor_profile = getattr(
+            request.user,
+            "profile",
+            None,
+        )
+
+        if (
+            not actor_profile
+            or not actor_profile.company_id
+        ):
+            raise PermissionDenied(
+                "Su usuario no tiene una empresa asociada."
+            )
+
+        # Nunca confiar en company enviado por POST.
+        company = actor_profile.company
+
+    # ============================================================
+    # PROPIETARIO / SOCIO
+    # ============================================================
     fleet_owner = None
 
     if role == "owner":
+
         if not fleet_owner_id:
             raise ValidationError(
-                "El rol Propietario / Socio requiere seleccionar un propietario asociado."
+                "El rol Propietario / Socio requiere "
+                "seleccionar un propietario asociado."
             )
 
         fleet_owner = (
@@ -128,8 +188,9 @@ def _resolve_user_profile_scope(request):
 
         if not fleet_owner:
             raise ValidationError(
-                "El propietario / socio no pertenece a la empresa seleccionada "
-                "o se encuentra inactivo."
+                "El propietario / socio no pertenece "
+                "a la empresa seleccionada o se "
+                "encuentra inactivo."
             )
 
     return role, company, fleet_owner
@@ -2086,243 +2147,838 @@ def pos_reportes(request):
 @login_required
 @role_required(['admin', 'supervisor', 'coordinator'])
 def gestion_usuarios(request):
-    query = (request.GET.get("q") or "").strip()
+
+    query = (
+        request.GET.get("q")
+        or ""
+    ).strip()
 
     qs = (
         User.objects
         .select_related(
-            'profile',
-            'profile__terminal',
-            'profile__terminal__city',
-            'profile__company',
-            'profile__fleet_owner',
+            "profile",
+            "profile__terminal",
+            "profile__terminal__city",
+            "profile__company",
+            "profile__fleet_owner",
         )
-        .order_by('username')
     )
 
-    if query:
+    # ============================================================
+    # AISLAMIENTO MULTIEMPRESA
+    # ============================================================
+    if request.user.is_superuser:
+
+        # Superuser puede ver todo.
+        pass
+
+    else:
+
+        actor_profile = getattr(
+            request.user,
+            "profile",
+            None,
+        )
+
+        if (
+            not actor_profile
+            or not actor_profile.company_id
+        ):
+            raise PermissionDenied(
+                "Su usuario no tiene una empresa asociada."
+            )
+
         qs = qs.filter(
-            Q(username__icontains=query)
-            | Q(first_name__icontains=query)
-            | Q(last_name__icontains=query)
-            | Q(email__icontains=query)
-            | Q(profile__company__name__icontains=query)
-            | Q(profile__fleet_owner__first_name__icontains=query)
-            | Q(profile__fleet_owner__last_name__icontains=query)
+            profile__company=actor_profile.company,
+            is_superuser=False,
+        )
+
+    qs = qs.order_by(
+        "username"
+    )
+
+    # ============================================================
+    # BÚSQUEDA
+    # ============================================================
+    if query:
+
+        qs = qs.filter(
+            Q(
+                username__icontains=query
+            )
+            |
+            Q(
+                first_name__icontains=query
+            )
+            |
+            Q(
+                last_name__icontains=query
+            )
+            |
+            Q(
+                email__icontains=query
+            )
+            |
+            Q(
+                profile__company__name__icontains=query
+            )
+            |
+            Q(
+                profile__fleet_owner__first_name__icontains=query
+            )
+            |
+            Q(
+                profile__fleet_owner__last_name__icontains=query
+            )
         ).distinct()
 
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
         "title": "Gestión de Usuarios",
         "usuarios": qs,
         "total_count": qs.count(),
-        "admins_count": qs.filter(profile__role="admin").count(),
-        "supervisores_count": qs.filter(profile__role="supervisor").count(),
-        "coordinadores_count": qs.filter(profile__role="coordinator").count(),
-        "vendedores_count": qs.filter(profile__role="vendedor").count(),
-        "owners_count": qs.filter(profile__role="owner").count(),
-        "executives_count": qs.filter(profile__role="executive").count(),
-        "secretaries_count": qs.filter(profile__role="secretary").count(),
-        "activos_count": qs.filter(profile__is_active=True).count(),
-        "inactivos_count": qs.filter(profile__is_active=False).count(),
+
+        "admins_count": qs.filter(
+            profile__role="admin"
+        ).count(),
+
+        "supervisores_count": qs.filter(
+            profile__role="supervisor"
+        ).count(),
+
+        "coordinadores_count": qs.filter(
+            profile__role="coordinator"
+        ).count(),
+
+        "vendedores_count": qs.filter(
+            profile__role="vendedor"
+        ).count(),
+
+        "owners_count": qs.filter(
+            profile__role="owner"
+        ).count(),
+
+        "executives_count": qs.filter(
+            profile__role="executive"
+        ).count(),
+
+        "secretaries_count": qs.filter(
+            profile__role="secretary"
+        ).count(),
+
+        "activos_count": qs.filter(
+            profile__is_active=True
+        ).count(),
+
+        "inactivos_count": qs.filter(
+            profile__is_active=False
+        ).count(),
+
         "roles": _get_role_choices(),
-        "terminales": Terminal.objects.all(),
+
+        # Terminales continúan siendo geografía global.
+        "terminales": (
+            Terminal.objects
+            .select_related(
+                "city"
+            )
+            .all()
+            .order_by(
+                "city__name",
+                "name",
+            )
+        ),
     }
-    return render(request, "booking/gestion_usuarios.html", context)
+
+    return render(
+        request,
+        "booking/gestion_usuarios.html",
+        context,
+    )
 
 
 @login_required
 @role_required(['admin', 'supervisor', 'coordinator'])
 def editar_usuario(request, user_id):
+
+    # ============================================================
+    # QUERYSET AUTORIZADO
+    # ============================================================
+    users_allowed = (
+        User.objects
+        .select_related(
+            "profile",
+            "profile__company",
+            "profile__fleet_owner",
+            "profile__terminal",
+        )
+    )
+
+    actor_company = None
+
+    if not request.user.is_superuser:
+
+        actor_profile = getattr(
+            request.user,
+            "profile",
+            None,
+        )
+
+        if (
+            not actor_profile
+            or not actor_profile.company_id
+        ):
+            raise PermissionDenied(
+                "Su usuario no tiene una empresa asociada."
+            )
+
+        actor_company = actor_profile.company
+
+        users_allowed = users_allowed.filter(
+            profile__company=actor_company,
+            is_superuser=False,
+        )
+
     usuario = get_object_or_404(
-        User.objects.select_related(
-            'profile',
-            'profile__company',
-            'profile__fleet_owner',
-            'profile__terminal',
-        ),
+        users_allowed,
         id=user_id,
     )
 
-    if request.method == 'POST':
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
+
         try:
-            role, company, fleet_owner = _resolve_user_profile_scope(request)
+
+            role, company, fleet_owner = (
+                _resolve_user_profile_scope(
+                    request
+                )
+            )
 
             with transaction.atomic():
-                usuario.first_name = request.POST.get('first_name', '').strip()
-                usuario.last_name = request.POST.get('last_name', '').strip()
-                usuario.email = request.POST.get('email', '').strip()
 
-                new_password = request.POST.get('password', '')
-                confirm_password = request.POST.get('confirm_password', '')
+                usuario.first_name = (
+                    request.POST
+                    .get(
+                        "first_name",
+                        "",
+                    )
+                    .strip()
+                )
+
+                usuario.last_name = (
+                    request.POST
+                    .get(
+                        "last_name",
+                        "",
+                    )
+                    .strip()
+                )
+
+                usuario.email = (
+                    request.POST
+                    .get(
+                        "email",
+                        "",
+                    )
+                    .strip()
+                )
+
+                # =================================================
+                # CONTRASEÑA
+                # =================================================
+                new_password = request.POST.get(
+                    "password",
+                    "",
+                )
+
+                confirm_password = request.POST.get(
+                    "confirm_password",
+                    "",
+                )
 
                 if new_password or confirm_password:
+
                     if new_password != confirm_password:
-                        raise ValidationError("Las contraseñas no coinciden.")
+                        raise ValidationError(
+                            "Las contraseñas no coinciden."
+                        )
+
                     if len(new_password) < 8:
                         raise ValidationError(
-                            "La nueva contraseña debe tener al menos 8 caracteres."
+                            "La nueva contraseña debe tener "
+                            "al menos 8 caracteres."
                         )
-                    usuario.set_password(new_password)
+
+                    usuario.set_password(
+                        new_password
+                    )
 
                 usuario.save()
 
-                profile, _ = UserProfile.objects.get_or_create(user=usuario)
+                # =================================================
+                # PERFIL
+                # =================================================
+                profile, _ = (
+                    UserProfile.objects
+                    .get_or_create(
+                        user=usuario
+                    )
+                )
+
                 profile.role = role
                 profile.company = company
                 profile.fleet_owner = fleet_owner
-                profile.terminal_id = request.POST.get('terminal') or None
+
+                profile.terminal_id = (
+                    request.POST.get(
+                        "terminal"
+                    )
+                    or None
+                )
 
                 try:
-                    profile.commission_rate = Decimal(
-                        request.POST.get('commission_rate', '0') or '0'
-                    )
-                    profile.max_discount = Decimal(
-                        request.POST.get('max_discount', '0') or '0'
-                    )
-                except (ValueError, TypeError):
-                    profile.commission_rate = Decimal('0.00')
-                    profile.max_discount = Decimal('0.00')
 
-                profile.is_active = 'is_active' in request.POST
+                    profile.commission_rate = Decimal(
+                        request.POST.get(
+                            "commission_rate",
+                            "0",
+                        )
+                        or "0"
+                    )
+
+                    profile.max_discount = Decimal(
+                        request.POST.get(
+                            "max_discount",
+                            "0",
+                        )
+                        or "0"
+                    )
+
+                except (
+                    ValueError,
+                    TypeError,
+                ):
+
+                    profile.commission_rate = Decimal(
+                        "0.00"
+                    )
+
+                    profile.max_discount = Decimal(
+                        "0.00"
+                    )
+
+                profile.is_active = (
+                    "is_active"
+                    in request.POST
+                )
+
                 profile.save()
 
             messages.success(
                 request,
-                f"El usuario {usuario.username} ha sido actualizado con éxito."
+                (
+                    f"El usuario {usuario.username} "
+                    "ha sido actualizado con éxito."
+                ),
             )
-            return redirect('gestion_usuarios')
+
+            return redirect(
+                "gestion_usuarios"
+            )
 
         except ValidationError as e:
-            messages.error(request, "; ".join(e.messages))
-        except Exception as e:
+
             messages.error(
                 request,
-                f"Error al procesar la actualización: {str(e)}"
+                "; ".join(
+                    e.messages
+                ),
             )
 
-    profile = getattr(usuario, 'profile', None)
+        except PermissionDenied:
+            raise
 
-    selected_company_id = (
-        request.POST.get('company')
-        if request.method == 'POST'
-        else (profile.company_id if profile else None)
+        except Exception as e:
+
+            messages.error(
+                request,
+                (
+                    "Error al procesar la actualización: "
+                    f"{str(e)}"
+                ),
+            )
+
+    # ============================================================
+    # VALORES SELECCIONADOS
+    # ============================================================
+    profile = getattr(
+        usuario,
+        "profile",
+        None,
     )
+
+    if request.user.is_superuser:
+
+        selected_company_id = (
+            request.POST.get(
+                "company"
+            )
+            if request.method == "POST"
+            else (
+                profile.company_id
+                if profile
+                else None
+            )
+        )
+
+    else:
+
+        selected_company_id = (
+            actor_company.id
+        )
+
     selected_owner_id = (
-        request.POST.get('fleet_owner')
-        if request.method == 'POST'
-        else (profile.fleet_owner_id if profile else None)
+        request.POST.get(
+            "fleet_owner"
+        )
+        if request.method == "POST"
+        else (
+            profile.fleet_owner_id
+            if profile
+            else None
+        )
     )
 
-    context = {
-        'title': f'Editar Usuario - {usuario.username}',
-        'usuario': usuario,
-        'terminales': Terminal.objects.select_related('city').all(),
-        'roles': _get_role_choices(),
-        'companies': Company.objects.all().order_by('name'),
-        'fleet_owners': (
-            FleetOwner.objects
-            .filter(is_active=True)
-            .select_related('company')
-            .order_by('company__name', 'first_name', 'last_name')
-        ),
-        'selected_company_id': selected_company_id,
-        'selected_owner_id': selected_owner_id,
-    }
-    return render(request, 'booking/editar_usuario.html', context)
+    # ============================================================
+    # EMPRESAS Y PROPIETARIOS AUTORIZADOS
+    # ============================================================
+    if request.user.is_superuser:
 
+        companies = (
+            Company.objects
+            .all()
+            .order_by(
+                "name"
+            )
+        )
+
+        fleet_owners = (
+            FleetOwner.objects
+            .filter(
+                is_active=True
+            )
+            .select_related(
+                "company"
+            )
+            .order_by(
+                "company__name",
+                "first_name",
+                "last_name",
+            )
+        )
+
+    else:
+
+        companies = Company.objects.filter(
+            pk=actor_company.pk
+        )
+
+        fleet_owners = (
+            FleetOwner.objects
+            .filter(
+                company=actor_company,
+                is_active=True,
+            )
+            .select_related(
+                "company"
+            )
+            .order_by(
+                "first_name",
+                "last_name",
+            )
+        )
+
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
+    context = {
+        "title": (
+            f"Editar Usuario - "
+            f"{usuario.username}"
+        ),
+
+        "usuario": usuario,
+
+        "terminales": (
+            Terminal.objects
+            .select_related(
+                "city"
+            )
+            .all()
+        ),
+
+        "roles": _get_role_choices(),
+
+        "companies": companies,
+
+        "fleet_owners": fleet_owners,
+
+        "selected_company_id": (
+            selected_company_id
+        ),
+
+        "selected_owner_id": (
+            selected_owner_id
+        ),
+
+        "is_superuser": (
+            request.user.is_superuser
+        ),
+
+        "current_company": (
+            actor_company
+        ),
+    }
+
+    return render(
+        request,
+        "booking/editar_usuario.html",
+        context,
+    )
 
 @login_required
 @role_required(['admin', 'supervisor', 'coordinator'])
 @transaction.atomic
 def crear_usuario(request):
+
+    actor_company = None
+
+    # ============================================================
+    # EMPRESA DEL USUARIO QUE ADMINISTRA
+    # ============================================================
+    if not request.user.is_superuser:
+
+        actor_profile = getattr(
+            request.user,
+            "profile",
+            None,
+        )
+
+        if (
+            not actor_profile
+            or not actor_profile.company_id
+        ):
+            raise PermissionDenied(
+                "Su usuario no tiene una empresa asociada."
+            )
+
+        actor_company = actor_profile.company
+
+    # ============================================================
+    # POST
+    # ============================================================
     if request.method == "POST":
-        username = request.POST.get("username", "").strip().lower()
-        password = request.POST.get("password", "")
-        confirm = request.POST.get("confirm_password", "")
+
+        username = (
+            request.POST
+            .get(
+                "username",
+                "",
+            )
+            .strip()
+            .lower()
+        )
+
+        password = request.POST.get(
+            "password",
+            "",
+        )
+
+        confirm = request.POST.get(
+            "confirm_password",
+            "",
+        )
 
         if not username:
-            messages.error(request, "El nombre de usuario es mandatorio.")
-        elif User.objects.filter(username__iexact=username).exists():
+
             messages.error(
                 request,
-                "El nombre de usuario ingresado ya se encuentra en uso."
+                "El nombre de usuario es mandatorio.",
             )
+
+        elif User.objects.filter(
+            username__iexact=username
+        ).exists():
+
+            messages.error(
+                request,
+                (
+                    "El nombre de usuario ingresado "
+                    "ya se encuentra en uso."
+                ),
+            )
+
         elif password != confirm:
+
             messages.error(
                 request,
-                "Las contraseñas de verificación no coinciden."
+                (
+                    "Las contraseñas de verificación "
+                    "no coinciden."
+                ),
             )
+
         elif len(password) < 8:
+
             messages.error(
                 request,
-                "La contraseña debe tener al menos 8 caracteres."
+                (
+                    "La contraseña debe tener "
+                    "al menos 8 caracteres."
+                ),
             )
+
         else:
+
             try:
-                # Validar alcance ANTES de crear el usuario. Así un error de
-                # empresa/propietario nunca deja una cuenta huérfana.
-                role, company, fleet_owner = _resolve_user_profile_scope(request)
+
+                # ================================================
+                # VALIDAR ALCANCE ANTES DE CREAR CUENTA
+                # ================================================
+                role, company, fleet_owner = (
+                    _resolve_user_profile_scope(
+                        request
+                    )
+                )
 
                 user = User.objects.create_user(
                     username=username,
-                    email=request.POST.get("email", "").strip(),
+                    email=(
+                        request.POST
+                        .get(
+                            "email",
+                            "",
+                        )
+                        .strip()
+                    ),
                     password=password,
-                    first_name=request.POST.get("first_name", "").strip(),
-                    last_name=request.POST.get("last_name", "").strip(),
+                    first_name=(
+                        request.POST
+                        .get(
+                            "first_name",
+                            "",
+                        )
+                        .strip()
+                    ),
+                    last_name=(
+                        request.POST
+                        .get(
+                            "last_name",
+                            "",
+                        )
+                        .strip()
+                    ),
                 )
 
-                profile, _ = UserProfile.objects.get_or_create(user=user)
+                profile, _ = (
+                    UserProfile.objects
+                    .get_or_create(
+                        user=user
+                    )
+                )
+
                 profile.role = role
                 profile.company = company
                 profile.fleet_owner = fleet_owner
-                profile.terminal_id = request.POST.get("terminal") or None
+
+                # Terminal permanece global.
+                profile.terminal_id = (
+                    request.POST.get(
+                        "terminal"
+                    )
+                    or None
+                )
 
                 try:
+
                     profile.commission_rate = Decimal(
-                        request.POST.get("commission_rate", '0') or '0'
+                        request.POST.get(
+                            "commission_rate",
+                            "0",
+                        )
+                        or "0"
                     )
+
                     profile.max_discount = Decimal(
-                        request.POST.get("max_discount", '0') or '0'
+                        request.POST.get(
+                            "max_discount",
+                            "0",
+                        )
+                        or "0"
                     )
-                except (ValueError, TypeError):
-                    profile.commission_rate = Decimal('0.00')
-                    profile.max_discount = Decimal('0.00')
+
+                except (
+                    ValueError,
+                    TypeError,
+                ):
+
+                    profile.commission_rate = Decimal(
+                        "0.00"
+                    )
+
+                    profile.max_discount = Decimal(
+                        "0.00"
+                    )
 
                 profile.is_active = True
+
                 profile.save()
 
                 messages.success(
                     request,
-                    f"Usuario operativo {username} creado de forma exitosa."
+                    (
+                        f"Usuario operativo {username} "
+                        "creado de forma exitosa."
+                    ),
                 )
-                return redirect("gestion_usuarios")
+
+                return redirect(
+                    "gestion_usuarios"
+                )
 
             except ValidationError as e:
-                # La vista completa está bajo @transaction.atomic; al no haber
-                # creado todavía el usuario cuando validamos alcance, no queda
-                # ninguna cuenta huérfana.
-                messages.error(request, "; ".join(e.messages))
-            except Exception as e:
+
                 messages.error(
                     request,
-                    f"Fallo al registrar usuario: {str(e)}"
+                    "; ".join(
+                        e.messages
+                    ),
                 )
 
+            except PermissionDenied:
+                raise
+
+            except Exception as e:
+
+                messages.error(
+                    request,
+                    (
+                        "Fallo al registrar usuario: "
+                        f"{str(e)}"
+                    ),
+                )
+
+    # ============================================================
+    # OPCIONES AUTORIZADAS PARA EL FORMULARIO
+    # ============================================================
+    if request.user.is_superuser:
+
+        companies = (
+            Company.objects
+            .all()
+            .order_by(
+                "name"
+            )
+        )
+
+        fleet_owners = (
+            FleetOwner.objects
+            .filter(
+                is_active=True
+            )
+            .select_related(
+                "company"
+            )
+            .order_by(
+                "company__name",
+                "first_name",
+                "last_name",
+            )
+        )
+
+        selected_company_id = (
+            request.POST.get(
+                "company"
+            )
+        )
+
+    else:
+
+        companies = (
+            Company.objects
+            .filter(
+                pk=actor_company.pk
+            )
+        )
+
+        fleet_owners = (
+            FleetOwner.objects
+            .filter(
+                company=actor_company,
+                is_active=True,
+            )
+            .select_related(
+                "company"
+            )
+            .order_by(
+                "first_name",
+                "last_name",
+            )
+        )
+
+        selected_company_id = (
+            actor_company.pk
+        )
+
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
         "title": "Crear Usuario",
+
         "roles": _get_role_choices(),
-        "terminales": Terminal.objects.select_related('city').all(),
-        "companies": Company.objects.all().order_by('name'),
-        "fleet_owners": (
-            FleetOwner.objects
-            .filter(is_active=True)
-            .select_related('company')
-            .order_by('company__name', 'first_name', 'last_name')
+
+        "terminales": (
+            Terminal.objects
+            .select_related(
+                "city"
+            )
+            .all()
         ),
-        "selected_company_id": request.POST.get('company'),
-        "selected_owner_id": request.POST.get('fleet_owner'),
+
+        "companies": companies,
+
+        "fleet_owners": fleet_owners,
+
+        "selected_company_id": (
+            selected_company_id
+        ),
+
+        "selected_owner_id": (
+            request.POST.get(
+                "fleet_owner"
+            )
+        ),
+
+        "is_superuser": (
+            request.user.is_superuser
+        ),
+
+        "current_company": (
+            actor_company
+        ),
     }
-    return render(request, "booking/crear_usuario.html", context)
+
+    return render(
+        request,
+        "booking/crear_usuario.html",
+        context,
+    )
 
 
 # ============================================================================
@@ -4339,85 +4995,150 @@ def owner_settlement_admin_detail(request, settlement_id):
         context,
     )
 
-
 @login_required
 def dashboard_redirect(request):
     """
-    FASE 2.18.3-A2.2.1
-
     Punto único de entrada después del login.
-    Cada usuario es enviado al módulo correspondiente a su rol.
+
+    Reglas:
+    - Superuser -> panel administrativo global.
+    - Admin -> panel administrativo/operacional de empresa.
+    - Coordinator -> panel operacional.
+    - Supervisor/Vendedor -> POS.
+    - Cajero -> Caja.
+    - Convenio -> Convenios.
+    - Owner -> Panel propietario.
+    - Executive/Secretary -> mensajes temporales.
     """
+
     user = request.user
 
+    # ============================================================
+    # SUPERUSER
+    # ============================================================
     if user.is_superuser:
-        return redirect("admin:index")
+        return redirect(
+            "coordinator:dashboard"
+        )
 
-    profile = getattr(user, "profile", None)
+    # ============================================================
+    # PERFIL
+    # ============================================================
+    profile = getattr(
+        user,
+        "profile",
+        None,
+    )
 
     if not profile:
         messages.error(
             request,
-            "El usuario no tiene un perfil operativo configurado."
+            "El usuario no tiene un perfil operativo configurado.",
         )
+
         logout(request)
-        return redirect("login")
+
+        return redirect(
+            "login"
+        )
 
     if not profile.is_active:
         messages.error(
             request,
-            "Su cuenta se encuentra desactivada."
+            "Su cuenta se encuentra desactivada.",
         )
+
         logout(request)
-        return redirect("login")
+
+        return redirect(
+            "login"
+        )
 
     role = profile.role
 
+    # ============================================================
+    # ADMINISTRACIÓN / OPERACIONES
+    # ============================================================
     if role == "admin":
-        return redirect("gestion_usuarios")
+        return redirect(
+            "coordinator:dashboard"
+        )
 
     if role == "coordinator":
-        return redirect("coordinator:dashboard")
+        return redirect(
+            "coordinator:dashboard"
+        )
 
+    # ============================================================
+    # POS
+    # ============================================================
     if role == "supervisor":
-        return redirect("pos_home")
+        return redirect(
+            "pos_home"
+        )
 
     if role == "vendedor":
-        return redirect("pos_home")
+        return redirect(
+            "pos_home"
+        )
 
     if role == "cajero":
-        return redirect("pos_caja")
+        return redirect(
+            "pos_caja"
+        )
 
+    # ============================================================
+    # CONVENIOS
+    # ============================================================
     if role == "convenio":
-        return redirect("contract_dashboard")
+        return redirect(
+            "contract_dashboard"
+        )
 
+    # ============================================================
+    # PROPIETARIO
+    # ============================================================
     if role == "owner":
-        return redirect("owner_dashboard")
+        return redirect(
+            "owner_dashboard"
+        )
 
+    # ============================================================
+    # ROLES FUTUROS
+    # ============================================================
     if role == "executive":
         return HttpResponse(
-            "Perfil Dueño / Gerencia configurado correctamente. "
-            "El dashboard ejecutivo será habilitado en la siguiente fase.",
+            (
+                "Perfil Dueño / Gerencia configurado correctamente. "
+                "El dashboard ejecutivo será habilitado "
+                "en la siguiente fase."
+            ),
             status=200,
         )
 
     if role == "secretary":
         return HttpResponse(
-            "Perfil Secretaria configurado correctamente. "
-            "Su panel operativo será habilitado en la siguiente fase.",
+            (
+                "Perfil Secretaria configurado correctamente. "
+                "Su panel operativo será habilitado "
+                "en la siguiente fase."
+            ),
             status=200,
         )
 
+    # ============================================================
+    # ROL SIN DESTINO
+    # ============================================================
     messages.error(
         request,
-        "El usuario tiene un rol sin página de inicio configurada."
+        "El usuario tiene un rol sin página de inicio configurada.",
     )
-    logout(request)
-    return redirect("login")
 
-# ============================================================================
-# 14. MÓDULO DE CONVENIOS
-# ============================================================================
+    logout(request)
+
+    return redirect(
+        "login"
+    )
 
 @login_required
 @role_required(['admin', 'supervisor', 'convenio'])

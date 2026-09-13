@@ -1,4 +1,4 @@
-{% extends "booking/pos_base.html" %}
+{% extends "coordinator/base.html" %}
 
 {% block title %}Editar Usuario{% endblock %}
 
@@ -181,18 +181,42 @@
 
                 <div class="form-group">
                     <label class="form-label">Empresa operadora *</label>
-                    <select name="company" id="id_company" class="form-select" required>
-                        <option value="">Seleccionar empresa...</option>
-                        {% for company in companies %}
-                        <option value="{{ company.id }}"
-                            {% if selected_company_id|stringformat:"s" == company.id|stringformat:"s" %}selected{% endif %}>
-                            {{ company.name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <div class="form-help">
-                        Define a qué empresa pertenecen los datos y permisos de este usuario.
-                    </div>
+
+                    {% if is_superuser %}
+                        <select name="company" id="id_company" class="form-select" required>
+                            <option value="">Seleccionar empresa...</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}"
+                                {% if selected_company_id|stringformat:"s" == company.id|stringformat:"s" %}selected{% endif %}>
+                                {{ company.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+
+                        <div class="form-help">
+                            Como superusuario puedes seleccionar la empresa operadora del usuario.
+                        </div>
+                    {% else %}
+                        <input
+                            type="hidden"
+                            name="company"
+                            id="id_company"
+                            value="{{ selected_company_id }}"
+                        >
+
+                        <div class="form-input"
+                             style="display:flex;align-items:center;background:#f8fafc;color:#374151;cursor:not-allowed;">
+                            {% if current_company %}
+                                {{ current_company.name }}
+                            {% else %}
+                                Empresa no asignada
+                            {% endif %}
+                        </div>
+
+                        <div class="form-help">
+                            La empresa se asigna automáticamente desde tu perfil y no puede modificarse aquí.
+                        </div>
+                    {% endif %}
                 </div>
 
                 <div class="form-group" id="fleet-owner-group">

@@ -331,7 +331,23 @@
                                 <li><a href="{% url 'coordinator:terminals_dashboard' %}" class="nav-item"><i class="fas fa-map-marker-alt"></i> Terminales</a></li>
                                 <li><a href="{% url 'coordinator:routes_dashboard' %}" class="nav-item"><i class="fas fa-road"></i> Rutas</a></li>
                                 <li><a href="{% url 'coordinator:agencies_dashboard' %}" class="nav-item"><i class="fas fa-store"></i> Agencias</a></li>
-                                <li><a href="{% url 'coordinator:fleet_owners_dashboard' %}" class="nav-item"><i class="fas fa-users"></i> Propietarios / Socios</a></li>
+                                {% if user.is_superuser or user.profile.role == 'admin' %}
+                                <li>
+                                    <a href="{% url 'coordinator:fleet_owners_dashboard' %}"
+                                       class="nav-item {% if request.resolver_match.url_name == 'fleet_owners_dashboard' %}active{% endif %}">
+                                        <i class="fas fa-users"></i> Propietarios / Socios
+                                    </a>
+                                </li>
+                                {% endif %}
+
+                                {% if user.is_superuser or user.profile.role == 'admin' %}
+                                <li>
+                                    <a href="{% url 'gestion_usuarios' %}"
+                                       class="nav-item {% if request.resolver_match.url_name == 'gestion_usuarios' or request.resolver_match.url_name == 'crear_usuario' or request.resolver_match.url_name == 'editar_usuario' %}active{% endif %}">
+                                        <i class="fas fa-users-cog"></i> Gestión de Usuarios
+                                    </a>
+                                </li>
+                                {% endif %}
                             </ul>
                         </li>
 

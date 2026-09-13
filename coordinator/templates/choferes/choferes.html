@@ -51,6 +51,21 @@
                     <!-- Campos principales -->
                     <div class="col-md-9">
                         <div class="row g-3">
+
+                            {% if request.user.is_superuser %}
+                            <div class="col-12">
+                                <label class="form-label text-uppercase fw-semibold small">
+                                    {{ form.company.label }}
+                                </label>
+                                {{ form.company }}
+
+                                {% if form.company.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.company.errors }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
                             <div class="col-md-6">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.full_name.label }}</label>
                                 {{ form.full_name }}

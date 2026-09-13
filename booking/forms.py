@@ -276,26 +276,97 @@ class BusAdminForm(forms.ModelForm):
 
 
 class DriverForm(forms.ModelForm):
+
     class Meta:
         model = Driver
+
         fields = [
-            'full_name', 'rut', 'phone', 'email', 'license_number', 'license_expiry',
-            'medical_cert_expiry', 'background_check_expiry', 'photo', 'notes', 'is_active'
+            'company',
+            'full_name',
+            'rut',
+            'phone',
+            'email',
+            'license_number',
+            'license_expiry',
+            'medical_cert_expiry',
+            'background_check_expiry',
+            'photo',
+            'notes',
+            'is_active',
         ]
+
         widgets = {
-            'full_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre completo'}),
-            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12.345.678-9'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'conductor@empresa.cl'}),
-            'license_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° licencia'}),
-            'license_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'medical_cert_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'background_check_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Observaciones (opcional)'}),
-            'photo': forms.ClearableFileInput(attrs={'class': 'form-control-file'}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+            'company': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'full_name': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'Nombre completo',
+                }
+            ),
+            'rut': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '12.345.678-9',
+                }
+            ),
+            'phone': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '+56 9 1234 5678',
+                }
+            ),
+            'email': forms.EmailInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'conductor@empresa.cl',
+                }
+            ),
+            'license_number': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'N° licencia',
+                }
+            ),
+            'license_expiry': forms.DateInput(
+                attrs={
+                    'type': 'date',
+                    'class': 'form-control',
+                }
+            ),
+            'medical_cert_expiry': forms.DateInput(
+                attrs={
+                    'type': 'date',
+                    'class': 'form-control',
+                }
+            ),
+            'background_check_expiry': forms.DateInput(
+                attrs={
+                    'type': 'date',
+                    'class': 'form-control',
+                }
+            ),
+            'notes': forms.Textarea(
+                attrs={
+                    'rows': 3,
+                    'class': 'form-control',
+                    'placeholder': 'Observaciones (opcional)',
+                }
+            ),
+            'photo': forms.ClearableFileInput(
+                attrs={'class': 'form-control-file'}
+            ),
+            'is_active': forms.CheckboxInput(
+                attrs={
+                    'class': 'form-check-input',
+                    'role': 'switch',
+                }
+            ),
         }
+
         labels = {
+            'company': 'EMPRESA',
             'full_name': 'NOMBRE COMPLETO',
             'rut': 'RUT',
             'phone': 'TELÉFONO',
@@ -312,19 +383,69 @@ class DriverForm(forms.ModelForm):
 
 
 class AssistantForm(forms.ModelForm):
+
     class Meta:
         model = Assistant
-        fields = ['full_name', 'rut', 'phone', 'email', 'photo', 'notes', 'is_active']
+
+        fields = [
+            'company',
+            'full_name',
+            'rut',
+            'phone',
+            'email',
+            'photo',
+            'notes',
+            'is_active',
+        ]
+
         widgets = {
-            'full_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre completo'}),
-            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12.345.678-9'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+56 9 1234 5678'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'auxiliar@empresa.cl'}),
-            'photo': forms.ClearableFileInput(attrs={'class': 'form-control-file'}),
-            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Observaciones (opcional)'}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+            'company': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'full_name': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'Nombre completo',
+                }
+            ),
+            'rut': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '12.345.678-9',
+                }
+            ),
+            'phone': forms.TextInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '+56 9 1234 5678',
+                }
+            ),
+            'email': forms.EmailInput(
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': 'auxiliar@empresa.cl',
+                }
+            ),
+            'photo': forms.ClearableFileInput(
+                attrs={'class': 'form-control-file'}
+            ),
+            'notes': forms.Textarea(
+                attrs={
+                    'rows': 3,
+                    'class': 'form-control',
+                    'placeholder': 'Observaciones (opcional)',
+                }
+            ),
+            'is_active': forms.CheckboxInput(
+                attrs={
+                    'class': 'form-check-input',
+                    'role': 'switch',
+                }
+            ),
         }
+
         labels = {
+            'company': 'EMPRESA',
             'full_name': 'NOMBRE COMPLETO',
             'rut': 'RUT',
             'phone': 'TELÉFONO',
@@ -354,19 +475,60 @@ class TerminalForm(forms.ModelForm):
         
   
 class RouteForm(forms.ModelForm):
+
     class Meta:
         model = Route
-        fields = ['origin', 'destination', 'origin_terminal', 'destination_terminal', 'duration_minutes', 'base_price', 'is_active']
+
+        fields = [
+            'company',
+            'origin',
+            'destination',
+            'origin_terminal',
+            'destination_terminal',
+            'duration_minutes',
+            'base_price',
+            'is_active',
+        ]
+
         widgets = {
-            'origin': forms.Select(attrs={'class': 'form-select'}),
-            'destination': forms.Select(attrs={'class': 'form-select'}),
-            'origin_terminal': forms.Select(attrs={'class': 'form-select'}),
-            'destination_terminal': forms.Select(attrs={'class': 'form-select'}),
-            'duration_minutes': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
-            'base_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': 0}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
+            'company': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'origin': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'destination': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'origin_terminal': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'destination_terminal': forms.Select(
+                attrs={'class': 'form-select'}
+            ),
+            'duration_minutes': forms.NumberInput(
+                attrs={
+                    'class': 'form-control',
+                    'min': 0,
+                }
+            ),
+            'base_price': forms.NumberInput(
+                attrs={
+                    'class': 'form-control',
+                    'step': '0.01',
+                    'min': 0,
+                }
+            ),
+            'is_active': forms.CheckboxInput(
+                attrs={
+                    'class': 'form-check-input',
+                    'role': 'switch',
+                }
+            ),
         }
+
         labels = {
+            'company': 'EMPRESA',
             'origin': 'ORIGEN',
             'destination': 'DESTINO',
             'origin_terminal': 'TERMINAL ORIGEN (opcional)',
