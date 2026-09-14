@@ -933,16 +933,7 @@ class BusFullForm(forms.ModelForm):
                     "El peso seco debe ser menor al peso bruto.")
         
         # Validar que total_seats sea consistente
-        total_seats = cleaned_data.get('total_seats', 0)
-        if total_seats > 0:
-            expected_seats = rows_lower * cols
-            if floors == 2:
-                expected_seats += rows_upper * cols
-            if total_seats != expected_seats:
-                self.add_error('total_seats', 
-                    f"El total de asientos ({total_seats}) no coincide con "
-                    f"la capacidad calculada ({expected_seats}). "
-                    "Regenera los asientos para actualizar este valor.")
+        
         
         # Validar fechas de vencimiento
         today = timezone.now().date()

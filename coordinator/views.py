@@ -2827,7 +2827,7 @@ def bus_editor(request, bus_id=None):
 
                     locked_bus_qs = (
                         Bus.objects
-                        .select_for_update()
+                        .select_for_update(of=("self",))
                         .select_related(
                             "company",
                             "owner",
