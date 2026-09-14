@@ -265,8 +265,41 @@ class CityAdmin(admin.ModelAdmin):
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ("name", "logo")
-    search_fields = ("name",)
+    list_display = (
+        "name",
+        "logo",
+        "primary_color",
+        "secondary_color",
+        "accent_color",
+    )
+
+    search_fields = (
+        "name",
+    )
+
+    fieldsets = (
+        (
+            "Datos de la empresa",
+            {
+                "fields": (
+                    "name",
+                    "logo",
+                )
+            },
+        ),
+        (
+            "Identidad visual / Branding",
+            {
+                "fields": (
+                    "primary_color",
+                    "secondary_color",
+                    "accent_color",
+                    "pos_background",
+                    "client_background",
+                )
+            },
+        ),
+    )
 
 
 @admin.register(Terminal)

@@ -63,8 +63,62 @@ class Terminal(models.Model):
 
 
 class Company(models.Model):
-    name = models.CharField("Nombre", max_length=140, unique=True)
-    logo = models.URLField("Logo (URL)", blank=True)
+    name = models.CharField(
+        "Nombre",
+        max_length=140,
+        unique=True,
+    )
+
+    logo = models.ImageField(
+    "Logo de la empresa",
+    upload_to="companies/logos/",
+    blank=True,
+    null=True,
+    help_text="Logo corporativo de la empresa, preferentemente PNG con fondo transparente.",
+    )
+
+    # =========================================================
+    # IDENTIDAD VISUAL / BRANDING
+    # =========================================================
+    primary_color = models.CharField(
+        "Color principal",
+        max_length=7,
+        blank=True,
+        default="#0f172a",
+        help_text="Color hexadecimal. Ejemplo: #0f172a",
+    )
+
+    secondary_color = models.CharField(
+        "Color secundario",
+        max_length=7,
+        blank=True,
+        default="#1e293b",
+        help_text="Color hexadecimal. Ejemplo: #1e293b",
+    )
+
+    accent_color = models.CharField(
+        "Color de acento",
+        max_length=7,
+        blank=True,
+        default="#f5821f",
+        help_text="Color hexadecimal. Ejemplo: #f5821f",
+    )
+
+    pos_background = models.ImageField(
+        "Imagen de fondo POS",
+        upload_to="companies/pos_backgrounds/",
+        blank=True,
+        null=True,
+        help_text="Imagen corporativa utilizada como fondo del POS.",
+    )
+
+    client_background = models.ImageField(
+        "Imagen Pantalla Cliente",
+        upload_to="companies/client_backgrounds/",
+        blank=True,
+        null=True,
+        help_text="Imagen corporativa utilizada en la segunda pantalla del cliente.",
+    )
 
     class Meta:
         verbose_name = "Empresa"

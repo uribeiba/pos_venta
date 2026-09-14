@@ -1,7 +1,7 @@
 {% extends 'coordinator/base.html' %}
 {% load static %}
 
-{% block title %}Choferes - Cejer{% endblock %}
+{% block title %}Choferes{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/choferes.css' %}">
@@ -29,6 +29,32 @@
         <div class="card-body">
             <form method="post" enctype="multipart/form-data" id="driverForm">
                 {% csrf_token %}
+
+                {# ========================================================= #}
+                {# ERRORES DEL FORMULARIO - visibles y específicos           #}
+                {# ========================================================= #}
+                {% if form.errors %}
+                <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
+                    <div class="fw-bold mb-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        No fue posible guardar el chofer. Revisa los siguientes campos:
+                    </div>
+
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                            <div class="small mb-1">
+                                <strong>{{ field.label }}:</strong> {{ error }}
+                            </div>
+                        {% endfor %}
+                    {% endfor %}
+
+                    {% for error in form.non_field_errors %}
+                        <div class="small mb-1">
+                            <strong>Error:</strong> {{ error }}
+                        </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="row g-4">
                     <!-- Foto (columna izquierda) -->
                     <div class="col-md-3 text-center">
@@ -43,6 +69,13 @@
                                     <i class="fas fa-camera"></i> Subir foto
                                 </label>
                                 {{ form.photo }}
+                                {% if form.photo.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.photo.errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <small class="text-muted">JPG, PNG (máx. 2MB)</small>
                         </div>
@@ -61,7 +94,9 @@
 
                                 {% if form.company.errors %}
                                     <div class="text-danger small mt-1">
-                                        {{ form.company.errors }}
+                                        {% for error in form.company.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
                                     </div>
                                 {% endif %}
                             </div>
@@ -69,44 +104,114 @@
                             <div class="col-md-6">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.full_name.label }}</label>
                                 {{ form.full_name }}
+                                {% if form.full_name.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.full_name.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.rut.label }}</label>
                                 {{ form.rut }}
+                                {% if form.rut.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.rut.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.phone.label }}</label>
                                 {{ form.phone }}
+                                {% if form.phone.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.phone.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.email.label }}</label>
                                 {{ form.email }}
+                                {% if form.email.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.email.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.license_number.label }}</label>
                                 {{ form.license_number }}
+                                {% if form.license_number.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.license_number.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.license_expiry.label }}</label>
                                 {{ form.license_expiry }}
+                                {% if form.license_expiry.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.license_expiry.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.medical_cert_expiry.label }}</label>
                                 {{ form.medical_cert_expiry }}
+                                {% if form.medical_cert_expiry.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.medical_cert_expiry.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.background_check_expiry.label }}</label>
                                 {{ form.background_check_expiry }}
+                                {% if form.background_check_expiry.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.background_check_expiry.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-12">
                                 <label class="form-label text-uppercase fw-semibold small">{{ form.notes.label }}</label>
                                 {{ form.notes }}
+                                {% if form.notes.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.notes.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-12">
                                 <div class="form-check form-switch">
                                     {{ form.is_active }}
                                     <label class="form-check-label ms-2 fw-semibold" for="id_is_active">{{ form.is_active.label }}</label>
                                 </div>
+                                {% if form.is_active.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.is_active.errors %}
+                                            <div><i class="fas fa-circle-exclamation me-1"></i>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="col-12 mt-3">
                                 <button type="submit" class="btn btn-primary px-4">

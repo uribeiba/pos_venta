@@ -4856,7 +4856,13 @@ def check_new_sales(request):
 @csrf_exempt
 def client_sync(request):
     """
-    API para sincronizar datos entre el POS del vendedor y la pantalla del cliente.
+    API para sincronizar datos entre el POS del vendedor
+    y la pantalla del cliente.
+
+    Estados de pantalla:
+    - idle: sin venta activa
+    - active: venta en proceso
+    - completed: venta realizada
     """
     if request.method == 'POST':
         try:
@@ -4864,42 +4870,175 @@ def client_sync(request):
             trip_id = data.get('trip_id')
             action = data.get('action')
 
+            if not trip_id:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'trip_id es obligatorio'
+                }, status=400)
+
+            # ============================================================
+            # VENTA ACTIVA - ASIENTOS
+            # ============================================================
             if action == 'update_seats':
-                request.session[f'client_seats_{trip_id}'] = data.get('seats', [])
-                request.session[f'client_active_deck_{trip_id}'] = data.get('active_deck', 1)
-                return JsonResponse({'success': True})
+                seats = data.get('seats', [])
 
+                request.session[f'client_seats_{trip_id}'] = seats
+                request.session[f'client_active_deck_{trip_id}'] = data.get(
+                    'active_deck',
+                    1
+                )
+
+                # Si existen asientos seleccionados, la venta está activa.
+                # Si no quedan asientos, volvemos al modo espera.
+                if seats:
+                    request.session[
+                        f'client_display_state_{trip_id}'
+                    ] = 'active'
+                else:
+                    request.session[
+                        f'client_display_state_{trip_id}'
+                    ] = 'idle'
+
+                request.session.modified = True
+
+                return JsonResponse({
+                    'success': True,
+                    'state': request.session.get(
+                        f'client_display_state_{trip_id}',
+                        'idle'
+                    )
+                })
+
+            # ============================================================
+            # DATOS DEL PASAJERO
+            # ============================================================
             elif action == 'update_customer':
-                request.session[f'client_customer_{trip_id}'] = data.get('customer', {})
-                return JsonResponse({'success': True})
+                request.session[
+                    f'client_customer_{trip_id}'
+                ] = data.get('customer', {})
 
+                # Mantener venta activa si existen asientos seleccionados
+                seats = request.session.get(
+                    f'client_seats_{trip_id}',
+                    []
+                )
+
+                if seats:
+                    request.session[
+                        f'client_display_state_{trip_id}'
+                    ] = 'active'
+
+                request.session.modified = True
+
+                return JsonResponse({
+                    'success': True
+                })
+
+            # ============================================================
+            # ESTABLECER VIAJE PARA LA PANTALLA CLIENTE
+            # ============================================================
             elif action == 'set_trip':
                 request.session['client_display_trip_id'] = trip_id
-                return JsonResponse({'success': True})
 
+                # Solo establecer idle si todavía no existe estado.
+                state_key = f'client_display_state_{trip_id}'
+
+                if state_key not in request.session:
+                    request.session[state_key] = 'idle'
+
+                request.session.modified = True
+
+                return JsonResponse({
+                    'success': True,
+                    'state': request.session[state_key]
+                })
+
+            # ============================================================
+            # LIMPIAR / VOLVER A PANTALLA DE ESPERA
+            # ============================================================
             elif action == 'clear':
-                request.session.pop(f'client_seats_{trip_id}', None)
-                request.session.pop(f'client_customer_{trip_id}', None)
-                request.session.pop(f'client_active_deck_{trip_id}', None)
-                return JsonResponse({'success': True})
+                request.session.pop(
+                    f'client_seats_{trip_id}',
+                    None
+                )
 
-            return JsonResponse({'success': False, 'error': 'Acción no reconocida'}, status=400)
+                request.session.pop(
+                    f'client_customer_{trip_id}',
+                    None
+                )
+
+                request.session.pop(
+                    f'client_active_deck_{trip_id}',
+                    None
+                )
+
+                request.session.pop(
+                    f'client_completed_{trip_id}',
+                    None
+                )
+
+                request.session[
+                    f'client_display_state_{trip_id}'
+                ] = 'idle'
+
+                request.session.modified = True
+
+                return JsonResponse({
+                    'success': True,
+                    'state': 'idle'
+                })
+
+            return JsonResponse({
+                'success': False,
+                'error': 'Acción no reconocida'
+            }, status=400)
 
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
 
+    # ================================================================
+    # CONSULTA DESDE LA PANTALLA DEL CLIENTE
+    # ================================================================
     elif request.method == 'GET':
         trip_id = request.GET.get('trip_id')
-        if trip_id:
-            data = {
-                'seats': request.session.get(f'client_seats_{trip_id}', []),
-                'customer': request.session.get(f'client_customer_{trip_id}', {}),
-                'trip_id': trip_id,
-                'active_deck': request.session.get(f'client_active_deck_{trip_id}', 1),
-            }
-            return JsonResponse(data)
 
-    return JsonResponse({'success': False, 'error': 'Método no permitido'}, status=405)
+        if trip_id:
+            return JsonResponse({
+                'seats': request.session.get(
+                    f'client_seats_{trip_id}',
+                    []
+                ),
+
+                'customer': request.session.get(
+                    f'client_customer_{trip_id}',
+                    {}
+                ),
+
+                'trip_id': trip_id,
+
+                'active_deck': request.session.get(
+                    f'client_active_deck_{trip_id}',
+                    1
+                ),
+
+                'state': request.session.get(
+                    f'client_display_state_{trip_id}',
+                    'idle'
+                ),
+
+                'completed': request.session.get(
+                    f'client_completed_{trip_id}',
+                    {}
+                ),
+            })
+
+    return JsonResponse({
+        'success': False,
+        'error': 'Método no permitido'
+    }, status=405)
 
 
 def client_display_launcher(request, trip_id):
@@ -4959,7 +5098,21 @@ def client_display(request, trip_id=None):
         'total': total,
         'customer': customer_data_display,
         'waiting': False,
-        'company_name': trip.bus.company.name if trip.bus.company else 'Cejer',
+        'company_name': (
+            trip.bus.company.name
+            if trip.bus.company
+            else 'Cejer'
+        ),
+
+        'display_state': request.session.get(
+            f'client_display_state_{trip_id}',
+            'idle'
+        ),
+
+        'completed_data': request.session.get(
+            f'client_completed_{trip_id}',
+            {}
+        ),
     }
 
     return render(request, 'client_portal/client_display.html', context)

@@ -1249,6 +1249,43 @@ def pos_checkout(request: HttpRequest, trip_id: int = None):
     print(f"📌 Total: ${total:,.0f}")
     print("=" * 60)
 
+        # ============================================================
+    # PANTALLA CLIENTE - VENTA COMPLETADA
+    # ============================================================
+
+    request.session[
+        f'client_display_state_{trip.id}'
+    ] = 'completed'
+
+    request.session[
+        f'client_completed_{trip.id}'
+    ] = {
+        'route': (
+            f"{trip.route.origin.name} → "
+            f"{trip.route.destination.name}"
+        ),
+
+        'total': float(total),
+
+        'ticket_count': len(created_tickets),
+
+        'seats': [
+            {
+                'number': str(ticket.seat.number),
+                'deck': getattr(ticket.seat, 'deck', 1),
+            }
+            for ticket in created_tickets
+        ],
+
+        'customer_name': (
+            created_tickets[0].buyer_name
+            if created_tickets
+            else ''
+        ),
+    }
+
+    request.session.modified = True
+    
     messages.success(request, f"¡Venta exitosa! {len(created_tickets)} pasaje(s) emitido(s).")
     return redirect('pos_confirmation', trip_id=trip.id)
 

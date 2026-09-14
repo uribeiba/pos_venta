@@ -464,11 +464,16 @@
         overflow: hidden;
     }
     .modal-payment .modal-header {
-        background: linear-gradient(135deg, #0f172a, #1e293b);
+        background: linear-gradient(
+            135deg,
+            {{ trip.bus.company.primary_color|default:"#0f172a" }},
+            {{ trip.bus.company.secondary_color|default:"#1e293b" }}
+        )   !important;
         color: white;
         border: none;
         padding: 18px 28px;
     }
+
     .modal-payment .modal-body {
         padding: 28px;
         max-height: 65vh;
@@ -514,9 +519,38 @@
         min-width: 80px;
     }
     .payment-method-options .btn-method.active {
-        border-color: var(--pos-accent);
-        background: #fff7f0;
-        color: var(--pos-accent);
+        border-color: {{ trip.bus.company.accent_color|default:"#f5821f" }} !important;
+        color: {{ trip.bus.company.accent_color|default:"#f5821f" }} !important;
+        background: rgba(255,255,255,0.96);
+    }
+
+
+    /* ===== BRANDING DEL MODAL DE PAGO ===== */
+    .modal-company-logo {
+        height: 38px;
+        max-width: 110px;
+        object-fit: contain;
+        background: rgba(255,255,255,0.95);
+        border-radius: 8px;
+        padding: 4px 8px;
+        flex-shrink: 0;
+    }
+
+    #modalConfirmBtn {
+        border-radius: 50px;
+        padding: 8px 28px;
+        font-weight: 700;
+        color: #ffffff !important;
+        background: {{ trip.bus.company.primary_color|default:"#10b981" }} !important;
+        border-color: {{ trip.bus.company.primary_color|default:"#10b981" }} !important;
+        transition: all 0.2s ease;
+    }
+
+    #modalConfirmBtn:hover,
+    #modalConfirmBtn:focus {
+        background: {{ trip.bus.company.secondary_color|default:"#059669" }} !important;
+        border-color: {{ trip.bus.company.secondary_color|default:"#059669" }} !important;
+        color: #ffffff !important;
     }
     .cash-input-group {
         display: flex;
@@ -625,6 +659,68 @@
         }
     }
 </style>
+
+<style>
+    /* ================================================================
+       BRANDING DINÁMICO POR EMPRESA
+       Se mantiene aislado del CSS estructural para no afectar el mapa.
+       ================================================================ */
+    .trip-banner-top,
+    .trip-info-card {
+        background: linear-gradient(
+            135deg,
+            {{ trip.bus.company.primary_color|default:"#0f172a" }} 0%,
+            {{ trip.bus.company.secondary_color|default:"#1e293b" }} 100%
+        ) !important;
+    }
+
+    .trip-banner-top,
+    .trip-banner-top strong,
+    .trip-banner-top .text-muted,
+    .trip-info-card,
+    .trip-info-card .route-name {
+        color: #ffffff !important;
+    }
+
+    .trip-info-card .info-detail {
+        color: rgba(255, 255, 255, 0.82) !important;
+    }
+
+    .trip-info-card .route-name i,
+    .trip-info-card .info-detail i {
+        color: {{ trip.bus.company.accent_color|default:"#f5821f" }} !important;
+    }
+
+    .badge-viaje,
+    .badge-service {
+        background: {{ trip.bus.company.accent_color|default:"#f5821f" }} !important;
+        color: #ffffff !important;
+    }
+
+    .company-logo-pos {
+        height: 28px;
+        max-width: 120px;
+        object-fit: contain;
+        background: rgba(255, 255, 255, 0.94);
+        padding: 3px 8px;
+        border-radius: 8px;
+        margin-right: 8px;
+        flex-shrink: 0;
+    }
+
+    {% if trip.bus.company.pos_background %}
+    .trip-banner-top {
+        background:
+            linear-gradient(
+                90deg,
+                {{ trip.bus.company.primary_color|default:"#0f172a" }}E6 0%,
+                {{ trip.bus.company.secondary_color|default:"#1e293b" }}E6 100%
+            ),
+            url("{{ trip.bus.company.pos_background.url }}")
+            center 45% / cover no-repeat !important;
+    }
+    {% endif %}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -632,6 +728,15 @@
     <!-- ===== BANNER SUPERIOR ===== -->
     <div class="alert alert-dark border-0 p-2 mb-3 shadow-sm d-flex justify-content-between align-items-center trip-banner-top no-print">
         <div class="d-flex align-items-center flex-wrap gap-2">
+
+            {% if trip.bus.company.logo %}
+                <img
+                    src="{{ trip.bus.company.logo.url }}"
+                    alt="{{ trip.bus.company.name }}"
+                    class="company-logo-pos"
+                >
+            {% endif %}
+
             <span class="badge-viaje">VIAJE #{{ trip.id }}</span>
             <strong>Ruta:</strong> {{ trip.route.origin.name }} <i class="fas fa-arrow-right mx-1"></i> {{ trip.route.destination.name }}
             <span class="mx-2 text-muted">|</span>
@@ -941,11 +1046,29 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <div>
-                    <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i> Resumen y Pago</h5>
-                    <span style="font-size:0.8rem; opacity:0.7;">Revisa y confirma la compra</span>
+                <div class="d-flex align-items-center gap-3">
+                    {% if trip.bus.company.logo %}
+                        <img
+                            src="{{ trip.bus.company.logo.url }}"
+                            alt="{{ trip.bus.company.name }}"
+                            class="modal-company-logo"
+                        >
+                    {% endif %}
+
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">
+                            <i class="fas fa-credit-card me-2"></i> Resumen y Pago
+                        </h5>
+                        <span style="font-size:0.8rem; opacity:0.75;">
+                            Revisa y confirma la compra
+                        </span>
+                    </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal">
+                </button>
             </div>
             <div class="modal-body">
                 <div class="preview-trip-info">
@@ -1031,7 +1154,7 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius:50px; padding:8px 24px;">
                     <i class="fas fa-times me-2"></i> Cancelar
                 </button>
-                <button type="button" class="btn btn-success" id="modalConfirmBtn" style="border-radius:50px; padding:8px 28px; font-weight:600; background:#10b981; border-color:#10b981;">
+                <button type="button" class="btn" id="modalConfirmBtn">
                     <i class="fas fa-check me-2"></i> Confirmar Pago
                 </button>
             </div>
@@ -1119,19 +1242,60 @@
     let currentDiscount = null;
     let discountPercentage = 0;
 
-    // ===== FUNCIÓN PARA MOSTRAR PESTAÑAS =====
+    // ===== FUNCIÓN PARA MOSTRAR PESTAÑAS SIN AFECTAR OTROS GRUPOS =====
     function showTab(tabElement) {
         if (!tabElement) return;
-        const tabId = tabElement.getAttribute('data-bs-target') || tabElement.getAttribute('href');
-        if (tabId) {
-            const targetPane = document.querySelector(tabId);
-            if (targetPane) {
-                document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('show', 'active'));
-                targetPane.classList.add('show', 'active');
-                document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-                tabElement.classList.add('active');
-            }
+
+        const tabId =
+            tabElement.getAttribute('data-bs-target') ||
+            tabElement.getAttribute('href');
+
+        if (!tabId) return;
+
+        const targetPane = document.querySelector(tabId);
+        if (!targetPane) return;
+
+        // Detectar a qué grupo de tabs pertenece el botón
+        const tabList = tabElement.closest('[role="tablist"]');
+
+        if (!tabList) return;
+
+        // Grupo de pisos del bus
+        if (tabList.id === 'deckSelectorTabs') {
+            document
+                .querySelectorAll('#deckSelectorTabsContent > .tab-pane')
+                .forEach(pane => {
+                    pane.classList.remove('show', 'active');
+                });
+
+            document
+                .querySelectorAll('#deckSelectorTabs .nav-link')
+                .forEach(link => {
+                    link.classList.remove('active');
+                    link.setAttribute('aria-selected', 'false');
+                });
         }
+
+        // Grupo de módulos del POS
+        if (tabList.id === 'posModulesTab') {
+            document
+                .querySelectorAll('#posModulesTabContent > .tab-pane')
+                .forEach(pane => {
+                    pane.classList.remove('show', 'active');
+                });
+
+            document
+                .querySelectorAll('#posModulesTab .nav-link')
+                .forEach(link => {
+                    link.classList.remove('active');
+                    link.setAttribute('aria-selected', 'false');
+                });
+        }
+
+        // Activar solamente la pestaña solicitada
+        targetPane.classList.add('show', 'active');
+        tabElement.classList.add('active');
+        tabElement.setAttribute('aria-selected', 'true');
     }
 
     // ================================================================
@@ -1236,6 +1400,22 @@
         });
     }
 
+    // ================================================================
+    // SINCRONIZAR DATOS DEL PASAJERO EN TIEMPO REAL CON PANTALLA CLIENTE
+    // ================================================================
+    let clientCustomerSyncTimer = null;
+
+    $(document).on(
+        'input change',
+        '#passenger-table-body .p-rut, #passenger-table-body .p-name, #passenger-table-body .p-phone',
+        function() {
+            clearTimeout(clientCustomerSyncTimer);
+            clientCustomerSyncTimer = setTimeout(function() {
+                syncWithClientDisplay();
+            }, 250);
+        }
+    );
+
     // ===== CAMBIO DE PISO =====
     $(document).on('click', '.deck-tab', function() {
         const deck = $(this).data('deck');
@@ -1245,7 +1425,7 @@
         $(`#deck-${deck}`).show();
         const targetPane = $(this).data('bs-target') || $(this).attr('data-bs-target');
         if (targetPane) {
-            $('.tab-pane').removeClass('show active');
+            $('#deckSelectorTabsContent > .tab-pane').removeClass('show active');
             $(targetPane).addClass('show active');
         }
         if (selectedSeats.length > 0) setTimeout(syncWithClientDisplay, 100);
@@ -1770,6 +1950,7 @@
                     rutInput.val(c.national_id);
                     setTimeout(() => row.find('.p-name').css('background-color', ''), 700);
                     showToast(`✅ Cliente encontrado: ${c.full_name}`, 'success');
+                    syncWithClientDisplay();
                 } else {
                     row.find('.p-name').val('').focus();
                     showToast(`⚠️ No se encontró cliente con RUT: ${query}`, 'warning');
@@ -1791,6 +1972,7 @@
         currentRow.css('background-color', '#dcfce7');
         setTimeout(() => currentRow.css('background-color', ''), 500);
         showToast('📋 Datos copiados del primer pasajero', 'info');
+        syncWithClientDisplay();
     });
 
     // ================================================================

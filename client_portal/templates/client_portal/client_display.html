@@ -5,11 +5,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tu Viaje - Cejer</title>
+    <title>Tu Viaje - {{ company_name|default:"BusPasss" }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --company-primary: {{ trip.bus.company.primary_color|default:"#0f172a" }};
+            --company-secondary: {{ trip.bus.company.secondary_color|default:"#1e293b" }};
+            --company-accent: {{ trip.bus.company.accent_color|default:"#f5821f" }};
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
@@ -22,7 +28,7 @@
         
         /* ===== HEADER ===== */
         .client-header {
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            background: linear-gradient(135deg, var(--company-primary) 0%, var(--company-secondary) 100%);
             color: white;
             padding: 20px 30px;
             display: flex;
@@ -30,7 +36,29 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 12px;
-            border-bottom: 4px solid #f5821f;
+            border-bottom: 4px solid var(--company-accent);
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+        }
+
+        .client-header::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--company-primary), var(--company-secondary));
+            opacity: 0.82;
+            z-index: -1;
+        }
+
+        .company-logo {
+            height: 56px;
+            max-width: 180px;
+            object-fit: contain;
+            background: rgba(255,255,255,0.94);
+            border-radius: 12px;
+            padding: 6px 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
         }
         
         .client-header .brand {
@@ -42,7 +70,7 @@
         .client-header .brand .logo {
             font-size: 2rem;
             font-weight: 900;
-            color: #f5821f;
+            color: var(--company-accent);
         }
         
         .client-header .brand .logo span {
@@ -59,7 +87,7 @@
         }
         
         .client-header .trip-info .route .arrow {
-            color: #f5821f;
+            color: var(--company-accent);
             margin: 0 8px;
         }
         
@@ -110,7 +138,7 @@
         
         .seatmap-panel .panel-title .badge-deck {
             font-size: 0.7rem;
-            background: #f5821f;
+            background: var(--company-accent);
             color: white;
             padding: 2px 12px;
             border-radius: 40px;
@@ -136,14 +164,14 @@
         }
         
         .deck-tab.active {
-            border-color: #f5821f;
+            border-color: var(--company-accent);
             background: #fff7f0;
-            color: #f5821f;
+            color: var(--company-accent);
         }
         
         .deck-tab:hover:not(.active) {
-            border-color: #f5821f;
-            color: #f5821f;
+            border-color: var(--company-accent);
+            color: var(--company-accent);
         }
         
         /* ===== SEAT GRID ===== */
@@ -204,8 +232,8 @@
         }
         
         .seat-cell.selected {
-            background: #f5821f;
-            border: 2px solid #f5821f;
+            background: var(--company-accent);
+            border: 2px solid var(--company-accent);
             box-shadow: 0 0 20px rgba(245, 130, 31, 0.3);
             transform: scale(1.05);
         }
@@ -269,7 +297,7 @@
         }
         
         .legend-dot.available { background: #dcfce7; border: 1px solid #86efac; }
-        .legend-dot.selected { background: #f5821f; border: 1px solid #f5821f; }
+        .legend-dot.selected { background: var(--company-accent); border: 1px solid var(--company-accent); }
         .legend-dot.occupied { background: #fee2e2; border: 1px solid #fca5a5; }
         
         /* ===== RIGHT PANEL - SUMMARY ===== */
@@ -297,7 +325,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            border-bottom: 2px solid #f5821f;
+            border-bottom: 2px solid var(--company-accent);
             padding-bottom: 8px;
         }
         
@@ -312,7 +340,7 @@
         
         .selected-seat-item .seat-label {
             font-weight: 600;
-            color: #f5821f;
+            color: var(--company-accent);
         }
         
         .selected-seat-item .seat-price {
@@ -348,7 +376,7 @@
         }
         
         .total-row .total-value {
-            color: #f5821f;
+            color: var(--company-accent);
         }
         
         .total-row .total-count {
@@ -377,7 +405,7 @@
         .customer-row .value.masked {
             font-family: monospace;
             letter-spacing: 2px;
-            color: #f5821f;
+            color: var(--company-accent);
         }
         
         /* ===== STATUS BADGE ===== */
@@ -431,7 +459,7 @@
             width: 60px;
             height: 60px;
             border: 4px solid rgba(255,255,255,0.1);
-            border-top-color: #f5821f;
+            border-top-color: var(--company-accent);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -496,6 +524,281 @@
                 font-size: 9px;
             }
         }
+
+        {% if trip.bus.company.client_background %}
+        .client-header {
+            background-image: url("{{ trip.bus.company.client_background.url }}");
+            background-position: center 45%;
+            background-size: cover;
+            background-repeat: no-repeat;
+        }
+        {% endif %}
+
+        /* ===== PISOS SIMULTÁNEOS EN PANTALLA CLIENTE ===== */
+        .decks-display {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 28px;
+            width: 100%;
+            flex-wrap: nowrap;
+        }
+
+        .client-deck-card {
+            flex: 1 1 0;
+            min-width: 250px;
+            max-width: 360px;
+        }
+
+        .client-deck-card:only-child {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .client-deck-title {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            color: var(--company-primary);
+        }
+
+        .client-bus-frame {
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: 30px;
+            padding: 16px 12px 22px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+            min-height: 390px;
+        }
+
+        .client-driver-cabin {
+            width: 100%;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: 12px;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+            border-bottom: 1px dashed #cbd5e1;
+        }
+
+        .client-driver-wheel {
+            width: 30px;
+            height: 30px;
+            border: 2px solid #94a3b8;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .client-bus-frame .seat-grid {
+            margin: 0 auto;
+        }
+
+        @media (max-width: 900px) {
+            .decks-display {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .client-deck-card {
+                width: 100%;
+                max-width: 360px;
+            }
+        }
+
+        /* ===== ESTADOS PANTALLA CLIENTE: idle / active / completed ===== */
+        .display-state-screen { display: none; }
+        .display-state-screen.is-visible { display: flex; }
+
+        #idleScreen, #completedScreen {
+            min-height: 100vh;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px;
+            background:
+                linear-gradient(
+                    135deg,
+                    {{ trip.bus.company.primary_color|default:"#0f172a" }}E8 0%,
+                    {{ trip.bus.company.secondary_color|default:"#1e293b" }}E8 100%
+                )
+                {% if trip.bus.company.client_background %}
+                , url("{{ trip.bus.company.client_background.url }}") center center / cover no-repeat
+                {% endif %};
+        }
+
+        #idleScreen::before, #completedScreen::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(255,255,255,.12), transparent 32%),
+                radial-gradient(circle at 80% 75%, rgba(255,255,255,.08), transparent 30%);
+            pointer-events: none;
+        }
+
+        .idle-card, .completed-card {
+            position: relative;
+            z-index: 2;
+            width: min(850px, 92vw);
+            border-radius: 30px;
+            padding: 48px 56px;
+            color: white;
+            background: rgba(8,15,30,.44);
+            border: 1px solid rgba(255,255,255,.22);
+            box-shadow: 0 25px 70px rgba(0,0,0,.25);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .idle-company-logo, .completed-company-logo {
+            display: block;
+            max-width: 300px;
+            max-height: 120px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            margin: 0 auto 28px;
+            background: rgba(255,255,255,.97);
+            padding: 12px 22px;
+            border-radius: 18px;
+        }
+
+        .idle-kicker {
+            font-size: .95rem;
+            font-weight: 800;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,.82);
+            margin-bottom: 12px;
+        }
+
+        .idle-title {
+            font-size: clamp(2.6rem,6vw,5rem);
+            line-height: 1;
+            font-weight: 900;
+            margin: 0 0 18px;
+            text-shadow: 0 4px 20px rgba(0,0,0,.25);
+        }
+
+        .idle-subtitle {
+            max-width: 650px;
+            margin: 0 auto;
+            font-size: clamp(1.05rem,2vw,1.45rem);
+            line-height: 1.5;
+            color: rgba(255,255,255,.9);
+        }
+
+        .idle-accent-line {
+            width: 110px;
+            height: 6px;
+            background: var(--company-accent);
+            border-radius: 999px;
+            margin: 28px auto;
+        }
+
+        .idle-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            margin-top: 10px;
+            padding: 11px 18px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.12);
+            border: 1px solid rgba(255,255,255,.18);
+            font-weight: 700;
+        }
+
+        #activeScreen {
+            display: none;
+            min-height: 100vh;
+            width: 100%;
+            flex-direction: column;
+        }
+        #activeScreen.is-visible { display: flex; }
+
+        .completed-check {
+            width: 118px;
+            height: 118px;
+            margin: 0 auto 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 58px;
+            background: #fff;
+            color: var(--company-primary);
+            box-shadow: 0 16px 45px rgba(0,0,0,.22);
+        }
+
+        .completed-title {
+            font-size: clamp(2.7rem,6vw,5rem);
+            line-height: 1;
+            font-weight: 900;
+            margin-bottom: 14px;
+        }
+
+        .completed-subtitle {
+            font-size: 1.1rem;
+            color: rgba(255,255,255,.84);
+            margin-bottom: 28px;
+        }
+
+        .completed-route {
+            font-size: clamp(1.35rem,3vw,2rem);
+            font-weight: 800;
+            margin-bottom: 24px;
+        }
+
+        .completed-grid {
+            display: grid;
+            grid-template-columns: repeat(3,minmax(0,1fr));
+            gap: 14px;
+            margin-top: 20px;
+        }
+
+        .completed-stat {
+            padding: 18px 16px;
+            border-radius: 18px;
+            background: rgba(255,255,255,.10);
+            border: 1px solid rgba(255,255,255,.16);
+        }
+
+        .completed-stat .label {
+            display: block;
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: rgba(255,255,255,.68);
+            margin-bottom: 6px;
+        }
+
+        .completed-stat .value {
+            display: block;
+            font-size: 1.35rem;
+            font-weight: 900;
+            color: #fff;
+        }
+
+        .completed-seats { margin-top: 20px; font-weight: 700; color: rgba(255,255,255,.9); }
+        .completed-return { margin-top: 28px; font-size: .9rem; color: rgba(255,255,255,.7); }
+
+        @media (max-width:700px) {
+            .idle-card, .completed-card { padding: 34px 24px; }
+            .completed-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -509,10 +812,75 @@
 </div>
 {% else %}
 
+
+<!-- ===== ESTADO IDLE ===== -->
+<section id="idleScreen" class="display-state-screen">
+    <div class="idle-card">
+        {% if trip.bus.company.logo %}
+        <img src="{{ trip.bus.company.logo.url }}" alt="{{ trip.bus.company.name }}" class="idle-company-logo">
+        {% endif %}
+        <div class="idle-kicker">Venta de pasajes</div>
+        <h1 class="idle-title">Bienvenido a {{ trip.bus.company.name|default:company_name|default:"BusPasss" }}</h1>
+        <div class="idle-accent-line"></div>
+        <p class="idle-subtitle">
+            Compra tu pasaje, consulta destinos y horarios.
+            Estamos listos para ayudarte en tu próximo viaje.
+        </p>
+        <div class="idle-status">
+            <i class="fas fa-ticket-alt"></i>
+            Esperando una nueva venta
+        </div>
+    </div>
+</section>
+
+<!-- ===== ESTADO COMPLETED ===== -->
+<section id="completedScreen" class="display-state-screen">
+    <div class="completed-card">
+        {% if trip.bus.company.logo %}
+        <img src="{{ trip.bus.company.logo.url }}" alt="{{ trip.bus.company.name }}" class="completed-company-logo">
+        {% endif %}
+        <div class="completed-check"><i class="fas fa-check"></i></div>
+        <h1 class="completed-title">¡Venta realizada!</h1>
+        <p class="completed-subtitle">Tus pasajes fueron emitidos correctamente.</p>
+        <div id="completedRoute" class="completed-route">
+            {{ trip.route.origin.name }} → {{ trip.route.destination.name }}
+        </div>
+        <div class="completed-grid">
+            <div class="completed-stat">
+                <span class="label">Pasajero</span>
+                <span class="value" id="completedCustomer">—</span>
+            </div>
+            <div class="completed-stat">
+                <span class="label">Pasajes</span>
+                <span class="value" id="completedTickets">0</span>
+            </div>
+            <div class="completed-stat">
+                <span class="label">Total pagado</span>
+                <span class="value" id="completedTotal">$0</span>
+            </div>
+        </div>
+        <div id="completedSeats" class="completed-seats"></div>
+        <div class="completed-return">
+            <i class="fas fa-check-circle"></i>
+            Gracias por preferir {{ trip.bus.company.name|default:company_name|default:"nuestra empresa" }}
+        </div>
+    </div>
+</section>
+
+<!-- ===== ESTADO ACTIVE ===== -->
+<section id="activeScreen" class="display-state-screen">
 <!-- ===== HEADER ===== -->
 <header class="client-header">
     <div class="brand">
-        <div class="logo">C<span>ejer</span></div>
+        {% if trip.bus.company.logo %}
+            <img
+                class="company-logo"
+                src="{{ trip.bus.company.logo.url }}"
+                alt="{{ trip.bus.company.name }}"
+            >
+        {% else %}
+            <div class="logo">{{ trip.bus.company.name|default:company_name|default:"BusPasss" }}</div>
+        {% endif %}
         <span class="status-badge"><i class="fas fa-check-circle"></i> En vivo</span>
     </div>
     <div class="trip-info">
@@ -536,34 +904,57 @@
     <!-- LEFT: Seatmap -->
     <div class="seatmap-panel">
         <div class="panel-title">
-            <i class="fas fa-couch" style="color: #f5821f;"></i>
+            <i class="fas fa-couch" style="color: var(--company-accent);"></i>
             Distribución de Asientos
             <span class="badge-deck">{{ trip.bus.floors|default:1 }} piso(s)</span>
         </div>
         
-        <!-- Deck Tabs -->
-        <div class="deck-tabs">
-            <button class="deck-tab active" data-deck="1">
-                <i class="fas fa-layer-group"></i> Piso 1
-            </button>
+        <!-- Ambos pisos visibles simultáneamente -->
+        <div class="decks-display">
+
+            <section class="client-deck-card">
+                <div class="client-deck-title">
+                    <i class="fas fa-bus"></i> Piso 1
+                </div>
+
+                <div class="client-bus-frame">
+                    <div class="client-driver-cabin" aria-label="Cabina del conductor">
+                        <span class="client-driver-wheel" title="Volante">
+                            <i class="fas fa-circle-notch"></i>
+                        </span>
+                    </div>
+
+                    <div
+                        id="deck-1-container"
+                        class="seat-grid"
+                        style="grid-template-columns: repeat({{ cols }}, 1fr);">
+                    </div>
+                </div>
+            </section>
+
             {% if trip.bus.floors >= 2 %}
-            <button class="deck-tab" data-deck="2">
-                <i class="fas fa-layer-group"></i> Piso 2
-            </button>
+            <section class="client-deck-card">
+                <div class="client-deck-title">
+                    <i class="fas fa-layer-group"></i> Piso 2
+                </div>
+
+                <div class="client-bus-frame">
+                    <div
+                        id="deck-2-container"
+                        class="seat-grid"
+                        style="grid-template-columns: repeat({{ cols }}, 1fr);">
+                    </div>
+                </div>
+            </section>
             {% endif %}
+
         </div>
-        
-        <!-- Seat Grid -->
-        <div class="seat-grid-container">
-            <div id="deck-1-container" class="seat-grid" style="grid-template-columns: repeat({{ cols }}, 1fr);"></div>
-            <div id="deck-2-container" class="seat-grid" style="grid-template-columns: repeat({{ cols }}, 1fr); display: none;"></div>
-        </div>
-        
+
         <!-- Legend -->
         <div class="legend">
             <span class="legend-item"><span class="legend-dot available"></span> Disponible</span>
             <span class="legend-item"><span class="legend-dot selected"></span> Seleccionado</span>
-            <span class="legend-item"><span class="legend-dot occupied"></span> Ocupado</span>
+            <span class="legend-item"><span class="legend-dot occupied"></span> Ocupado / Vendido</span>
             <span class="legend-item"><i class="fas fa-window-maximize"></i> Ventana</span>
             <span class="legend-item"><i class="fas fa-arrows-alt-h"></i> Pasillo</span>
         </div>
@@ -574,9 +965,9 @@
         <!-- Selected Seats with prices -->
         <div class="summary-card">
             <div class="card-title">
-                <i class="fas fa-chair" style="color: #f5821f;"></i>
+                <i class="fas fa-chair" style="color: var(--company-accent);"></i>
                 Tu selección
-                <span class="badge bg-orange text-white ms-auto" style="background: #f5821f;" id="clientSelectedCount">0</span>
+                <span class="badge bg-orange text-white ms-auto" style="background: var(--company-accent);" id="clientSelectedCount">0</span>
             </div>
             <div id="selected-seats-list">
                 <div class="empty-seats">
@@ -596,7 +987,7 @@
         <!-- Customer Data -->
         <div class="summary-card">
             <div class="card-title">
-                <i class="fas fa-user" style="color: #f5821f;"></i>
+                <i class="fas fa-user" style="color: var(--company-accent);"></i>
                 Datos del pasajero
             </div>
             <div id="customer-data-container">
@@ -620,8 +1011,11 @@
     <i class="fas fa-shield-alt me-1"></i>
     Datos protegidos · Información en tiempo real
     <span class="mx-2">|</span>
-    © {% now "Y" %} Cejer
+    © {% now "Y" %} {{ trip.bus.company.name|default:company_name|default:"BusPasss" }}
 </footer>
+
+
+</section>
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script>
@@ -631,8 +1025,111 @@ $(document).ready(function() {
     const cols = {{ cols }};
     const gridLower = {{ grid_lower|safe }};
     const gridUpper = {{ grid_upper|safe }};
-    let selectedNumbers = [{% for seat in selected_seats %}"{{ seat.number }}",{% endfor %}];
+    let selectedNumbers = [{% for seat in selected_seats %}"{{ seat.number }}",{% endfor %}].map(String);
     let selectedSeatsData = {{ selected_seats|safe|default:"[]" }};
+
+    let currentDisplayState = "{{ display_state|default:'idle'|escapejs }}";
+    let completedClearTimer = null;
+    let completedStateHandled = false;
+
+    function formatMoney(value) {
+        const amount = Number(value || 0);
+        return '$' + Math.round(amount).toLocaleString('es-CL');
+    }
+
+    function fillCompletedScreen(data) {
+        data = data || {};
+        const route = data.route || "{{ trip.route.origin.name|escapejs }} → {{ trip.route.destination.name|escapejs }}";
+        const customer = data.customer_name || 'Cliente';
+        const tickets = Number(data.ticket_count || 0);
+        const total = data.total || 0;
+        const seats = Array.isArray(data.seats) ? data.seats : [];
+
+        $('#completedRoute').text(route);
+        $('#completedCustomer').text(customer);
+        $('#completedTickets').text(tickets);
+        $('#completedTotal').text(formatMoney(total));
+
+        if (seats.length) {
+            const labels = seats.map(function(seat) {
+                const deck = seat.deck ? ` · Piso ${seat.deck}` : '';
+                return `Asiento ${seat.number}${deck}`;
+            });
+            $('#completedSeats').text(labels.join('  •  '));
+        } else {
+            $('#completedSeats').text('');
+        }
+    }
+
+    function clearClientSale() {
+        $.ajax({
+            url: '/client/client-sync/',
+            type: 'POST',
+            data: JSON.stringify({
+                trip_id: tripId,
+                action: 'clear'
+            }),
+            contentType: 'application/json',
+            success: function() {
+                selectedNumbers.length = 0;
+                selectedSeatsData = [];
+
+                renderDeck('deck-1-container', 1, gridLower);
+                if (gridUpper && gridUpper.length) {
+                    renderDeck('deck-2-container', 2, gridUpper);
+                }
+
+                updateSelectedList([]);
+                updateCustomerData({});
+                showDisplayState('idle');
+            },
+            error: function(xhr) {
+                console.log('❌ No se pudo limpiar la Pantalla Cliente:', xhr);
+                showDisplayState('idle');
+            }
+        });
+    }
+
+    function showDisplayState(state, completedData) {
+        const validStates = ['idle', 'active', 'completed'];
+        const nextState = validStates.includes(state) ? state : 'idle';
+
+        currentDisplayState = nextState;
+        $('.display-state-screen').removeClass('is-visible');
+
+        if (nextState === 'active') {
+            $('#activeScreen').addClass('is-visible');
+            completedStateHandled = false;
+            if (completedClearTimer) {
+                clearTimeout(completedClearTimer);
+                completedClearTimer = null;
+            }
+            return;
+        }
+
+        if (nextState === 'completed') {
+            $('#completedScreen').addClass('is-visible');
+            fillCompletedScreen(completedData || {});
+
+            if (!completedStateHandled) {
+                completedStateHandled = true;
+                if (completedClearTimer) clearTimeout(completedClearTimer);
+
+                completedClearTimer = setTimeout(function() {
+                    clearClientSale();
+                }, 5000);
+            }
+            return;
+        }
+
+        $('#idleScreen').addClass('is-visible');
+        completedStateHandled = false;
+
+        if (completedClearTimer) {
+            clearTimeout(completedClearTimer);
+            completedClearTimer = null;
+        }
+    }
     
     // ===== RENDER SEATS =====
     function getSeatImage(service) {
@@ -663,8 +1160,16 @@ $(document).ready(function() {
                     div.innerHTML = '';
                 } else {
                     const label = cell.label ? String(cell.label).trim() : '';
-                    const status = selectedNumbers.includes(label) ? 'selected' : 
-                                   (cell.status === 'occupied' ? 'occupied' : 'available');
+                    const backendStatus = String(cell.status || '').toLowerCase();
+
+                    let status = 'available';
+
+                    if (selectedNumbers.includes(label)) {
+                        status = 'selected';
+                    } else if (backendStatus === 'sold' || backendStatus === 'occupied') {
+                        status = 'occupied';
+                    }
+
                     const service = cell.service || 'semi';
                     
                     div.classList.add(status);
@@ -744,7 +1249,7 @@ $(document).ready(function() {
                 
                 if (data.seats) {
                     const newSeats = data.seats || [];
-                    const newNumbers = newSeats.map(s => s.number);
+                    const newNumbers = newSeats.map(s => String(s.number));
                     
                     // Actualizar selectedNumbers para re-render
                     selectedNumbers.length = 0;
@@ -757,25 +1262,21 @@ $(document).ready(function() {
                         renderDeck('deck-2-container', 2, gridUpper);
                     }
                     
-                    // ===== Cambiar al piso activo si viene en los datos =====
-                    if (data.active_deck) {
-                        const activeDeck = data.active_deck;
-                        console.log('📥 Aplicando piso activo:', activeDeck);
-                        $('.deck-tab').removeClass('active');
-                        $(`.deck-tab[data-deck="${activeDeck}"]`).addClass('active');
-                        $('.seat-grid').hide();
-                        $(`#deck-${activeDeck}-container`).show();
-                    }
-                    
+                    // Ambos pisos permanecen visibles en la Pantalla Cliente.
+                    // active_deck se conserva solo por compatibilidad con el POS.
+
                     // Actualizar lista de asientos seleccionados con precios
                     updateSelectedList(newSeats);
                     
-                    // Actualizar datos del cliente si existen
-                    if (data.customer && data.customer.name) {
-                        console.log('📥 Datos del cliente recibidos:', data.customer);
-                        updateCustomerData(data.customer);
-                    }
+                    // Actualizar datos del cliente
+                    console.log('📥 Datos del cliente recibidos:', data.customer || {});
+                    updateCustomerData(data.customer || {});
                 }
+
+                showDisplayState(
+                    data.state || 'idle',
+                    data.completed || {}
+                );
             },
             error: function(xhr) {
                 console.log('❌ Error en syncData:', xhr);
@@ -814,16 +1315,6 @@ $(document).ready(function() {
         `);
     }
     
-    // ===== DECK TABS =====
-    $('.deck-tab').click(function() {
-        const deck = $(this).data('deck');
-        console.log('🔄 Cliente: cambiando a piso', deck);
-        $('.deck-tab').removeClass('active');
-        $(this).addClass('active');
-        $('.seat-grid').hide();
-        $(`#deck-${deck}-container`).show();
-    });
-    
     // ===== INIT =====
     renderDeck('deck-1-container', 1, gridLower);
     if (gridUpper && gridUpper.length) {
@@ -834,7 +1325,40 @@ $(document).ready(function() {
     if (selectedSeatsData && selectedSeatsData.length > 0) {
         updateSelectedList(selectedSeatsData);
     }
+
+
+    // Mostrar datos iniciales del pasajero si ya existen en la sesión
+    const initialCustomer = {
+        name: "{{ customer.name|default:''|escapejs }}",
+        rut: "{{ customer.rut|default:''|escapejs }}",
+        phone: "{{ customer.phone|default:''|escapejs }}",
+        email: "{{ customer.email|default:''|escapejs }}"
+    };
+    if (initialCustomer.name) {
+        updateCustomerData(initialCustomer);
+    }
     
+
+    const initialCompletedData = {
+        route: "{{ completed_data.route|default:''|escapejs }}",
+        total: "{{ completed_data.total|default:'0'|escapejs }}",
+        ticket_count: "{{ completed_data.ticket_count|default:'0'|escapejs }}",
+        customer_name: "{{ completed_data.customer_name|default:''|escapejs }}",
+        seats: [
+            {% for seat in completed_data.seats %}
+            {
+                number: "{{ seat.number|escapejs }}",
+                deck: "{{ seat.deck|default:'1'|escapejs }}"
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ]
+    };
+
+    showDisplayState(
+        currentDisplayState,
+        initialCompletedData
+    );
+
     // ===== AUTO-SYNC cada 2 segundos =====
     setInterval(syncData, 2000);
     
@@ -847,6 +1371,9 @@ $(document).ready(function() {
                 syncData();
             }
             if (event.data.type === 'update-customer') {
+                syncData();
+            }
+            if (event.data.type === 'sale-completed' || event.data.type === 'display-state') {
                 syncData();
             }
         };
