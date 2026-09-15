@@ -2277,7 +2277,9 @@ def bus_editor(request, bus_id=None):
 
     B3.2:
     - Permite seleccionar una plantilla BusLayout.
-    - Valida que la plantilla exista y esté activa.
+    - Valida que la plantilla exista, esté activa y esté autorizada
+      para la empresa del bus.
+    - Las plantillas con company=None son genéricas y compartidas.
     - Guarda la plantilla seleccionada en Bus.layout_template.
     - Conserva compatibilidad con buses antiguos sin plantilla.
     - Expone al template la configuración completa de las plantillas
@@ -2525,19 +2527,36 @@ def bus_editor(request, bus_id=None):
 
             if layout_template_id:
 
-                layout_template = (
+                layout_template_qs = (
                     BusLayout.objects
                     .filter(
                         pk=layout_template_id,
                         is_active=True,
                     )
+                )
+
+                # Usuario normal: solo puede utilizar plantillas
+                # de su empresa o plantillas genéricas.
+                if not request.user.is_superuser:
+                    layout_template_qs = (
+                        layout_template_qs
+                        .filter(
+                            Q(company=target_company)
+                            | Q(company__isnull=True)
+                        )
+                    )
+
+                layout_template = (
+                    layout_template_qs
+                    .select_related("company")
                     .first()
                 )
 
                 if not layout_template:
                     raise ValidationError(
-                        "La plantilla de bus seleccionada "
-                        "no existe o está inactiva."
+                        "La plantilla de bus seleccionada no existe, "
+                        "está inactiva o no pertenece a la empresa "
+                        "del bus."
                     )
 
             # =====================================================
@@ -3103,15 +3122,35 @@ def bus_editor(request, bus_id=None):
     # B3.1 — PLANTILLAS ACTIVAS
     # ============================================================
 
-    layout_templates = (
-        BusLayout.objects
-        .filter(
-            is_active=True
+    if request.user.is_superuser:
+        layout_templates = (
+            BusLayout.objects
+            .filter(
+                is_active=True,
+            )
+            .select_related(
+                "company",
+            )
+            .order_by(
+                "company__name",
+                "name",
+            )
         )
-        .order_by(
-            "name"
+    else:
+        layout_templates = (
+            BusLayout.objects
+            .filter(
+                Q(company=user_company)
+                | Q(company__isnull=True),
+                is_active=True,
+            )
+            .select_related(
+                "company",
+            )
+            .order_by(
+                "name",
+            )
         )
-    )
 
     # ============================================================
     # CONSERVAR PROPIETARIO SELECCIONADO

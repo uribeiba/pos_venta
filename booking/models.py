@@ -321,6 +321,7 @@ class BusLayout(models.Model):
     Plantilla reutilizable para el editor de buses.
 
     Define:
+    - empresa propietaria de la plantilla
     - configuración base de pisos / filas / columnas
     - layout inicial opcional
     - imagen visual de fondo por piso
@@ -328,7 +329,25 @@ class BusLayout(models.Model):
 
     El Bus conserva su layout concreto y sus Seat físicos.
     Esta clase funciona como plantilla/preset.
+
+    Si company es NULL, la plantilla se considera genérica
+    y puede ser utilizada por cualquier empresa.
     """
+
+    # Empresa propietaria de la plantilla.
+    # NULL = plantilla genérica / compartida.
+    company = models.ForeignKey(
+        Company,
+        verbose_name="Empresa",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="bus_layouts",
+        help_text=(
+            "Empresa propietaria de la plantilla. "
+            "Déjalo vacío para una plantilla genérica compartida."
+        ),
+    )
 
     name = models.CharField(
         "Nombre de la plantilla",
@@ -401,7 +420,10 @@ class BusLayout(models.Model):
         max_length=255,
         blank=True,
         default="",
-        help_text="Ruta relativa dentro de static. Ejemplo: img/bus-generico.png",
+        help_text=(
+            "Ruta relativa dentro de static. "
+            "Ejemplo: img/bus-generico.png"
+        ),
     )
 
     background_upper = models.CharField(
@@ -409,7 +431,10 @@ class BusLayout(models.Model):
         max_length=255,
         blank=True,
         default="",
-        help_text="Ruta relativa dentro de static. Ejemplo: img/bus-piso2.png",
+        help_text=(
+            "Ruta relativa dentro de static. "
+            "Ejemplo: img/bus-piso2.png"
+        ),
     )
 
     # Configuración visual del editor

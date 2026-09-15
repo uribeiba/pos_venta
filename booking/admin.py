@@ -918,13 +918,17 @@ class MaintenanceAdmin(admin.ModelAdmin):
     autocomplete_fields = ('bus',)
 
 
+
 # ============================================================
 # ADMIN DE PLANTILLAS (BusLayout)
 # ============================================================
+
 class BusLayoutAdminForm(forms.ModelForm):
+
     class Meta:
         model = BusLayout
         fields = "__all__"
+
         labels = {
             "layout_lower": "Piso inferior (layout)",
             "layout_upper": "Piso superior (layout)",
@@ -937,12 +941,14 @@ class BusLayoutAdminForm(forms.ModelForm):
             "prefix_lower": "Prefijo piso inferior",
             "prefix_upper": "Prefijo piso superior",
         }
+
         help_texts = {
             "layout_lower": "Lista lineal de celdas (L/P/X/E/D/B) con tamaño filas×columnas.",
             "layout_upper": "Lista lineal de celdas (L/P/X/E/D/B) con tamaño filas×columnas.",
             "numbers_lower": "Lista lineal con numeración (o vacío) del piso inferior.",
             "numbers_upper": "Lista lineal con numeración (o vacío) del piso superior.",
         }
+
         widgets = {
             "layout_lower": forms.Textarea(attrs={"rows": 7, "cols": 80}),
             "layout_upper": forms.Textarea(attrs={"rows": 7, "cols": 80}),
@@ -953,14 +959,81 @@ class BusLayoutAdminForm(forms.ModelForm):
 
 @admin.register(BusLayout)
 class BusLayoutAdmin(admin.ModelAdmin):
+
     form = BusLayoutAdminForm
-    list_display = ("name", "floors", "rows_lower", "rows_upper", "cols", "seatmap_link", "duplicate_link")
-    search_fields = ("name", "slug")
+
+    list_display = (
+        "name",
+        "company",
+        "floors",
+        "rows_lower",
+        "rows_upper",
+        "cols",
+        "is_active",
+        "seatmap_link",
+        "duplicate_link",
+    )
+
+    list_filter = (
+        "company",
+        "is_active",
+        "is_system",
+        "floors",
+    )
+
+    search_fields = (
+        "name",
+        "slug",
+        "company__name",
+    )
+
+    list_select_related = (
+        "company",
+    )
+
     fieldsets = (
-        ("Identificación", {"fields": ("name",)}),
-        ("Dimensiones", {"fields": ("floors", "rows_lower", "rows_upper", "cols")}),
-        ("Layout (avanzado)", {"fields": ("layout_lower", "layout_upper", "numbers_lower", "numbers_upper")}),
-        ("Numeración automática (opcional)", {"fields": ("prefix_lower", "prefix_upper")}),
+        (
+            "Identificación",
+            {
+                "fields": (
+                    "name",
+                    "company",
+                    "is_active",
+                    "is_system",
+                )
+            },
+        ),
+        (
+            "Dimensiones",
+            {
+                "fields": (
+                    "floors",
+                    "rows_lower",
+                    "rows_upper",
+                    "cols",
+                )
+            },
+        ),
+        (
+            "Layout (avanzado)",
+            {
+                "fields": (
+                    "layout_lower",
+                    "layout_upper",
+                    "numbers_lower",
+                    "numbers_upper",
+                )
+            },
+        ),
+        (
+            "Numeración automática (opcional)",
+            {
+                "fields": (
+                    "prefix_lower",
+                    "prefix_upper",
+                )
+            },
+        ),
     )
 
     actions = ("duplicate_selected_layouts",)
@@ -971,12 +1044,18 @@ class BusLayoutAdmin(admin.ModelAdmin):
 
     def seatmap_link(self, obj):
         url = reverse("admin:booking_layout_seatmap", args=[obj.pk])
-        return format_html('<a class="button js-seatmap" href="{}" data-seatmap-url="{}">Mapa</a>', url, url)
+        return format_html(
+            '<a class="button js-seatmap" href="{}" data-seatmap-url="{}">Mapa</a>',
+            url,
+            url,
+        )
+
     seatmap_link.short_description = "Mapa"
 
     def duplicate_link(self, obj):
         url = reverse("admin:booking_layout_duplicate", args=[obj.pk])
         return format_html('<a class="button" href="{}">Duplicar</a>', url)
+
     duplicate_link.short_description = "Duplicar"
 
     def get_urls(self):
@@ -997,10 +1076,23 @@ class BusLayoutAdmin(admin.ModelAdmin):
 
     @xframe_options_exempt
     def seatmap_view(self, request, layout_id: int):
-        layout = get_object_or_404(BusLayout, pk=layout_id)
+        layout = get_object_or_404(
+            BusLayout.objects.select_related("company"),
+            pk=layout_id,
+        )
 
         class _FakeBus:
-            company = type("C", (), {"name": "Plantilla"})
+            company = type(
+                "C",
+                (),
+                {
+                    "name": (
+                        layout.company.name
+                        if layout.company
+                        else "Plantilla genérica"
+                    )
+                },
+            )
             plate = layout.name
             floors = layout.floors
             rows_lower = layout.rows_lower
@@ -1020,17 +1112,22 @@ class BusLayoutAdmin(admin.ModelAdmin):
         return render(request, "booking/seatmap.html", ctx)
 
     def duplicate_view(self, request, layout_id: int):
-        layout = get_object_or_404(BusLayout, pk=layout_id)
+        layout = get_object_or_404(
+            BusLayout.objects.select_related("company"),
+            pk=layout_id,
+        )
 
         base_name = f"{layout.name} (copia)"
         name = base_name
         i = 2
+
         while BusLayout.objects.filter(name=name).exists():
             name = f"{base_name} {i}"
             i += 1
 
         new_obj = BusLayout.objects.create(
             name=name,
+            company=layout.company,
             floors=layout.floors,
             rows_lower=layout.rows_lower,
             rows_upper=layout.rows_upper,
@@ -1041,10 +1138,18 @@ class BusLayoutAdmin(admin.ModelAdmin):
             numbers_upper=list(layout.numbers_upper or []),
             prefix_lower=layout.prefix_lower,
             prefix_upper=layout.prefix_upper,
+            background_lower=layout.background_lower or "",
+            background_upper=layout.background_upper or "",
+            editor_config=dict(layout.editor_config or {}),
+            structure_config=dict(layout.structure_config or {}),
+            is_active=layout.is_active,
+            is_system=False,
         )
 
         self.message_user(request, f"Mapa duplicado como “{new_obj.name}”.")
+
         from django.shortcuts import redirect
+
         change_url = reverse(
             f"admin:{new_obj._meta.app_label}_{new_obj._meta.model_name}_change",
             args=[new_obj.pk],
@@ -1054,16 +1159,20 @@ class BusLayoutAdmin(admin.ModelAdmin):
     @admin.action(description="Duplicar mapas seleccionados")
     def duplicate_selected_layouts(self, request, queryset):
         created = 0
+        queryset = queryset.select_related("company")
+
         for layout in queryset:
             base_name = f"{layout.name} (copia)"
             name = base_name
             i = 2
+
             while BusLayout.objects.filter(name=name).exists():
                 name = f"{base_name} {i}"
                 i += 1
 
             BusLayout.objects.create(
                 name=name,
+                company=layout.company,
                 floors=layout.floors,
                 rows_lower=layout.rows_lower,
                 rows_upper=layout.rows_upper,
@@ -1074,7 +1183,14 @@ class BusLayoutAdmin(admin.ModelAdmin):
                 numbers_upper=list(layout.numbers_upper or []),
                 prefix_lower=layout.prefix_lower,
                 prefix_upper=layout.prefix_upper,
+                background_lower=layout.background_lower or "",
+                background_upper=layout.background_upper or "",
+                editor_config=dict(layout.editor_config or {}),
+                structure_config=dict(layout.structure_config or {}),
+                is_active=layout.is_active,
+                is_system=False,
             )
+
             created += 1
 
         self.message_user(request, f"Se duplicaron {created} mapa(s).")
