@@ -3967,10 +3967,14 @@ def buses_dashboard(request):
 @coordinator_required
 def bus_duplicate(request, bus_id):
     """
-    Duplica la configuración física de un bus autorizado.
+    Duplica la configuración física y visual de un bus autorizado.
 
     MULTIEMPRESA:
-    No permite duplicar un bus perteneciente a otra empresa.
+    - No permite duplicar un bus perteneciente a otra empresa.
+    - Conserva la plantilla visual del bus original.
+    - Solo conserva la plantilla si es genérica o pertenece
+      a la misma empresa del bus.
+    - El bus duplicado queda inactivo hasta ser revisado.
     """
 
     original = get_object_or_404(
@@ -3979,10 +3983,43 @@ def bus_duplicate(request, bus_id):
             Bus.objects.select_related(
                 "company",
                 "owner",
+                "layout_template",
+                "layout_template__company",
             ),
         ),
         pk=bus_id,
     )
+
+    # ============================================================
+    # VALIDAR PLANTILLA VISUAL DEL BUS ORIGINAL
+    # ============================================================
+
+    layout_template = original.layout_template
+
+    if layout_template:
+
+        # Una plantilla es válida para el bus cuando:
+        # - es genérica (company=None), o
+        # - pertenece a la misma empresa del bus.
+        if (
+            layout_template.company_id is not None
+            and layout_template.company_id != original.company_id
+        ):
+            raise ValidationError(
+                "El bus original tiene una plantilla visual "
+                "que pertenece a otra empresa. "
+                "Corrige la plantilla antes de duplicar el bus."
+            )
+
+        if not layout_template.is_active:
+            raise ValidationError(
+                "La plantilla visual del bus original está inactiva. "
+                "Actívala o selecciona otra plantilla antes de duplicar."
+            )
+
+    # ============================================================
+    # GENERAR PATENTE TEMPORAL ÚNICA
+    # ============================================================
 
     base_plate = f"{original.plate}-COPIA"
     candidate = base_plate[:30]
@@ -3993,6 +4030,7 @@ def bus_duplicate(request, bus_id):
     while Bus.objects.filter(
         plate=candidate
     ).exists():
+
         suffix = f"-{counter}"
 
         candidate = (
@@ -4002,50 +4040,99 @@ def bus_duplicate(request, bus_id):
 
         counter += 1
 
+    # ============================================================
+    # DUPLICACIÓN ATÓMICA
+    # ============================================================
+
     with transaction.atomic():
 
         new_bus = Bus(
+            # ----------------------------------------------------
+            # EMPRESA / PROPIETARIO
+            # ----------------------------------------------------
             company=original.company,
             owner=original.owner,
+
+            # ----------------------------------------------------
+            # PLANTILLA VISUAL
+            # ----------------------------------------------------
+            layout_template=layout_template,
+
+            # ----------------------------------------------------
+            # DATOS GENERALES
+            # ----------------------------------------------------
             plate=candidate,
             model=original.model,
             year=original.year,
+
+            # ----------------------------------------------------
+            # CONFIGURACIÓN DEL PLANO
+            # ----------------------------------------------------
             floors=original.floors,
             rows_lower=original.rows_lower,
             rows_upper=original.rows_upper,
             cols=original.cols,
+
             prefix_lower=original.prefix_lower,
             prefix_upper=original.prefix_upper,
+
+            # ----------------------------------------------------
+            # LAYOUT
+            # ----------------------------------------------------
             layout_lower=list(
                 original.layout_lower or []
             ),
+
             layout_upper=list(
                 original.layout_upper or []
             ),
+
+            # ----------------------------------------------------
+            # NUMERACIÓN
+            # ----------------------------------------------------
             numbers_lower=list(
                 original.numbers_lower or []
             ),
+
             numbers_upper=list(
                 original.numbers_upper or []
             ),
+
+            # ----------------------------------------------------
+            # SERVICIOS / TIPOS DE ASIENTO
+            # ----------------------------------------------------
             services_lower=list(
                 original.services_lower or []
             ),
+
             services_upper=list(
                 original.services_upper or []
             ),
+
+            # ----------------------------------------------------
+            # ESTADO
+            # ----------------------------------------------------
+            # El duplicado siempre comienza inactivo para permitir
+            # revisar patente, plantilla y distribución.
             is_active=False,
         )
 
         new_bus.save()
 
+        # Crear los Seat físicos usando exactamente la distribución
+        # copiada desde el bus original.
         created = new_bus.regenerate_seats()
+
+    # ============================================================
+    # MENSAJE Y REDIRECCIÓN
+    # ============================================================
 
     messages.success(
         request,
         (
             f"Bus duplicado como {new_bus.plate}. "
             f"Se crearon {created} asiento(s). "
+            "Se conservó la plantilla visual del bus original. "
             "Cambia la patente y revisa el plano "
             "antes de activarlo."
         ),
@@ -4055,7 +4142,7 @@ def bus_duplicate(request, bus_id):
         "coordinator:bus_editor",
         bus_id=new_bus.id,
     )
-
+    
 @login_required
 @coordinator_required
 @require_POST
