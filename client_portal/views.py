@@ -7,6 +7,8 @@ import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+
+
 # Django
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -26,15 +28,20 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-# Terceros
-import qrcode
-from bus_tickets import settings
-import xlsxwriter
-
-# Proyecto
 from booking.models import City, Customer, Promotion, Route, Seat, SeatHold, Ticket, Trip
 from booking.views import _build_trip_grid, calculate_final_price
 
+from .company_context import get_public_company
+
+# Terceros
+import qrcode
+from bus_tickets import settings
+
+import xlsxwriter
+import os
+import uuid
+import requests
+# Proyecto
 # Configurar logging
 logger = logging.getLogger(__name__)
 
@@ -96,148 +103,427 @@ def mask_phone(phone):
 # ==================== VISTAS PÚBLICAS DEL CLIENTE ====================
 
 def home(request):
-    """Página de inicio con buscador de viajes."""
-    # ✅ Obtener estadísticas reales
-    total_passengers = Ticket.objects.count()
-    years_experience = timezone.now().year - 1998  # Año de fundación
-    total_routes = Route.objects.filter(is_active=True).count()
-    punctuality = 95  # Podría calcularse de datos reales
-    
-    # ✅ Obtener próximos viajes
-    upcoming_trips = Trip.objects.filter(
-        departure__gte=timezone.now()
-    ).select_related('route__origin', 'route__destination', 'bus')[:5]
-    
+    """
+    Página pública principal.
+
+    MULTIEMPRESA:
+    - Si el dominio está asociado a una empresa, muestra sólo datos de esa empresa.
+    - Si el dominio no está asociado (ej. 127.0.0.1), conserva el comportamiento
+      global actual para no romper el portal existente.
+    """
+
+    public_company = get_public_company(request)
+
+    # ============================================================
+    # 1. CIUDADES DISPONIBLES PARA EL BUSCADOR
+    # ============================================================
+    available_trips_qs = Trip.objects.filter(
+        departure__gte=timezone.now(),
+    )
+
+    if public_company:
+        available_trips_qs = available_trips_qs.filter(
+            bus__company=public_company,
+        )
+
+    origin_cities = (
+        City.objects
+        .filter(
+            id__in=available_trips_qs.values_list(
+                "route__origin_id",
+                flat=True,
+            )
+        )
+        .order_by("name")
+        .distinct()
+    )
+
+    destination_cities = (
+        City.objects
+        .filter(
+            id__in=available_trips_qs.values_list(
+                "route__destination_id",
+                flat=True,
+            )
+        )
+        .order_by("name")
+        .distinct()
+    )
+
+    # ============================================================
+    # 2. QUERYSETS BASE
+    # ============================================================
+    tickets_qs = Ticket.objects.all()
+
+    upcoming_trips_qs = Trip.objects.filter(
+        departure__gte=timezone.now(),
+    )
+
+    route_ids_qs = Trip.objects.values_list(
+        "route_id",
+        flat=True,
+    )
+
+    # ============================================================
+    # 3. FILTRAR POR EMPRESA SI EL DOMINIO LA IDENTIFICA
+    # ============================================================
+    if public_company:
+        tickets_qs = tickets_qs.filter(
+            trip__bus__company=public_company,
+        )
+
+        upcoming_trips_qs = upcoming_trips_qs.filter(
+            bus__company=public_company,
+        )
+
+        route_ids_qs = (
+            Trip.objects
+            .filter(
+                bus__company=public_company,
+            )
+            .values_list(
+                "route_id",
+                flat=True,
+            )
+        )
+
+    # ============================================================
+    # 4. ESTADÍSTICAS
+    # ============================================================
+    total_passengers = tickets_qs.count()
+
+    years_experience = timezone.now().year - 1998
+
+    total_routes = (
+        Route.objects
+        .filter(
+            id__in=route_ids_qs,
+            is_active=True,
+        )
+        .distinct()
+        .count()
+    )
+
+    punctuality = 95
+
+    # ============================================================
+    # 5. PRÓXIMOS VIAJES
+    # ============================================================
+    upcoming_trips = (
+        upcoming_trips_qs
+        .select_related(
+            "route__origin",
+            "route__destination",
+            "bus",
+            "bus__company",
+        )
+        .order_by("departure")[:5]
+    )
+
     upcoming_trips_data = []
+
     for trip in upcoming_trips:
-        sold = Ticket.objects.filter(trip=trip).count()
+        sold = Ticket.objects.filter(
+            trip=trip,
+        ).count()
+
         upcoming_trips_data.append({
-            'departure_time': trip.departure,
-            'origin': trip.route.origin.name,
-            'destination': trip.route.destination.name,
-            'price': trip.route.base_price,
-            'available_seats': trip.seats_total - sold,
-            'link': reverse('client_portal:seatmap', args=[trip.id])
+            "departure_time": trip.departure,
+            "origin": trip.route.origin.name,
+            "destination": trip.route.destination.name,
+            "price": trip.route.base_price,
+            "available_seats": trip.seats_total - sold,
+            "link": reverse(
+                "client_portal:seatmap",
+                args=[trip.id],
+            ),
         })
-    
+
+    # ============================================================
+    # 6. CONTEXTO
+    # ============================================================
     context = {
-        'paso_actual': 1,
-        'stats': {
-            'passengers': total_passengers,
-            'years': years_experience,
-            'routes': total_routes,
-            'punctuality': punctuality,
+        "paso_actual": 1,
+
+        # Empresa pública detectada por dominio.
+        # Será None en 127.0.0.1 si no existe asociación.
+        "public_company": public_company,
+
+        # Ciudades disponibles según viajes reales de la empresa.
+        "origin_cities": origin_cities,
+        "destination_cities": destination_cities,
+
+        "stats": {
+            "passengers": total_passengers,
+            "years": years_experience,
+            "routes": total_routes,
+            "punctuality": punctuality,
         },
-        'upcoming_trips': upcoming_trips_data,
-        'popular_destinations': [],  # Obtener de base de datos
-        'testimonials': [],  # Obtener de base de datos
-        'fleet': [],  # Obtener de base de datos
-        'onboard_services': [
-            {'icon': 'fas fa-wifi', 'name': 'WiFi Gratis', 'description': 'Conectividad durante todo el viaje'},
-            {'icon': 'fas fa-tv', 'name': 'Entretenimiento', 'description': 'Pantallas y contenido a bordo'},
-            {'icon': 'fas fa-utensils', 'name': 'Snacks', 'description': 'Servicio de refrigerio incluido'},
-            {'icon': 'fas fa-charging-station', 'name': 'Carga USB', 'description': 'Puertos USB en cada asiento'},
+
+        "upcoming_trips": upcoming_trips_data,
+
+        "popular_destinations": [],
+        "testimonials": [],
+        "fleet": [],
+
+        "onboard_services": [
+            {
+                "icon": "fas fa-wifi",
+                "name": "WiFi Gratis",
+                "description": "Conectividad durante todo el viaje",
+            },
+            {
+                "icon": "fas fa-tv",
+                "name": "Entretenimiento",
+                "description": "Pantallas y contenido a bordo",
+            },
+            {
+                "icon": "fas fa-utensils",
+                "name": "Snacks",
+                "description": "Servicio de refrigerio incluido",
+            },
+            {
+                "icon": "fas fa-charging-station",
+                "name": "Carga USB",
+                "description": "Puertos USB en cada asiento",
+            },
         ],
-        # ... otros datos
     }
-    return render(request, 'client_portal/home.html', context)
+
+    # ============================================================
+    # 7. PLANTILLA POR EMPRESA
+    # ============================================================
+    template_name = "client_portal/home.html"
+
+    if public_company and public_company.name == "Buses La Porteña":
+        template_name = "client_portal/home_portena.html"
+
+    return render(
+        request,
+        template_name,
+        context,
+    )
 
 
 def search_trips(request):
-    # Obtener parámetros de búsqueda
-    origin = request.GET.get('origin', '').strip()
-    destination = request.GET.get('destination', '').strip()
-    date_str = request.GET.get('date', '').strip()
-    return_date = request.GET.get('return_date', '').strip()
+    """
+    Busca viajes disponibles.
 
-    # Validación básica
+    MULTIEMPRESA:
+    Si el dominio corresponde a una empresa, solamente permite
+    visualizar viajes cuyos buses pertenecen a esa empresa.
+
+    En localhost, mientras no exista CompanyDomain asociado,
+    conserva el comportamiento existente.
+    """
+
+    public_company = get_public_company(request)
+
+    # ============================================================
+    # 1. PARÁMETROS
+    # ============================================================
+    origin = request.GET.get("origin", "").strip()
+    destination = request.GET.get("destination", "").strip()
+    date_str = request.GET.get("date", "").strip()
+    return_date = request.GET.get("return_date", "").strip()
+
+    # ============================================================
+    # 2. VALIDACIÓN BÁSICA
+    # ============================================================
     if not origin or not destination or not date_str:
-        return render(request, 'client_portal/search_results.html', {
-            'trips': [],
-            'origin': origin,
-            'destination': destination,
-            'date': date_str,
-            'return_date': return_date,
-            'error': 'Por favor completa todos los campos de búsqueda'
-        })
+        return render(
+            request,
+            "client_portal/search_results.html",
+            {
+                "trips": [],
+                "origin": origin,
+                "destination": destination,
+                "date": date_str,
+                "return_date": return_date,
+                "error": "Por favor completa todos los campos de búsqueda",
+                "public_company": public_company,
+            },
+        )
 
-    # Validar fecha
+    # ============================================================
+    # 3. VALIDAR FECHA
+    # ============================================================
     try:
-        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-    except ValueError:
-        return render(request, 'client_portal/search_results.html', {
-            'trips': [],
-            'origin': origin,
-            'destination': destination,
-            'date': date_str,
-            'return_date': return_date,
-            'error': 'La fecha ingresada no es válida'
-        })
+        date_obj = datetime.strptime(
+            date_str,
+            "%Y-%m-%d",
+        ).date()
 
-    # ✅ OPTIMIZADO: Una sola consulta con anotaciones
+    except ValueError:
+        return render(
+            request,
+            "client_portal/search_results.html",
+            {
+                "trips": [],
+                "origin": origin,
+                "destination": destination,
+                "date": date_str,
+                "return_date": return_date,
+                "error": "La fecha ingresada no es válida",
+                "public_company": public_company,
+            },
+        )
+
+    # ============================================================
+    # 4. QUERY BASE
+    # ============================================================
     trips = Trip.objects.filter(
         route__origin__name__iexact=origin,
         route__destination__name__iexact=destination,
         departure__date=date_obj,
-        departure__gte=timezone.now()
-    ).select_related(
-        'route', 'bus', 'route__origin', 'route__destination',
-        'route__origin_terminal', 'route__destination_terminal',
-        'bus__company'
-    ).annotate(
-        sold_count=Count('tickets'),
-        hold_count=Count('holds', filter=Q(holds__active=True, holds__expires_at__gt=timezone.now()))
-    ).order_by('departure')
+        departure__gte=timezone.now(),
+    )
 
-    # ===== FILTRO POR TIEMPO DE CORTE =====
+    # ============================================================
+    # 5. FILTRO MULTIEMPRESA
+    # ============================================================
+    if public_company:
+        trips = trips.filter(
+            bus__company=public_company
+        )
+
+    # ============================================================
+    # 6. OPTIMIZACIÓN / DISPONIBILIDAD
+    # ============================================================
+    trips = (
+        trips
+        .select_related(
+            "route",
+            "bus",
+            "route__origin",
+            "route__destination",
+            "route__origin_terminal",
+            "route__destination_terminal",
+            "bus__company",
+        )
+        .annotate(
+            sold_count=Count("tickets"),
+            hold_count=Count(
+                "holds",
+                filter=Q(
+                    holds__active=True,
+                    holds__expires_at__gt=timezone.now(),
+                ),
+            ),
+        )
+        .order_by("departure")
+    )
+
+    # ============================================================
+    # 7. CORTE DE VENTA
+    # ============================================================
     available_trips = []
+
     for trip in trips:
+
         if trip.cutoff_minutes == 0:
             available_trips.append(trip)
+
         else:
-            cutoff_time = trip.departure - timedelta(minutes=trip.cutoff_minutes)
+            cutoff_time = (
+                trip.departure
+                - timedelta(
+                    minutes=trip.cutoff_minutes
+                )
+            )
+
             if timezone.now() < cutoff_time:
                 available_trips.append(trip)
 
-    # Procesar cada viaje con disponibilidad
+    # ============================================================
+    # 8. PREPARAR RESULTADOS
+    # ============================================================
     trips_data = []
+
     for trip in available_trips:
+
         sold = trip.sold_count
         holds = trip.hold_count
-        free = trip.seats_total - sold - holds
 
-        service_type = 'semi'
-        if trip.bus.service_type == 'cama':
-            service_type = 'cama'
+        free = (
+            trip.seats_total
+            - sold
+            - holds
+        )
 
-        origin_terminal = trip.route.origin_terminal.name if hasattr(trip.route, 'origin_terminal') and trip.route.origin_terminal else 'Terminal Cejer'
-        destination_terminal = trip.route.destination_terminal.name if hasattr(trip.route, 'destination_terminal') and trip.route.destination_terminal else 'Terminal Cejer'
+        service_type = "semi"
+
+        if trip.bus.service_type == "cama":
+            service_type = "cama"
+
+        origin_terminal = (
+            trip.route.origin_terminal.name
+            if getattr(
+                trip.route,
+                "origin_terminal",
+                None,
+            )
+            else "Terminal"
+        )
+
+        destination_terminal = (
+            trip.route.destination_terminal.name
+            if getattr(
+                trip.route,
+                "destination_terminal",
+                None,
+            )
+            else "Terminal"
+        )
 
         trips_data.append({
-            'id': trip.id,
-            'departure_time': trip.departure.strftime('%H:%M'),
-            'departure_date': trip.departure,
-            'arrival_time': trip.arrival.strftime('%H:%M') if trip.arrival else '--:--',
-            'origin_terminal': origin_terminal,
-            'destination_terminal': destination_terminal,
-            'bus_plate': trip.bus.plate,
-            'bus_company': trip.bus.company.name if trip.bus.company else 'Cejer',
-            'price': float(trip.route.base_price),
-            'free_seats': free,
-            'total_seats': trip.seats_total,
-            'floors': trip.bus.floors,
-            'service_type': service_type,
+            "id": trip.id,
+            "departure_time": trip.departure.strftime("%H:%M"),
+            "departure_date": trip.departure,
+
+            "arrival_time": (
+                trip.arrival.strftime("%H:%M")
+                if trip.arrival
+                else "--:--"
+            ),
+
+            "origin_terminal": origin_terminal,
+            "destination_terminal": destination_terminal,
+
+            "bus_plate": trip.bus.plate,
+
+            "bus_company": (
+                trip.bus.company.name
+                if trip.bus.company
+                else ""
+            ),
+
+            "price": float(
+                trip.route.base_price
+            ),
+
+            "free_seats": free,
+            "total_seats": trip.seats_total,
+            "floors": trip.bus.floors,
+            "service_type": service_type,
         })
 
-    return render(request, 'client_portal/search_results.html', {
-        'trips': trips_data,
-        'origin': origin,
-        'destination': destination,
-        'date': date_str,
-        'return_date': return_date,
-        'total_results': len(trips_data),
-    })
-
+    # ============================================================
+    # 9. RENDER
+    # ============================================================
+    return render(
+        request,
+        "client_portal/search_results.html",
+        {
+            "trips": trips_data,
+            "origin": origin,
+            "destination": destination,
+            "date": date_str,
+            "return_date": return_date,
+            "total_results": len(trips_data),
+            "public_company": public_company,
+        },
+    )
 
 @ensure_csrf_cookie
 def seatmap(request, trip_id):
@@ -743,7 +1029,6 @@ def hold_seat(request, trip_id):
 
 # ==================== CHECKOUT (CORREGIDO) ====================
 
-@login_required
 def checkout(request, trip_id):
     """
     FASE 2B - Checkout con reserva previa al pago.
@@ -757,7 +1042,7 @@ def checkout(request, trip_id):
         BookingOrderSeat
         PaymentTransaction
 
-    El Ticket se emitirá sólo después de confirmar Webpay en FASE 2C.
+    El Ticket se emitirá sólo después de confirmar Mercado Pago.
     """
     import re
     import uuid
@@ -811,17 +1096,17 @@ def checkout(request, trip_id):
 
     def build_unique_buy_order():
         """
-        Genera un buy_order único compatible con Webpay Plus.
+        Genera una referencia interna única para PaymentTransaction.
 
-        Webpay permite máximo 26 caracteres.
+        Se conserva el campo buy_order del modelo para evitar una migración
+        de base de datos en esta etapa.
+
         Ejemplo:
-            WEB260812181530A1B2C3D4
-
-        Largo total: 23 caracteres.
+            MP260917023500A1B2C3D4
         """
         for _ in range(10):
             buy_order = (
-                "WEB"
+                "MP"
                 + timezone.now().strftime("%y%m%d%H%M%S")
                 + uuid.uuid4().hex[:8].upper()
             )
@@ -948,7 +1233,12 @@ def checkout(request, trip_id):
         buyer_phone = request.POST.get("buyer_phone", "").strip()
         buyer_address = request.POST.get("buyer_address", "").strip()
         payment_method = (
-            request.POST.get("payment_method", "webpay").strip().lower()
+            request.POST.get(
+                "payment_method",
+                "mercadopago",
+            )
+            .strip()
+            .lower()
         )
         discount_code = (
             request.POST.get("applied_coupon_code", "").strip().upper()
@@ -982,9 +1272,9 @@ def checkout(request, trip_id):
         if not buyer_phone:
             return json_error("El teléfono del comprador es obligatorio.")
 
-        if payment_method != "webpay":
+        if payment_method != "mercadopago":
             return json_error(
-                "En la venta web sólo está habilitado Webpay."
+                "En la venta web sólo está habilitado Mercado Pago."
             )
 
         now = timezone.now()
@@ -1306,7 +1596,11 @@ def checkout(request, trip_id):
                 order = BookingOrder.objects.create(
                     code=build_unique_order_code(),
                     trip=trip,
-                    user=request.user,
+                    user=(
+                        request.user
+                        if request.user.is_authenticated
+                        else None
+                    ),
                     session_key=session_key,
                     customer=customer,
                     buyer_name=buyer_name,
@@ -1358,11 +1652,11 @@ def checkout(request, trip_id):
                     )
 
                 # ------------------------------------------------
-                # 11. PaymentTransaction (aún sin llamar a Webpay)
+                # 11. PaymentTransaction (Mercado Pago aún no se llama aquí)
                 # ------------------------------------------------
                 payment = PaymentTransaction.objects.create(
                     order=order,
-                    provider="transbank",
+                    provider="mercadopago",
                     token="",
                     buy_order=build_unique_buy_order(),
                     session_id=str(session_key)[:100],
@@ -1371,11 +1665,12 @@ def checkout(request, trip_id):
                     raw_response={
                         "phase": "FASE_2B",
                         "message": (
-                            "Reserva creada; Transbank aún no iniciado."
+                            "Reserva creada; Mercado Pago aún no iniciado."
                         ),
                     },
                 )
 
+            request.session["pending_customer_id"] = customer.id
             request.session["pending_order_code"] = order.code
             request.session["pending_payment_id"] = payment.id
             request.session.modified = True
@@ -1392,7 +1687,8 @@ def checkout(request, trip_id):
                     "total_amount": float(order.total_amount),
                     "expires_at": order.expires_at.isoformat(),
                     "status": order.status,
-                    "next_phase": "webpay",
+                    "payment_provider": "mercadopago",
+                    "next_phase": "mercadopago",
                 },
                 status=200,
             )
@@ -1402,7 +1698,11 @@ def checkout(request, trip_id):
                 "Error creando BookingOrder trip=%s session=%s user=%s",
                 trip_id,
                 session_key,
-                request.user.pk,
+                (
+                    request.user.pk
+                    if request.user.is_authenticated
+                    else None
+                ),
             )
 
             return json_error(
@@ -1441,22 +1741,1596 @@ def checkout(request, trip_id):
     )
 
 # ============================================================================
+# MERCADO PAGO
+# ============================================================================
+
+def mercadopago_start(request, order_code):
+    """
+    Crea una Order de Mercado Pago Checkout Pro
+    y redirige al comprador al checkout_url.
+
+    Compatible con usuario autenticado o invitado.
+    """
+
+    from booking.models import BookingOrder, PaymentTransaction
+
+    # ============================================================
+    # 1. OBTENER RESERVA
+    # ============================================================
+
+    order = get_object_or_404(
+        BookingOrder.objects.select_related(
+            "trip",
+            "trip__route",
+            "trip__route__origin",
+            "trip__route__destination",
+            "trip__bus",
+            "trip__bus__company",
+            "customer",
+        ),
+        code=order_code,
+    )
+
+    # ============================================================
+    # 2. VALIDAR SESIÓN
+    # ============================================================
+
+    session_key = request.session.session_key
+
+    if not session_key:
+        messages.error(
+            request,
+            "No se pudo validar tu sesión de compra."
+        )
+        return redirect(
+            "client_portal:seatmap",
+            trip_id=order.trip_id,
+        )
+
+    is_owner = (
+        request.user.is_authenticated
+        and order.user_id == request.user.id
+    )
+
+    is_same_session = (
+        order.session_key == session_key
+    )
+
+    if not is_owner and not is_same_session:
+        messages.error(
+            request,
+            "No tienes permiso para acceder a esta reserva."
+        )
+        return redirect(
+            "client_portal:search_trips"
+        )
+
+    # ============================================================
+    # 3. VALIDAR ESTADO
+    # ============================================================
+
+    if order.status == BookingOrder.STATUS_PAID:
+        return redirect(
+            "client_portal:confirmation",
+            trip_id=order.trip_id,
+        )
+
+    if order.status != BookingOrder.STATUS_PENDING:
+        messages.warning(
+            request,
+            "Esta reserva ya no está disponible para pago."
+        )
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    if order.expires_at <= timezone.now():
+        order.status = BookingOrder.STATUS_EXPIRED
+        order.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        messages.warning(
+            request,
+            "La reserva expiró. Selecciona nuevamente tus asientos."
+        )
+
+        return redirect(
+            "client_portal:seatmap",
+            trip_id=order.trip_id,
+        )
+
+    # ============================================================
+    # 4. OBTENER TRANSACCIÓN LOCAL
+    # ============================================================
+
+    payment = (
+        PaymentTransaction.objects
+        .filter(
+            order=order,
+            provider="mercadopago",
+            status=PaymentTransaction.STATUS_CREATED,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+
+    if not payment:
+        messages.error(
+            request,
+            "No existe una transacción de Mercado Pago válida."
+        )
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    # ============================================================
+    # 5. CREDENCIAL DE LA PORTEÑA
+    # ============================================================
+
+    company = order.trip.bus.company
+
+    if not company:
+        messages.error(
+            request,
+            "El viaje no tiene empresa asociada."
+        )
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    # Primera integración:
+    # Buses La Porteña -> sus propias credenciales
+    if company.name == "Buses La Porteña":
+        access_token = os.getenv(
+            "MERCADOPAGO_PORTENA_ACCESS_TOKEN"
+        )
+    else:
+        access_token = None
+
+    if not access_token:
+        logger.error(
+            "Mercado Pago sin credenciales. company=%s order=%s",
+            company.name,
+            order.code,
+        )
+
+        messages.error(
+            request,
+            "Mercado Pago no está configurado para esta empresa."
+        )
+
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    # ============================================================
+    # 6. EVITAR CREAR DOS VECES LA MISMA ORDER
+    # ============================================================
+
+    raw_response = payment.raw_response or {}
+
+    existing_checkout_url = raw_response.get(
+        "checkout_url"
+    )
+
+    if existing_checkout_url:
+        return redirect(
+            existing_checkout_url
+        )
+
+    # ============================================================
+    # 7. URLS DE RETORNO
+    # ============================================================
+
+    success_url = request.build_absolute_uri(
+        reverse(
+            "client_portal:mercadopago_success"
+        )
+    )
+
+    failure_url = request.build_absolute_uri(
+        reverse(
+            "client_portal:mercadopago_failure"
+        )
+    )
+
+    pending_url = request.build_absolute_uri(
+        reverse(
+            "client_portal:mercadopago_pending"
+        )
+    )
+
+       # ============================================================
+    # 8. PAYLOAD MERCADO PAGO
+    # ============================================================
+
+    route = order.trip.route
+
+    description = (
+        f"{route.origin.name} - "
+        f"{route.destination.name}"
+    )
+
+    # Mercado Pago Chile espera montos CLP sin decimales.
+    # Ejemplo: 6500 en vez de 6500.00
+    amount_clp = str(
+        int(
+            order.total_amount
+        )
+    )
+
+    payload = {
+        "type": "online",
+        "processing_mode": "manual",
+        "capture_mode": "automatic_async",
+        "external_reference": order.code,
+        "total_amount": amount_clp,
+        "description": description,
+        "payer": {
+            "email": order.buyer_email,
+        },
+        "items": [
+            {
+                "title": (
+                    f"Pasaje {description}"
+                ),
+                "unit_price": amount_clp,
+                "quantity": 1,
+            }
+        ],
+        "config": {
+            "online": {
+                "success_url": success_url,
+                "failure_url": failure_url,
+                "pending_url": pending_url,
+                "auto_return": "all",
+            }
+        },
+    }
+
+    # Mercado Pago indica que total_amount debe coincidir
+    # con la suma de los items.
+    # Esta versión usa un solo item con el total completo.
+
+    # ============================================================
+    # 9. HEADERS
+    # ============================================================
+
+    idempotency_key = str(
+        uuid.uuid4()
+    )
+
+    headers = {
+        "Authorization": (
+            f"Bearer {access_token}"
+        ),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Idempotency-Key": idempotency_key,
+    }
+
+    # ============================================================
+    # 10. CREAR ORDER
+    # ============================================================
+
+    try:
+        response = requests.post(
+            "https://api.mercadopago.com/v1/orders",
+            json=payload,
+            headers=headers,
+            timeout=20,
+        )
+
+        response_data = response.json()
+
+    except requests.RequestException:
+        logger.exception(
+            "Error conectando con Mercado Pago. order=%s",
+            order.code,
+        )
+
+        messages.error(
+            request,
+            "No fue posible conectar con Mercado Pago."
+        )
+
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    except ValueError:
+        logger.error(
+            "Mercado Pago devolvió respuesta inválida. "
+            "status=%s order=%s",
+            response.status_code,
+            order.code,
+        )
+
+        messages.error(
+            request,
+            "Mercado Pago devolvió una respuesta inválida."
+        )
+
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    # ============================================================
+    # 11. VALIDAR RESPUESTA
+    # ============================================================
+
+    if response.status_code not in (
+        200,
+        201,
+    ):
+        logger.error(
+            "Error Mercado Pago. order=%s status=%s response=%s",
+            order.code,
+            response.status_code,
+            response_data,
+        )
+
+        payment.raw_response = {
+            "phase": "mercadopago_create_error",
+            "status_code": response.status_code,
+            "response": response_data,
+        }
+
+        payment.save(
+            update_fields=[
+                "raw_response",
+                "updated_at",
+            ]
+        )
+
+        messages.error(
+            request,
+            "Mercado Pago rechazó la creación de la orden."
+        )
+
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    mercado_pago_order_id = response_data.get(
+        "id"
+    )
+
+    checkout_url = response_data.get(
+        "checkout_url"
+    )
+
+    if not mercado_pago_order_id or not checkout_url:
+        logger.error(
+            "Respuesta MP incompleta. order=%s response=%s",
+            order.code,
+            response_data,
+        )
+
+        messages.error(
+            request,
+            "Mercado Pago no entregó la URL de pago."
+        )
+
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    # ============================================================
+    # 12. GUARDAR RESPUESTA
+    # ============================================================
+
+    payment.token = mercado_pago_order_id
+
+    payment.raw_response = {
+        "phase": "mercadopago_order_created",
+        "mercadopago_order_id": mercado_pago_order_id,
+        "checkout_url": checkout_url,
+        "idempotency_key": idempotency_key,
+        "create": response_data,
+    }
+
+    payment.save(
+        update_fields=[
+            "token",
+            "raw_response",
+            "updated_at",
+        ]
+    )
+
+     # ============================================================
+    # 13. REDIRECCIÓN A MERCADO PAGO
+    # ============================================================
+
+    return redirect(
+        checkout_url
+    )
+
+
+def mercadopago_success(request):
+    """
+    Retorno seguro desde Mercado Pago Checkout Pro.
+
+    - Consulta la Order directamente en Mercado Pago.
+    - Verifica status/status_detail.
+    - Verifica external_reference.
+    - Verifica monto.
+    - Es idempotente.
+    - Sólo emite Ticket si el pago está processed/accredited.
+    """
+
+
+    import os
+    import requests
+
+    from decimal import Decimal, InvalidOperation
+    from django.contrib import messages
+    from django.contrib.auth.models import User
+    from django.db import transaction
+    from django.db.models import F
+    from django.shortcuts import redirect
+
+    from booking.models import (
+        BookingOrder,
+        PaymentTransaction,
+        Promotion,
+        Seat,
+        SeatHold,
+        Ticket,
+    )
+
+    # ============================================================
+    # 1. IDENTIFICAR TRANSACCIÓN LOCAL
+    # ============================================================
+
+    # Mercado Pago puede devolver el order_id en la URL de retorno.
+    # Se usa como primera opción porque identifica directamente
+    # la PaymentTransaction local mediante payment.token.
+    mercado_pago_order_id_from_return = (
+        request.GET.get("order_id", "").strip()
+    )
+
+    pending_payment_id = request.session.get(
+        "pending_payment_id"
+    )
+
+    pending_order_code = request.session.get(
+        "pending_order_code"
+    )
+
+    payment = None
+
+    # ------------------------------------------------------------
+    # Prioridad 1: order_id devuelto por Mercado Pago.
+    # ------------------------------------------------------------
+    if mercado_pago_order_id_from_return:
+        payment = (
+            PaymentTransaction.objects
+            .select_related(
+                "order",
+                "order__trip",
+                "order__trip__bus",
+                "order__trip__bus__company",
+                "order__customer",
+            )
+            .filter(
+                token=mercado_pago_order_id_from_return,
+                provider="mercadopago",
+            )
+            .first()
+        )
+
+    # ------------------------------------------------------------
+    # Prioridad 2: pending_payment_id guardado en sesión.
+    # ------------------------------------------------------------
+    if payment is None and pending_payment_id:
+        payment = (
+            PaymentTransaction.objects
+            .select_related(
+                "order",
+                "order__trip",
+                "order__trip__bus",
+                "order__trip__bus__company",
+                "order__customer",
+            )
+            .filter(
+                pk=pending_payment_id,
+                provider="mercadopago",
+            )
+            .first()
+        )
+
+    # ------------------------------------------------------------
+    # Prioridad 3: pending_order_code guardado en sesión.
+    # ------------------------------------------------------------
+    if payment is None and pending_order_code:
+        payment = (
+            PaymentTransaction.objects
+            .select_related(
+                "order",
+                "order__trip",
+                "order__trip__bus",
+                "order__trip__bus__company",
+                "order__customer",
+            )
+            .filter(
+                order__code=pending_order_code,
+                provider="mercadopago",
+            )
+            .order_by("-id")
+            .first()
+        )
+
+    if payment is None:
+        logger.error(
+            "Mercado Pago success sin transacción local. "
+            "pending_payment_id=%s pending_order_code=%s",
+            pending_payment_id,
+            pending_order_code,
+        )
+        messages.error(
+            request,
+            "No fue posible identificar la reserva asociada al pago.",
+        )
+        return redirect("client_portal:search_trips")
+
+    order = payment.order
+
+    # ============================================================
+    # 2. IDEMPOTENCIA TEMPRANA
+    # ============================================================
+
+    if (
+        order.status == BookingOrder.STATUS_PAID
+        and payment.status == PaymentTransaction.STATUS_AUTHORIZED
+    ):
+        ticket_ids = list(
+            Ticket.objects
+            .filter(
+                trip_id=order.trip_id,
+                seat_id__in=order.items.values_list(
+                    "seat_id",
+                    flat=True,
+                ),
+            )
+            .values_list("id", flat=True)
+        )
+
+        request.session["last_ticket_ids"] = ticket_ids
+        request.session["last_order_code"] = order.code
+        request.session["last_payment_id"] = payment.id
+        request.session["last_original_total"] = float(order.subtotal)
+        request.session["last_discount_amount"] = float(order.discount_amount)
+        request.session.pop("pending_order_code", None)
+        request.session.pop("pending_payment_id", None)
+        request.session.modified = True
+
+        return redirect(
+            "client_portal:confirmation",
+            trip_id=order.trip_id,
+        )
+
+    # ============================================================
+    # 3. ORDER ID DE MERCADO PAGO
+    # ============================================================
+
+    mercado_pago_order_id = (payment.token or "").strip()
+
+    if not mercado_pago_order_id:
+        logger.error(
+            "PaymentTransaction sin Mercado Pago order_id. "
+            "order=%s payment=%s",
+            order.code,
+            payment.id,
+        )
+        messages.error(
+            request,
+            "No fue posible identificar la orden en Mercado Pago.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 4. CREDENCIALES POR EMPRESA
+    # ============================================================
+
+    company = order.trip.bus.company
+
+    if not company:
+        logger.error("Order sin empresa asociada. order=%s", order.code)
+        messages.error(request, "El viaje no tiene una empresa asociada.")
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    if company.name == "Buses La Porteña":
+        access_token = os.getenv("MERCADOPAGO_PORTENA_ACCESS_TOKEN")
+    else:
+        access_token = None
+
+    if not access_token:
+        logger.error(
+            "Mercado Pago sin credenciales para empresa=%s order=%s",
+            company.name,
+            order.code,
+        )
+        messages.error(
+            request,
+            "Mercado Pago no está configurado para esta empresa.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 5. CONSULTAR ORDER EN MERCADO PAGO
+    # ============================================================
+
+    url = (
+        "https://api.mercadopago.com/v1/orders/"
+        f"{mercado_pago_order_id}"
+    )
+
+    try:
+        response = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+            timeout=20,
+        )
+        mp_data = response.json()
+
+    except requests.RequestException:
+        logger.exception(
+            "Error consultando Mercado Pago. "
+            "order=%s payment=%s mp_order=%s",
+            order.code,
+            payment.id,
+            mercado_pago_order_id,
+        )
+        messages.error(
+            request,
+            "El pago fue enviado, pero no pudimos confirmarlo con "
+            "Mercado Pago. No vuelvas a pagar por ahora.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    except ValueError:
+        logger.exception(
+            "Respuesta inválida desde Mercado Pago. "
+            "order=%s payment=%s",
+            order.code,
+            payment.id,
+        )
+        messages.error(
+            request,
+            "No fue posible interpretar la respuesta de Mercado Pago. "
+            "No vuelvas a pagar.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Mercado Pago GET order falló. "
+            "order=%s payment=%s http=%s response=%s",
+            order.code,
+            payment.id,
+            response.status_code,
+            mp_data,
+        )
+        payment.raw_response = {
+            **(payment.raw_response or {}),
+            "mercadopago_status_check_error": {
+                "http_status": response.status_code,
+                "response": mp_data,
+            },
+        }
+        payment.save(
+            update_fields=[
+                "raw_response",
+                "updated_at",
+            ]
+        )
+        messages.error(
+            request,
+            "No fue posible confirmar el estado del pago con Mercado Pago. "
+            "No vuelvas a pagar.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 6. VALIDAR ESTADO
+    # ============================================================
+
+    mp_status = mp_data.get("status")
+    mp_status_detail = mp_data.get("status_detail")
+    mp_external_reference = mp_data.get("external_reference")
+    mp_total_amount_raw = mp_data.get("total_amount")
+
+    payment.raw_response = {
+        **(payment.raw_response or {}),
+        "mercadopago_status_check": mp_data,
+    }
+    payment.save(
+        update_fields=[
+            "raw_response",
+            "updated_at",
+        ]
+    )
+
+    if not (
+        mp_status == "processed"
+        and mp_status_detail == "accredited"
+    ):
+        logger.warning(
+            "Mercado Pago todavía no acreditado. "
+            "order=%s payment=%s status=%s detail=%s",
+            order.code,
+            payment.id,
+            mp_status,
+            mp_status_detail,
+        )
+        messages.warning(
+            request,
+            "Mercado Pago todavía no confirma el pago como acreditado. "
+            "No vuelvas a pagar.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 7. VALIDAR REFERENCIA EXTERNA
+    # ============================================================
+
+    if mp_external_reference != order.code:
+        logger.error(
+            "Mercado Pago external_reference no coincide. "
+            "local=%s mp=%s payment=%s",
+            order.code,
+            mp_external_reference,
+            payment.id,
+        )
+        payment.status = PaymentTransaction.STATUS_ERROR
+        payment.raw_response = {
+            **(payment.raw_response or {}),
+            "integrity_error": "EXTERNAL_REFERENCE_MISMATCH",
+        }
+        payment.save(
+            update_fields=[
+                "status",
+                "raw_response",
+                "updated_at",
+            ]
+        )
+        messages.error(
+            request,
+            "El pago fue recibido, pero no coincide con la reserva. "
+            "No vuelvas a pagar. Contacta al administrador.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 8. VALIDAR MONTO
+    # ============================================================
+
+    try:
+        mercado_pago_amount = Decimal(str(mp_total_amount_raw))
+    except (InvalidOperation, TypeError, ValueError):
+        logger.exception(
+            "Monto Mercado Pago inválido. order=%s value=%s",
+            order.code,
+            mp_total_amount_raw,
+        )
+        payment.status = PaymentTransaction.STATUS_ERROR
+        payment.raw_response = {
+            **(payment.raw_response or {}),
+            "integrity_error": "INVALID_AMOUNT",
+        }
+        payment.save(
+            update_fields=[
+                "status",
+                "raw_response",
+                "updated_at",
+            ]
+        )
+        messages.error(
+            request,
+            "El pago fue recibido, pero no pudimos validar el monto. "
+            "No vuelvas a pagar.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    if mercado_pago_amount != order.total_amount:
+        logger.error(
+            "Monto Mercado Pago no coincide. "
+            "order=%s esperado=%s recibido=%s",
+            order.code,
+            order.total_amount,
+            mercado_pago_amount,
+        )
+        payment.status = PaymentTransaction.STATUS_ERROR
+        payment.raw_response = {
+            **(payment.raw_response or {}),
+            "integrity_error": "AMOUNT_MISMATCH",
+        }
+        payment.save(
+            update_fields=[
+                "status",
+                "raw_response",
+                "updated_at",
+            ]
+        )
+        messages.error(
+            request,
+            "El monto confirmado por Mercado Pago no coincide con la reserva. "
+            "No vuelvas a pagar.",
+        )
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 9. REFERENCIA DEL PAGO ACREDITADO
+    # ============================================================
+
+    mp_payments = (
+        (mp_data.get("transactions") or {})
+        .get("payments")
+        or []
+    )
+
+    mp_payment_id = ""
+
+    for mp_payment in mp_payments:
+        if (
+            mp_payment.get("status") == "processed"
+            and mp_payment.get("status_detail") == "accredited"
+        ):
+            mp_payment_id = str(mp_payment.get("id") or "")
+            break
+
+    authorization_reference = (
+        mp_payment_id
+        or mercado_pago_order_id
+    )
+
+    # ============================================================
+    # 10. EMITIR TICKETS
+    # ============================================================
+
+    created_tickets = []
+
+    try:
+        with transaction.atomic():
+
+            order = (
+                BookingOrder.objects
+                .select_for_update()
+                .get(pk=order.pk)
+            )
+
+            payment = (
+                PaymentTransaction.objects
+                .select_for_update()
+                .get(pk=payment.pk)
+            )
+
+            # IDEMPOTENCIA BAJO LOCK
+            if order.status == BookingOrder.STATUS_PAID:
+                existing_ticket_ids = list(
+                    Ticket.objects
+                    .filter(
+                        trip_id=order.trip_id,
+                        seat_id__in=order.items.values_list(
+                            "seat_id",
+                            flat=True,
+                        ),
+                    )
+                    .values_list("id", flat=True)
+                )
+
+                request.session["last_ticket_ids"] = existing_ticket_ids
+                request.session["last_order_code"] = order.code
+                request.session["last_payment_id"] = payment.id
+                request.session["last_original_total"] = float(order.subtotal)
+                request.session["last_discount_amount"] = float(
+                    order.discount_amount
+                )
+                request.session.pop("pending_order_code", None)
+                request.session.pop("pending_payment_id", None)
+                request.session.modified = True
+
+                return redirect(
+                    "client_portal:confirmation",
+                    trip_id=order.trip_id,
+                )
+
+            items = list(
+                order.items
+                .select_related("seat")
+                .order_by("seat_id")
+            )
+
+            if not items:
+                raise ValueError(
+                    "La reserva no contiene asientos."
+                )
+
+            seat_ids = [
+                item.seat_id
+                for item in items
+            ]
+
+            locked_seats = {
+                seat.id: seat
+                for seat in (
+                    Seat.objects
+                    .select_for_update()
+                    .filter(pk__in=seat_ids)
+                    .order_by("pk")
+                )
+            }
+
+            if len(locked_seats) != len(seat_ids):
+                raise ValueError(
+                    "No fue posible bloquear todos los asientos."
+                )
+
+            existing_ticket_seats = set(
+                Ticket.objects
+                .filter(
+                    trip_id=order.trip_id,
+                    seat_id__in=seat_ids,
+                )
+                .values_list(
+                    "seat_id",
+                    flat=True,
+                )
+            )
+
+            if existing_ticket_seats:
+                raise ValueError(
+                    "Uno o más asientos ya tienen un boleto emitido."
+                )
+
+            system_user = (
+                User.objects
+                .filter(username="ventas_web")
+                .first()
+            )
+
+            if not system_user:
+                system_user = (
+                    User.objects
+                    .filter(is_superuser=True)
+                    .order_by("id")
+                    .first()
+                )
+
+            if not system_user:
+                raise ValueError(
+                    "No existe un usuario para registrar la venta web."
+                )
+
+            for item in items:
+                seat = locked_seats[item.seat_id]
+
+                passenger_full_name = (
+                    f"{item.passenger_name} "
+                    f"{item.passenger_lastname}"
+                ).strip()
+
+                ticket = Ticket.create_for_sale(
+                    trip=order.trip,
+                    seat=seat,
+                    buyer_name=passenger_full_name,
+                    national_id=item.passenger_document,
+                    price=item.price,
+                    created_by=system_user,
+                    payment_method="card",
+                    customer=order.customer,
+                )
+
+                created_tickets.append(ticket)
+
+            SeatHold.objects.filter(
+                trip_id=order.trip_id,
+                session_key=order.session_key,
+                seat_id__in=seat_ids,
+                active=True,
+            ).update(
+                active=False
+            )
+
+            if order.discount_code:
+                promotion = (
+                    Promotion.objects
+                    .select_for_update()
+                    .filter(
+                        code__iexact=order.discount_code
+                    )
+                    .first()
+                )
+
+                if promotion:
+                    Promotion.objects.filter(
+                        pk=promotion.pk
+                    ).update(
+                        used_count=F("used_count") + 1
+                    )
+
+            clean_raw_response = {
+                **(payment.raw_response or {}),
+                "mercadopago_confirm": mp_data,
+            }
+
+            clean_raw_response.pop(
+                "ticket_emission_error",
+                None,
+            )
+
+            payment.status = PaymentTransaction.STATUS_AUTHORIZED
+            payment.authorization_code = authorization_reference
+            payment.response_code = 0
+            payment.raw_response = clean_raw_response
+
+            payment.save(
+                update_fields=[
+                    "status",
+                    "authorization_code",
+                    "response_code",
+                    "raw_response",
+                    "updated_at",
+                ]
+            )
+
+            order.status = BookingOrder.STATUS_PAID
+
+            order.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ]
+            )
+
+    except Exception:
+        logger.exception(
+            "PAGO MERCADO PAGO ACREDITADO pero error emitiendo tickets. "
+            "order=%s payment=%s",
+            order.code,
+            payment.id,
+        )
+
+        PaymentTransaction.objects.filter(
+            pk=payment.pk
+        ).update(
+            status=PaymentTransaction.STATUS_AUTHORIZED,
+            authorization_code=authorization_reference,
+            response_code=0,
+            raw_response={
+                **(payment.raw_response or {}),
+                "mercadopago_confirm": mp_data,
+                "ticket_emission_error": True,
+            },
+        )
+
+        messages.error(
+            request,
+            "El pago fue acreditado por Mercado Pago, pero ocurrió "
+            "un problema al emitir los pasajes. NO vuelvas a pagar. "
+            "Contacta al administrador.",
+        )
+
+        return redirect(
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
+
+    # ============================================================
+    # 11. SESIÓN PARA confirmation()
+    # ============================================================
+
+    request.session["last_ticket_ids"] = [
+        ticket.id
+        for ticket in created_tickets
+    ]
+    request.session["last_order_code"] = order.code
+    request.session["last_payment_id"] = payment.id
+    request.session["last_original_total"] = float(order.subtotal)
+    request.session["last_discount_amount"] = float(order.discount_amount)
+
+    request.session.pop("pending_order_code", None)
+    request.session.pop("pending_payment_id", None)
+    request.session.modified = True
+
+    logger.info(
+        "Pago Mercado Pago completado. "
+        "order=%s payment=%s tickets=%s mp_order=%s mp_payment=%s",
+        order.code,
+        payment.id,
+        len(created_tickets),
+        mercado_pago_order_id,
+        mp_payment_id,
+    )
+
+    messages.success(
+        request,
+        (
+            "Pago autorizado. "
+            f"Se emitieron {len(created_tickets)} pasajes."
+        ),
+    )
+
+    return redirect(
+        "client_portal:confirmation",
+        trip_id=order.trip_id,
+    )
+
+
+
+def mercadopago_failure(request):
+    return HttpResponse(
+        "Mercado Pago: retorno FAILURE"
+    )
+
+
+def mercadopago_pending(request):
+    return HttpResponse(
+        "Mercado Pago: retorno PENDING"
+    )
+
+
+@csrf_exempt
+def mercadopago_webhook(request):
+    """
+    Webhook de Mercado Pago para eventos del tópico `order`.
+
+    - Sólo acepta POST.
+    - Valida x-signature con HMAC-SHA256.
+    - Reconsulta la Order directamente en Mercado Pago.
+    - Sólo finaliza compras processed/accredited.
+    - Reutiliza mercadopago_success(), que ya es idempotente.
+    """
+
+    import hashlib
+    import hmac
+    import json
+    import os
+    import requests
+
+    from django.http import JsonResponse, QueryDict
+
+    from booking.models import BookingOrder, PaymentTransaction
+
+    # ============================================================
+    # 1. MÉTODO
+    # ============================================================
+
+    if request.method != "POST":
+        return JsonResponse(
+            {"ok": False, "detail": "Method not allowed"},
+            status=405,
+        )
+
+    # ============================================================
+    # 2. CUENTA / EMPRESA
+    # ============================================================
+
+    client_key = (
+        request.GET.get("client", "")
+        .strip()
+        .lower()
+    )
+
+    if client_key == "portena":
+        webhook_secret = os.getenv(
+            "MERCADOPAGO_PORTENA_WEBHOOK_SECRET"
+        )
+        access_token = os.getenv(
+            "MERCADOPAGO_PORTENA_ACCESS_TOKEN"
+        )
+    else:
+        webhook_secret = None
+        access_token = None
+
+    if not webhook_secret or not access_token:
+        logger.error(
+            "Webhook Mercado Pago sin configuración. client=%s",
+            client_key,
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Webhook not configured"},
+            status=401,
+        )
+
+    # ============================================================
+    # 3. DATOS DE FIRMA
+    # ============================================================
+
+    x_signature = (
+        request.headers.get("x-signature")
+        or request.META.get("HTTP_X_SIGNATURE")
+        or ""
+    )
+
+    x_request_id = (
+        request.headers.get("x-request-id")
+        or request.META.get("HTTP_X_REQUEST_ID")
+        or ""
+    )
+
+    data_id = (
+        request.GET.get("data.id", "")
+        .strip()
+    )
+
+    topic = (
+        request.GET.get("type", "")
+        .strip()
+        .lower()
+    )
+
+    if (
+        not x_signature
+        or not x_request_id
+        or not data_id
+    ):
+        logger.warning(
+            "Webhook Mercado Pago incompleto. "
+            "signature=%s request_id=%s data_id=%s",
+            bool(x_signature),
+            bool(x_request_id),
+            bool(data_id),
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Missing signature data"},
+            status=401,
+        )
+
+    if topic and topic != "order":
+        return JsonResponse(
+            {
+                "ok": True,
+                "ignored": True,
+                "reason": "unsupported_topic",
+            },
+            status=200,
+        )
+
+    # ============================================================
+    # 4. PARSEAR x-signature
+    # ============================================================
+
+    signature_values = {}
+
+    for part in x_signature.split(","):
+        key_value = part.split("=", 1)
+
+        if len(key_value) != 2:
+            continue
+
+        key = key_value[0].strip()
+        value = key_value[1].strip()
+
+        if key:
+            signature_values[key] = value
+
+    ts = signature_values.get("ts")
+    received_v1 = signature_values.get("v1")
+
+    if not ts or not received_v1:
+        return JsonResponse(
+            {"ok": False, "detail": "Invalid signature format"},
+            status=401,
+        )
+
+    # ============================================================
+    # 5. VALIDAR HMAC
+    # ============================================================
+
+    signature_data_id = data_id.lower()
+
+    manifest = (
+        f"id:{signature_data_id};"
+        f"request-id:{x_request_id};"
+        f"ts:{ts};"
+    )
+
+    expected_v1 = hmac.new(
+        webhook_secret.encode("utf-8"),
+        msg=manifest.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(
+        expected_v1,
+        received_v1,
+    ):
+        logger.warning(
+            "Firma webhook Mercado Pago inválida. "
+            "client=%s data_id=%s",
+            client_key,
+            data_id,
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Invalid signature"},
+            status=401,
+        )
+
+    # ============================================================
+    # 6. BODY
+    # ============================================================
+
+    try:
+        body_data = (
+            json.loads(request.body.decode("utf-8"))
+            if request.body
+            else {}
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        body_data = {}
+
+    body_type = str(
+        body_data.get("type") or ""
+    ).strip().lower()
+
+    if body_type and body_type != "order":
+        return JsonResponse(
+            {
+                "ok": True,
+                "ignored": True,
+                "reason": "unsupported_body_type",
+            },
+            status=200,
+        )
+
+    # ============================================================
+    # 7. PAYMENT LOCAL
+    # ============================================================
+
+    payment = (
+        PaymentTransaction.objects
+        .select_related(
+            "order",
+            "order__trip",
+            "order__trip__bus",
+            "order__trip__bus__company",
+        )
+        .filter(
+            token=data_id,
+            provider="mercadopago",
+        )
+        .first()
+    )
+
+    if payment is None:
+        logger.warning(
+            "Webhook Mercado Pago para Order desconocida. "
+            "data_id=%s client=%s",
+            data_id,
+            client_key,
+        )
+        return JsonResponse(
+            {
+                "ok": True,
+                "ignored": True,
+                "reason": "unknown_order",
+            },
+            status=200,
+        )
+
+    company = payment.order.trip.bus.company
+
+    if (
+        client_key == "portena"
+        and (
+            company is None
+            or company.name != "Buses La Porteña"
+        )
+    ):
+        logger.error(
+            "Webhook Mercado Pago empresa no coincide. "
+            "payment=%s company=%s client=%s",
+            payment.id,
+            getattr(company, "name", None),
+            client_key,
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Company mismatch"},
+            status=401,
+        )
+
+    # ============================================================
+    # 8. RECONSULTAR ORDER
+    # ============================================================
+
+    try:
+        mp_response = requests.get(
+            (
+                "https://api.mercadopago.com/v1/orders/"
+                f"{data_id}"
+            ),
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+            timeout=20,
+        )
+
+        mp_data = mp_response.json()
+
+    except requests.RequestException:
+        logger.exception(
+            "Webhook: error consultando Mercado Pago. "
+            "payment=%s order=%s",
+            payment.id,
+            data_id,
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Mercado Pago unavailable"},
+            status=500,
+        )
+
+    except ValueError:
+        logger.exception(
+            "Webhook: respuesta inválida Mercado Pago. "
+            "payment=%s order=%s",
+            payment.id,
+            data_id,
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Invalid Mercado Pago response"},
+            status=500,
+        )
+
+    if mp_response.status_code != 200:
+        logger.error(
+            "Webhook: GET Order Mercado Pago falló. "
+            "payment=%s order=%s http=%s response=%s",
+            payment.id,
+            data_id,
+            mp_response.status_code,
+            mp_data,
+        )
+        return JsonResponse(
+            {"ok": False, "detail": "Order verification failed"},
+            status=500,
+        )
+
+    mp_status = mp_data.get("status")
+    mp_status_detail = mp_data.get("status_detail")
+
+    if not (
+        mp_status == "processed"
+        and mp_status_detail == "accredited"
+    ):
+        logger.info(
+            "Webhook Mercado Pago recibido sin acreditación. "
+            "payment=%s order=%s status=%s detail=%s",
+            payment.id,
+            data_id,
+            mp_status,
+            mp_status_detail,
+        )
+        return JsonResponse(
+            {
+                "ok": True,
+                "processed": False,
+                "status": mp_status,
+                "status_detail": mp_status_detail,
+            },
+            status=200,
+        )
+
+    # ============================================================
+    # 9. REUTILIZAR mercadopago_success()
+    # ============================================================
+
+    mutable_get = QueryDict(
+        "",
+        mutable=True,
+    )
+
+    for key in request.GET.keys():
+        for value in request.GET.getlist(key):
+            mutable_get.appendlist(
+                key,
+                value,
+            )
+
+    mutable_get["order_id"] = data_id
+
+    original_get = request.GET
+    request.GET = mutable_get
+
+    try:
+        mercadopago_success(request)
+    finally:
+        request.GET = original_get
+
+    # ============================================================
+    # 10. COMPROBAR RESULTADO LOCAL
+    # ============================================================
+
+    payment.refresh_from_db()
+    payment.order.refresh_from_db()
+
+    if (
+        payment.order.status == BookingOrder.STATUS_PAID
+        and payment.status == PaymentTransaction.STATUS_AUTHORIZED
+    ):
+        logger.info(
+            "Webhook Mercado Pago procesado correctamente. "
+            "order=%s payment=%s mp_order=%s",
+            payment.order.code,
+            payment.id,
+            data_id,
+        )
+        return JsonResponse(
+            {"ok": True, "processed": True},
+            status=200,
+        )
+
+    logger.error(
+        "Webhook Mercado Pago acreditado pero no finalizado. "
+        "order=%s payment=%s mp_order=%s "
+        "local_order_status=%s local_payment_status=%s",
+        payment.order.code,
+        payment.id,
+        data_id,
+        payment.order.status,
+        payment.status,
+    )
+
+    return JsonResponse(
+        {"ok": False, "detail": "Local finalization failed"},
+        status=500,
+    )
+
+
+# ============================================================================
 # FASE 2C - WEBPAY PLUS
 # ============================================================================
 
 @login_required
 def webpay_start(request, order_code):
-    """
-    Inicia una transacción Webpay Plus en ambiente de integración.
 
-    Recibe una BookingOrder creada previamente en FASE 2B.
-
-    IMPORTANTE:
-    - NO crea Ticket.
-    - NO elimina SeatHold.
-    - NO marca la reserva como pagada.
-    - Sólo crea/inicia la transacción en Transbank.
-    """
 
     from booking.models import (
         BookingOrder,

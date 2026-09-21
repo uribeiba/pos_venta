@@ -28,7 +28,7 @@ urlpatterns = [
     ),
 
     path('terminos-condiciones/', views.terms, name='terms'),
-    
+
     # ===== DASHBOARD PARA JEFES =====
     path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('admin/dashboard/stats/', views.dashboard_stats, name='dashboard_stats'),
@@ -47,7 +47,7 @@ urlpatterns = [
     path('client-display/', views.client_display, name='client_display_no_trip'),
     path('client-display/launch/<int:trip_id>/', views.client_display_launcher, name='client_display_launcher'),
     path('client-sync/', views.client_sync, name='client_sync'),
-    
+
    # ===== WEBPAY PLUS =====
 
     path(
@@ -67,10 +67,41 @@ urlpatterns = [
         views.webpay_return,
         name='webpay_return'
     ),
-    
+
     path(
     'purchase/<str:order_code>/download/',
     views.download_purchase_pdf,
     name='download_purchase_pdf'
     ),
+
+
+    path(
+    'mercadopago/start/<str:order_code>/',
+    views.mercadopago_start,
+    name='mercadopago_start'
+        ),
+
+    path(
+        'mercadopago/success/',
+        views.mercadopago_success,
+        name='mercadopago_success'
+        ),
+
+    path(
+        'mercadopago/failure/',
+        views.mercadopago_failure,
+        name='mercadopago_failure'
+        ),
+
+    path(
+        'mercadopago/pending/',
+        views.mercadopago_pending,
+        name='mercadopago_pending'
+        ),
+
+    path(
+        'mercadopago/webhook/',
+        views.mercadopago_webhook,
+        name='mercadopago_webhook'
+         ),
 ]

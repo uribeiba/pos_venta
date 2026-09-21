@@ -33,12 +33,12 @@
     .passenger-table input, .passenger-table select { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; }
     .passenger-table input:focus, .passenger-table select:focus { border-color: #f5821f; outline: none; box-shadow: 0 0 0 2px rgba(245,130,31,0.2); }
     
-    /* Webpay logo */
-    .webpay-logo { display: flex; align-items: center; gap: 15px; padding: 16px; background: #f8fafc; border-radius: 12px; margin-bottom: 16px; }
-    .webpay-logo img { height: 40px; }
-    .webpay-logo .webpay-text { font-size: 0.8rem; color: #64748b; }
-    .webpay-logo .webpay-text strong { color: #f5821f; }
-    
+    /* Mercado Pago */
+    .mercadopago-logo { display: flex; align-items: center; gap: 15px; padding: 16px; background: #f8fafc; border-radius: 12px; margin-bottom: 16px; }
+    .mercadopago-logo .mercadopago-icon { font-size: 2rem; color: #009ee3; }
+    .mercadopago-logo .mercadopago-text { font-size: 0.8rem; color: #64748b; }
+    .mercadopago-logo .mercadopago-text strong { color: #009ee3; }
+
     .payment-method-card { border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; }
     .payment-method-card.selected { border-color: #f5821f; background: #fff7f0; }
     .payment-method-card input { margin-right: 12px; }
@@ -473,28 +473,35 @@
                         <div class="mb-4">
                             <h6 class="section-title">Opciones de pago</h6>
                             
-                            <!-- Webpay Logo -->
-                            <div class="webpay-logo">
-                                <img src="{% static 'img/logo-payplus.png' %}" alt="Webpay Plus">
-                                <div class="webpay-text">
-                                    <strong>webpay plus</strong><br>
-                                    <small>VISA | MasterCard | MAGNA | Redcompra</small>
+                            <!-- Mercado Pago -->
+                            <div class="mercadopago-logo">
+                                <div class="mercadopago-icon" aria-hidden="true">
+                                    <i class="fas fa-handshake"></i>
+                                </div>
+                                <div class="mercadopago-text">
+                                    <strong>Mercado Pago</strong><br>
+                                    <small>Pago seguro en pesos chilenos</small>
                                 </div>
                             </div>
-                            
-                            <div class="payment-method-card selected" id="webpayCard">
+
+                            <div class="payment-method-card selected" id="mercadopagoCard">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="payment_method" id="webpay" value="webpay" checked>
-                                    <label class="form-check-label fw-bold" for="webpay">
-                                        Webpay Plus (Débito / Crédito / Redcompra)
+                                    <input class="form-check-input"
+                                           type="radio"
+                                           name="payment_method"
+                                           id="mercadopago"
+                                           value="mercadopago"
+                                           checked>
+                                    <label class="form-check-label fw-bold" for="mercadopago">
+                                        Mercado Pago
                                     </label>
                                 </div>
                                 <div class="text-muted small mt-2 ms-4">
-                                    Su compra será procesada por Transbank (Webpay) en pesos chilenos
+                                    Serás redirigido a Mercado Pago para completar el pago de forma segura.
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Términos y condiciones -->
                         <div class="terms-checkbox">
                             <input type="checkbox" id="acceptTerms" required>
@@ -1569,9 +1576,9 @@ $(document).ready(function() {
         }
     });
     
-    // ==================== BOTÓN PAGAR - PROVISIONAL ====================
-    // Mientras no tengas Transbank, esta versión redirige a confirmación
-    // ==================== FASE 2B: RESERVA PREVIA AL PAGO ====================
+    // ==================== BOTÓN PAGAR ====================
+    // FASE 2B: RESERVA PREVIA AL PAGO + REDIRECCIÓN A MERCADO PAGO
+    // ======================================================
     function setCheckoutProcessStep(stepId, state) {
         const $step = $('#' + stepId);
         const $icon = $step.find('i');
@@ -1727,7 +1734,7 @@ $(document).ready(function() {
                 }
 
                 // =========================================================
-                // FASE 2C - CONTINUAR AUTOMÁTICAMENTE A WEBPAY
+                // FASE 2C - CONTINUAR AUTOMÁTICAMENTE A MERCADO PAGO
                 // =========================================================
 
                 $('#checkoutProcessCloseBtn')
@@ -1735,24 +1742,24 @@ $(document).ready(function() {
 
                 $('#checkoutProcessMessage').html(
                     'Reserva creada correctamente.<br>' +
-                    '<strong>Conectando con Webpay...</strong>'
+                    '<strong>Conectando con Mercado Pago...</strong>'
                 );
 
                 $submitBtn
-                    .html('<i class="fas fa-spinner fa-spin me-2"></i>CONECTANDO CON WEBPAY...')
+                    .html('<i class="fas fa-spinner fa-spin me-2"></i>CONECTANDO CON MERCADO PAGO...')
                     .prop('disabled', true);
 
-                const webpayStartUrlTemplate =
-                    "{% url 'client_portal:webpay_start' 'ORDER_CODE_PLACEHOLDER' %}";
+                const mercadoPagoStartUrlTemplate =
+                    "{% url 'client_portal:mercadopago_start' 'ORDER_CODE_PLACEHOLDER' %}";
 
-                const webpayStartUrl =
-                    webpayStartUrlTemplate.replace(
+                const mercadoPagoStartUrl =
+                    mercadoPagoStartUrlTemplate.replace(
                         'ORDER_CODE_PLACEHOLDER',
                         encodeURIComponent(response.order_code)
                     );
 
                 setTimeout(function() {
-                    window.location.href = webpayStartUrl;
+                    window.location.href = mercadoPagoStartUrl;
                 }, 1200);
             },
 

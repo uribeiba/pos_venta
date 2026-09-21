@@ -129,6 +129,55 @@ class Company(models.Model):
         return self.name
 
 
+    # =========================================================
+# DOMINIOS PÚBLICOS POR EMPRESA
+# =========================================================
+class CompanyDomain(models.Model):
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="domains",
+        verbose_name="Empresa",
+    )
+
+    domain = models.CharField(
+        "Dominio",
+        max_length=255,
+        unique=True,
+        db_index=True,
+        help_text=(
+            "Dominio público de la empresa, sin http:// ni https://. "
+            "Ejemplo: portena.online"
+        ),
+    )
+
+    is_primary = models.BooleanField(
+        "Dominio principal",
+        default=False,
+        help_text="Indica si este es el dominio principal de la empresa.",
+    )
+
+    is_active = models.BooleanField(
+        "Activo",
+        default=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Dominio de empresa"
+        verbose_name_plural = "Dominios de empresas"
+        ordering = ("company__name", "domain")
+
+    def __str__(self):
+        return f"{self.domain} — {self.company.name}"
+
 # =========================================================
 # FASE 2.18.3-A1 — Propietarios / socios de la flota
 # =========================================================

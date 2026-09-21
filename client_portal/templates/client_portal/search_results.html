@@ -2,15 +2,23 @@
 {% load humanize %}
 {% load static %}
 
-{% block title %}Resultados de búsqueda - Cejer{% endblock %}
+{% block title %}Resultados de búsqueda{% if public_company %} - {{ public_company.name }}{% endif %}{% endblock %}
 
 {% block extra_css %}
 <style>
     :root {
-        --brand-red: #e30613;
-        --brand-red-hover: #b8050f;
-        --brand-green: #4ca824;
-        --brand-dark: #1a1a1a;
+        /*
+         * BRANDING MULTIEMPRESA
+         * - primary_color: acciones principales / estados activos
+         * - secondary_color: textos oscuros / identidad secundaria
+         * - accent_color: precios / botón Buscar / destacados
+         *
+         * Los fallbacks conservan la apariencia original si no hay empresa.
+         */
+        --brand-red: {% if public_company and public_company.accent_color %}{{ public_company.accent_color }}{% else %}#e30613{% endif %};
+        --brand-red-hover: {% if public_company and public_company.accent_color %}{{ public_company.accent_color }}{% else %}#b8050f{% endif %};
+        --brand-green: {% if public_company and public_company.primary_color %}{{ public_company.primary_color }}{% else %}#4ca824{% endif %};
+        --brand-dark: {% if public_company and public_company.secondary_color %}{{ public_company.secondary_color }}{% else %}#1a1a1a{% endif %};
         --brand-bg-light: #f4f6f9;
         --brand-muted: #6c757d;
         --brand-white: #ffffff;
@@ -63,7 +71,13 @@
     .navbar-results .navbar-brand img {
         height: 60px;
         width: auto;
+        max-width: 150px;
         object-fit: contain;
+    }
+
+    /* Línea corporativa según la empresa detectada por dominio */
+    .navbar-results {
+        border-bottom: 3px solid var(--brand-green);
     }
 
     /* Barra de búsqueda compacta */
@@ -266,7 +280,7 @@
     }
     
     .btn-select-trip:hover {
-        background: #3d8a1c;
+        filter: brightness(0.88);
         transform: scale(1.02);
         color: white;
     }
@@ -337,11 +351,21 @@
 
 {% block content %}
 
-<!-- Navbar simplificado -->
+<!-- Navbar simplificado / branding dinámico por empresa -->
 <nav class="navbar navbar-expand-lg navbar-results">
     <div class="container">
-        <a class="navbar-brand" href="{% url 'client_portal:home' %}">
-            <img src="{% static 'img/logo.png' %}" alt="Cejer">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'client_portal:home' %}">
+            {% if public_company and public_company.logo %}
+                <img src="{{ public_company.logo.url }}" alt="{{ public_company.name }}">
+            {% else %}
+                <img src="{% static 'img/logo.png' %}" alt="{% if public_company %}{{ public_company.name }}{% else %}Empresa de buses{% endif %}">
+            {% endif %}
+
+            {% if public_company %}
+                <span class="d-none d-xl-inline fw-bold" style="color: var(--brand-dark);">
+                    {{ public_company.name }}
+                </span>
+            {% endif %}
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResults">
             <span class="navbar-toggler-icon"></span>
@@ -351,7 +375,11 @@
                 <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}">Inicio</a></li>
                 <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}#destinos">Destinos</a></li>
                 <li class="nav-item"><a class="nav-link" href="{% url 'client_portal:home' %}#faq">Ayuda</a></li>
-                <li class="nav-item ms-lg-3"><a class="btn btn-login-results" href="#"><i class="far fa-user me-2"></i>Iniciar Sesión</a></li>
+                <li class="nav-item ms-lg-3">
+                    <a class="btn btn-login-results" href="{% url 'client_portal:my_reservations' %}">
+                        <i class="far fa-bookmark me-2"></i>Mis reservas
+                    </a>
+                </li>
             </ul>
         </div>
     </div>
