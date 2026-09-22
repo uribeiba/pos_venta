@@ -1,7 +1,7 @@
 {% extends 'client_portal/base.html' %}
 {% load static %}
 
-{% block title %}Selecciona tus asientos - Cejer{% endblock %}
+{% block title %}Selecciona tus asientos - {{ trip.bus.company.name|default:"Buspasss" }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -748,7 +748,7 @@
         <div class="trip-meta">
             <span><i class="far fa-calendar-alt"></i> {{ trip.departure|date:"l d M, H:i" }} hrs</span>
             <span><i class="fas fa-bus"></i> {{ trip.bus.plate }}</span>
-            <span><i class="fas fa-tag"></i> {{ trip.bus.company.name|default:"Cejer" }}</span>
+            <span><i class="fas fa-tag"></i> {{ trip.bus.company.name|default:"Buspasss" }}</span>
             <span><i class="fas fa-clock"></i> {{ trip.duration|default:"07:00" }} horas</span>
         </div>
     </div>

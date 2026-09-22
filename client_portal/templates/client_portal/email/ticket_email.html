@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tu Pasaje Cejer</title>
+    <title>Tu Pasaje {{ trip.bus.company.name|default:"Buspasss" }}</title>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -179,7 +179,7 @@
                     <i class="fas fa-info-circle"></i> Presenta este comprobante al abordar
                 </p>
                 <p style="color: #64748b; font-size: 12px; margin: 4px 0;">
-                    Terminal de salida: {{ trip.route.origin_terminal.name|default:"Terminal Cejer" }}
+                    Terminal de salida: {{ trip.route.origin_terminal.name|default:"Terminal de salida" }}
                 </p>
             </div>
         </div>

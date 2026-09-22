@@ -2,7 +2,7 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}Mis Reservas - Cejer{% endblock %}
+{% block title %}Mis Reservas - {{ company.name|default:"Buspasss" }}{% endblock %}
 
 {% block extra_css %}
 {{ block.super }}
@@ -435,7 +435,8 @@
             <div class="empty-state">
                 <div class="icon">🎫</div>
                 <h3>No tienes reservas</h3>
-                <p>Aún no has realizado ninguna compra. ¡Viaja con Cejer y disfruta de la mejor experiencia!</p>
+                <p> Aún no has realizado ninguna compra.
+    ¡Viaja con {{ company.name|default:"nuestra empresa" }} y disfruta de la mejor experiencia!</p>
                 <a href="{% url 'client_portal:home' %}" class="btn-primary">
                     <i class="fas fa-search me-2"></i> Buscar viajes
                 </a>

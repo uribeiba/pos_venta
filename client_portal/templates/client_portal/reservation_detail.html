@@ -2,7 +2,7 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}Detalle de Reserva - Cejer{% endblock %}
+{% block title %}Detalle de Reserva - {{ ticket.trip.bus.company.name|default:"Buspasss" }}{% endblock %}
 
 {% block extra_css %}
 {{ block.super }}
@@ -222,7 +222,7 @@
             </div>
             <div class="detail-row">
                 <span class="label">Empresa</span>
-                <span class="value">{{ ticket.trip.bus.company.name|default:"Cejer" }}</span>
+                <span class="value">{{ ticket.trip.bus.company.name|default:"Buspasss" }}</span>
             </div>
             <div class="detail-row">
                 <span class="label">Estado</span>

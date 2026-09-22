@@ -43,16 +43,16 @@
         top: 0;
         z-index: 1030;
     }
-    
+
     .navbar-results .nav-link {
         color: var(--brand-dark) !important;
         font-weight: 600;
     }
-    
+
     .navbar-results .nav-link:hover {
         color: var(--brand-red) !important;
     }
-    
+
     .btn-login-results {
         background: transparent;
         border: 2px solid var(--brand-dark);
@@ -62,12 +62,12 @@
         padding: 8px 24px;
         transition: var(--transition-smooth);
     }
-    
+
     .btn-login-results:hover {
         background: var(--brand-dark);
         color: var(--brand-white);
     }
-    
+
     .navbar-results .navbar-brand img {
         height: 60px;
         width: auto;
@@ -89,19 +89,19 @@
         top: 76px;
         z-index: 1020;
     }
-    
+
     .search-compact-form {
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
         align-items: flex-end;
     }
-    
+
     .search-compact-form .form-group {
         flex: 1;
         min-width: 140px;
     }
-    
+
     .search-compact-form label {
         font-size: 0.7rem;
         font-weight: 700;
@@ -110,7 +110,7 @@
         display: block;
         text-transform: uppercase;
     }
-    
+
     .search-compact-form input {
         height: 42px;
         border: 1px solid #e2e8f0;
@@ -119,7 +119,7 @@
         width: 100%;
         font-size: 0.9rem;
     }
-    
+
     .search-compact-form button {
         background: var(--brand-red);
         color: white;
@@ -130,7 +130,7 @@
         font-weight: 700;
         transition: var(--transition-smooth);
     }
-    
+
     .search-compact-form button:hover {
         background: var(--brand-red-hover);
         transform: translateY(-1px);
@@ -145,7 +145,7 @@
         position: sticky;
         top: 170px;
     }
-    
+
     .filter-title {
         font-size: 1rem;
         font-weight: 800;
@@ -153,11 +153,11 @@
         padding-bottom: 10px;
         border-bottom: 2px solid var(--brand-green);
     }
-    
+
     .filter-group {
         margin-bottom: 24px;
     }
-    
+
     .filter-group label.filter-label {
         font-size: 0.75rem;
         font-weight: 700;
@@ -166,7 +166,7 @@
         display: block;
         text-transform: uppercase;
     }
-    
+
     /* Tarjeta de viaje estilo Turbus */
     .trip-card {
         background: white;
@@ -176,28 +176,28 @@
         transition: var(--transition-smooth);
         overflow: hidden;
     }
-    
+
     .trip-card:hover {
         box-shadow: var(--shadow-lg);
         transform: translateY(-2px);
     }
-    
+
     .trip-card-inner {
         padding: 20px;
     }
-    
+
     .trip-time {
         font-size: 1.6rem;
         font-weight: 800;
         color: var(--brand-dark);
         line-height: 1.2;
     }
-    
+
     .trip-date {
         font-size: 0.7rem;
         color: #888;
     }
-    
+
     .company-badge {
         width: 45px;
         height: 45px;
@@ -210,17 +210,17 @@
         font-size: 1rem;
         color: var(--brand-red);
     }
-    
+
     .route-destinations {
         font-weight: 700;
         color: var(--brand-dark);
     }
-    
+
     .route-terminals {
         font-size: 0.7rem;
         color: #888;
     }
-    
+
     .seat-badge {
         background: #e8f5e9;
         color: var(--brand-green);
@@ -232,7 +232,7 @@
         align-items: center;
         gap: 5px;
     }
-    
+
     .service-badge {
         padding: 4px 10px;
         border-radius: 20px;
@@ -242,28 +242,28 @@
         align-items: center;
         gap: 5px;
     }
-    
+
     .service-cama {
         background: #1e3a5f;
         color: white;
     }
-    
+
     .service-semi {
         background: #e0e0e0;
         color: #333;
     }
-    
+
     .price-amount {
         font-size: 1.8rem;
         font-weight: 800;
         color: var(--brand-red);
     }
-    
+
     .price-label {
         font-size: 0.7rem;
         color: #888;
     }
-    
+
     .btn-select-trip {
         background: var(--brand-green);
         color: white;
@@ -278,74 +278,138 @@
         text-align: center;
         text-decoration: none;
     }
-    
+
     .btn-select-trip:hover {
         filter: brightness(0.88);
         transform: scale(1.02);
         color: white;
     }
-    
+
     .breadcrumb-results {
         background: transparent;
         padding: 15px 0;
         margin-bottom: 0;
     }
-    
+
     .breadcrumb-item a {
         color: var(--brand-green);
         text-decoration: none;
     }
-    
+
     .results-count {
         font-size: 0.85rem;
         color: #888;
         margin-bottom: 20px;
     }
-    
+
     /* Stepper wrapper - Centrado correctamente */
     .stepper-container {
         max-width: 1000px;
         margin: 0 auto;
         padding: 10px 0 20px 0;
     }
-    
+
     /* Asegurar que el stepper ocupe todo el ancho */
     .stepper-container .stepper-modern {
         width: 100%;
     }
-    
+
     /* Animaciones */
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
     }
-    
+
     .trip-card {
         animation: fadeIn 0.3s ease-out;
     }
-    
+
+
     @media (max-width: 768px) {
-        .search-compact-form {
-            flex-direction: column;
-        }
-        .trip-time {
-            font-size: 1.2rem;
-        }
-        .price-amount {
-            font-size: 1.3rem;
-        }
-        .btn-select-trip {
-            margin-top: 12px;
-        }
-        .filter-sidebar {
-            position: relative;
-            top: 0;
-            margin-bottom: 20px;
-        }
-        .stepper-container {
-            padding: 5px 15px 15px 15px;
-        }
+
+/* =========================================================
+   BUSCADOR RESPONSIVE
+   ========================================================= */
+
+    .search-compact-bar {
+        padding: 16px 0;
     }
+
+    .search-compact-bar .container {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .search-compact-form {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .search-compact-form .form-group {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+    }
+
+    .search-compact-form .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 0.68rem;
+        font-weight: 700;
+    }
+
+    .search-compact-form input,
+    .search-compact-form select {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        height: 46px;
+        box-sizing: border-box;
+    }
+
+    .search-compact-form button {
+        width: 100%;
+        min-width: 0;
+        height: 48px;
+        margin: 2px 0 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+/* =========================================================
+   RESULTADOS
+   ========================================================= */
+
+    .trip-time {
+        font-size: 1.2rem;
+    }
+
+    .price-amount {
+        font-size: 1.3rem;
+    }
+
+    .btn-select-trip {
+        margin-top: 12px;
+    }
+
+    .filter-sidebar {
+        position: relative;
+        top: 0;
+        margin-bottom: 20px;
+    }
+
+    .stepper-container {
+        padding: 5px 15px 15px 15px;
+    }
+    }
+
+
+
+
+
 </style>
 {% endblock %}
 
@@ -425,13 +489,13 @@
             <li class="breadcrumb-item active" aria-current="page">Resultados de búsqueda</li>
         </ol>
     </nav>
-    
+
     <div class="row g-4">
         <!-- Sidebar de filtros -->
         <div class="col-lg-3">
             <div class="filter-sidebar">
                 <h5 class="filter-title"><i class="fas fa-filter me-2"></i>Filtrar por</h5>
-                
+
                 <div class="filter-group">
                     <label class="filter-label">HORARIO</label>
                     <div class="form-check">
@@ -451,7 +515,7 @@
                         <label class="form-check-label small" for="noche">🌙 Noche (18:00 - 00:00)</label>
                     </div>
                 </div>
-                
+
                 <div class="filter-group">
                     <label class="filter-label">TIPO DE ASIENTO</label>
                     <div class="form-check">
@@ -463,13 +527,13 @@
                         <label class="form-check-label small" for="semi">💺 Semi Cama</label>
                     </div>
                 </div>
-                
+
                 <button class="btn btn-outline-secondary btn-sm w-100 mt-3" id="clearFilters">
                     <i class="fas fa-eraser me-1"></i> Limpiar filtros
                 </button>
             </div>
         </div>
-        
+
         <!-- Lista de resultados -->
         <div class="col-lg-9">
             <div class="d-flex justify-content-between align-items-center results-count">
@@ -480,7 +544,7 @@
                     <option value="price_desc">Ordenar por: Mayor precio</option>
                 </select>
             </div>
-            
+
             <div id="tripsList">
                 {% for trip in trips %}
                 <div class="trip-card" data-trip-time="{{ trip.departure|time:'H:i' }}" data-trip-price="{{ trip.price|floatformat:0 }}" data-trip-service="{{ trip.service_type|default:'semi' }}">
@@ -491,7 +555,7 @@
                                 <div class="trip-time">{{ trip.departure|time:"H:i" }}</div>
                                 <div class="trip-date">{{ trip.departure|date:"d M Y" }}</div>
                             </div>
-                            
+
                             <!-- Empresa y ruta -->
                             <div class="col-md-4 mb-3 mb-md-0">
                                 <div class="d-flex align-items-center gap-3">
@@ -506,7 +570,7 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <!-- Disponibilidad y servicio -->
                             <div class="col-md-3 mb-3 mb-md-0">
                                 <div class="d-flex flex-wrap gap-2">
@@ -524,7 +588,7 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            
+
                             <!-- Precio y acción -->
                             <div class="col-md-3 text-md-end">
                                 <div>
@@ -562,18 +626,18 @@ $(document).ready(function() {
         const visible = $('.trip-card:visible').length;
         $('#visibleCount').text(visible);
     }
-    
+
     // Filtros por horario
     function filterTrips() {
         const selectedTimes = $('.filter-time:checked').map(function() { return $(this).val(); }).get();
         const selectedServices = $('.filter-service:checked').map(function() { return $(this).val(); }).get();
-        
+
         $('.trip-card').each(function() {
             let show = true;
             const timeStr = $(this).data('trip-time');
             const hour = parseInt(timeStr.split(':')[0]);
             const service = $(this).data('trip-service');
-            
+
             // Filtrar por horario
             if (selectedTimes.length > 0) {
                 let timeMatch = false;
@@ -583,32 +647,32 @@ $(document).ready(function() {
                 if (selectedTimes.includes('noche') && hour >= 18 && hour < 24) timeMatch = true;
                 if (!timeMatch) show = false;
             }
-            
+
             // Filtrar por servicio
             if (show && selectedServices.length > 0) {
                 if (!selectedServices.includes(service)) show = false;
             }
-            
+
             $(this).toggle(show);
         });
-        
+
         updateVisibleCount();
     }
-    
+
     // Event listeners para filtros
     $('.filter-time, .filter-service').on('change', filterTrips);
-    
+
     // Limpiar filtros
     $('#clearFilters').click(function() {
         $('.filter-time, .filter-service').prop('checked', false);
         filterTrips();
     });
-    
+
     // Ordenar resultados
     $('#sortBy').change(function() {
         const sortValue = $(this).val();
         const cards = $('.trip-card').get();
-        
+
         if (sortValue === 'time') {
             cards.sort((a, b) => {
                 return $(a).data('trip-time').localeCompare($(b).data('trip-time'));
@@ -618,13 +682,13 @@ $(document).ready(function() {
         } else if (sortValue === 'price_desc') {
             cards.sort((a, b) => parseInt($(b).data('trip-price')) - parseInt($(a).data('trip-price')));
         }
-        
+
         const container = $('#tripsList');
         $.each(cards, function(index, card) {
             container.append(card);
         });
     });
-    
+
     // Inicializar contador
     updateVisibleCount();
 });

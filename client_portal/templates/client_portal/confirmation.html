@@ -2,7 +2,9 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}Compra Confirmada - Cejer{% endblock %}
+{% block title %}
+Compra Confirmada - {{ company.name|default:trip.bus.company.name|default:"Buspasss" }}
+{% endblock %}
 
 {% block extra_css %}
 <style>

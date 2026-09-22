@@ -1,7 +1,7 @@
 {% extends 'client_portal/base.html' %}
 {% load humanize %}
 
-{% block title %}Resultado del pago - Cejer{% endblock %}
+{% block title %}Resultado del pago - {{ trip.bus.company.name|default:"Buspasss" }}{% endblock %}
 
 {% block extra_css %}
 <style>

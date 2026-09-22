@@ -2,7 +2,7 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}Datos del Pasajero y Pago - Cejer{% endblock %}
+{% block title %}Datos del Pasajero y Pago - {{ trip.bus.company.name|default:"Buspasss" }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -258,17 +258,144 @@
     }
     
     @media (max-width: 768px) {
-        .passenger-table th, .passenger-table td { padding: 8px; font-size: 0.7rem; }
-        .passenger-table input { font-size: 0.7rem; padding: 6px; }
-        .action-buttons { flex-direction: column; }
-        .resumen-card { position: relative; top: 0; margin-top: 20px; }
-        .left-col-scroll { max-height: none; overflow-y: visible; }
-        .timer-clock { font-size: 1.2rem; }
-        .create-account-banner { flex-direction: column; text-align: center; }
-        .auto-save-indicator { bottom: 10px; right: 10px; padding: 6px 12px; font-size: 0.7rem; }
-        .coupon-input-group { flex-direction: column; }
-        .btn-apply-coupon { width: 100%; }
-        #heartbeatToast { bottom: 70px; right: 10px; font-size: 0.65rem; padding: 6px 12px; }
+
+/* =========================================================
+   TABLA PASAJEROS → TARJETAS EN CELULAR
+   ========================================================= */
+
+    #passengersTableContainer {
+        width: 100%;
+        overflow: visible;
+    }
+
+    .passenger-table {
+        display: block;
+        width: 100%;
+    }
+
+    .passenger-table thead {
+        display: none;
+    }
+
+    .passenger-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .passenger-table tr {
+        display: block;
+        width: 100%;
+        margin-bottom: 16px;
+        padding: 14px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+
+    .passenger-table td {
+        display: block;
+        width: 100%;
+        padding: 6px 0;
+        border: 0;
+        font-size: 0.85rem;
+    }
+
+    .passenger-table td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 5px;
+        color: #64748b;
+        font-size: 0.68rem;
+        line-height: 1.2;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .passenger-table td:first-child {
+        padding: 9px 12px;
+        margin-bottom: 8px;
+        background: #f8fafc;
+        border-radius: 9px;
+        text-align: left !important;
+        font-size: 0.95rem;
+    }
+
+    .passenger-table td:first-child::before {
+        display: inline;
+        margin-right: 6px;
+    }
+
+    .passenger-table input,
+    .passenger-table select,
+    .passenger-table .form-select {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        height: 44px;
+        padding: 9px 10px;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+
+/* =========================================================
+   RESTO DEL CHECKOUT
+   ========================================================= */
+
+    .action-buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .action-buttons button,
+    .action-buttons a {
+        width: 100%;
+    }
+
+    .resumen-card {
+        position: relative;
+        top: 0;
+        margin-top: 20px;
+    }
+
+    .left-col-scroll {
+        max-height: none;
+        overflow-y: visible;
+        overflow-x: hidden;
+    }
+
+    .timer-clock {
+        font-size: 1.2rem;
+    }
+
+    .create-account-banner {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .auto-save-indicator {
+        bottom: 10px;
+        right: 10px;
+        padding: 6px 12px;
+        font-size: 0.7rem;
+    }
+
+    .coupon-input-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .btn-apply-coupon {
+        width: 100%;
+    }
+
+    #heartbeatToast {
+        bottom: 70px;
+        right: 10px;
+        font-size: 0.65rem;
+        padding: 6px 12px;
+    }
     }
     
     /* Scrollbar personalizado */
@@ -440,7 +567,12 @@
                                 </div>
                                 <div class="col-md-12">
                                     <label class="form-label small fw-bold text-secondary">Paradero</label>
-                                    <input type="text" class="form-control" id="buyer_address" name="buyer_address" value="TERMINAL CEJER">
+                                    <input type="text"
+       class="form-control"
+       id="buyer_address"
+       name="buyer_address"
+       value=""
+       placeholder="Ingresa tu dirección">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label small fw-bold text-secondary">Correo electrónico</label>
@@ -1207,30 +1339,70 @@ $(document).ready(function() {
             totalAmount += parseFloat(seat.price);
             const key = seatFieldKey(seat);
 
-            html += `<tr class="passenger-row-${key}" data-seat-number="${seat.number}" data-seat-deck="${seat.deck}">
-                <td class="text-center fw-bold">${seat.deck === 2 ? 'P2-' : 'P1-'}${seat.number}</td>
-                <td>
-                    <select name="passenger_nationality_${key}" class="form-select form-select-sm">
-                        <option value="CHI">CHI</option>
-                        <option value="ARG">ARG</option>
-                        <option value="BOL">BOL</option>
-                        <option value="PER">PER</option>
-                        <option value="COL">COL</option>
-                        <option value="BRA">BRA</option>
-                    </select>
-                </td>
-                <td>
-                    <select name="passenger_doc_type_${key}" class="form-select form-select-sm passenger-doc-type">
-                        <option value="RUT">RUT (CHL)</option>
-                        <option value="DNI">DNI</option>
-                        <option value="PAS">PASAPORTE</option>
-                    </select>
-                </td>
-                <td><input type="text" name="passenger_doc_number_${key}" class="rut-field passenger-document-field" placeholder="Nº Documento" required autocomplete="off"></td>
-                <td><input type="text" name="passenger_name_${key}" placeholder="Nombre" required></td>
-                <td><input type="text" name="passenger_lastname_${key}" placeholder="Apellido" required></td>
-             </tr>`;
-        });
+            html += `
+        <tr class="passenger-row-${key}"
+            data-seat-number="${seat.number}"
+            data-seat-deck="${seat.deck}">
+
+            <td
+                class="text-center fw-bold"
+                data-label="Asiento">
+                ${seat.deck === 2 ? 'P2-' : 'P1-'}${seat.number}
+            </td>
+
+            <td data-label="Nacionalidad">
+                <select
+                    name="passenger_nationality_${key}"
+                    class="form-select form-select-sm">
+
+                    <option value="CHI">CHI</option>
+                    <option value="ARG">ARG</option>
+                    <option value="BOL">BOL</option>
+                    <option value="PER">PER</option>
+                    <option value="COL">COL</option>
+                    <option value="BRA">BRA</option>
+                </select>
+            </td>
+
+            <td data-label="Tipo de documento">
+                <select
+                    name="passenger_doc_type_${key}"
+                    class="form-select form-select-sm passenger-doc-type">
+
+                    <option value="RUT">RUT (CHL)</option>
+                    <option value="DNI">DNI</option>
+                    <option value="PAS">PASAPORTE</option>
+                </select>
+            </td>
+
+            <td data-label="N° documento">
+                <input
+                    type="text"
+                    name="passenger_doc_number_${key}"
+                    class="rut-field passenger-document-field"
+                    placeholder="Nº Documento"
+                    required
+                    autocomplete="off">
+            </td>
+
+            <td data-label="Nombre">
+                <input
+                    type="text"
+                    name="passenger_name_${key}"
+                    placeholder="Nombre"
+                    required>
+            </td>
+
+            <td data-label="Apellido">
+                <input
+                    type="text"
+                    name="passenger_lastname_${key}"
+                    placeholder="Apellido"
+                    required>
+            </td>
+
+        </tr>`;
+                });
         
         html += `</tbody>
         </table>`;
@@ -1358,7 +1530,7 @@ $(document).ready(function() {
         destinationTerminal: "{{ trip.route.destination.terminal_name|default:'Terminal' }}",
         date: "{{ trip.departure|date:'D, d M, Y' }}",
         time: "{{ trip.departure|date:'H:i' }}",
-        company: "{{ trip.bus.company.name|default:'Cejer' }}",
+        company: "{{ trip.bus.company.name|default:'Buspasss' }}",
         duration: "{{ trip.duration|default:'07:00' }}"
     };
     
