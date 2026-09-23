@@ -395,10 +395,9 @@
         margin-top: 12px;
     }
 
-    .filter-sidebar {
-        position: relative;
-        top: 0;
-        margin-bottom: 20px;
+    /* En celular ocultamos los filtros para llegar más rápido a los viajes. */
+    .filters-column {
+        display: none !important;
     }
 
     .stepper-container {
@@ -492,7 +491,7 @@
 
     <div class="row g-4">
         <!-- Sidebar de filtros -->
-        <div class="col-lg-3">
+        <div class="col-lg-3 filters-column">
             <div class="filter-sidebar">
                 <h5 class="filter-title"><i class="fas fa-filter me-2"></i>Filtrar por</h5>
 

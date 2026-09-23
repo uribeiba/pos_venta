@@ -99,6 +99,34 @@
 
     .section-title { font-size: 1rem; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f5821f; display: inline-block; }
 
+    /* Copiar datos del primer pasajero al comprador */
+    .copy-first-passenger {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        margin-bottom: 16px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+    }
+
+    .copy-first-passenger input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: #f5821f;
+        flex: 0 0 auto;
+    }
+
+    .copy-first-passenger label {
+        margin: 0;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #334155;
+        cursor: pointer;
+    }
+
     /* Banner crear cuenta */
     .create-account-banner { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 20px; margin-bottom: 24px; color: white; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
     .create-account-banner h5 { margin: 0; font-size: 1rem; }
@@ -545,6 +573,15 @@
                         <!-- Datos del comprador -->
                         <div class="mb-4">
                             <h6 class="section-title">Datos del Comprador</h6>
+
+                            <div class="copy-first-passenger">
+                                <input type="checkbox"
+                                       id="copyFirstPassenger">
+                                <label for="copyFirstPassenger">
+                                    Usar los datos del primer pasajero
+                                </label>
+                            </div>
+
                             <div class="row g-3">
                                 <div class="col-md-12">
                                     <label class="form-label small fw-bold text-secondary">Nombres y Apellidos</label>
@@ -1419,6 +1456,58 @@ $(document).ready(function() {
     }
 
     generatePassengersTable();
+
+    // =========================================================
+    // USAR DATOS DEL PRIMER PASAJERO COMO DATOS DEL COMPRADOR
+    // =========================================================
+    function copyFirstPassengerToBuyer() {
+        if (!$('#copyFirstPassenger').is(':checked') || !seats.length) {
+            return;
+        }
+
+        const firstSeat = seats[0];
+        const key = seatFieldKey(firstSeat);
+
+        const firstName = $(`input[name="passenger_name_${key}"]`).val().trim();
+        const firstLastName = $(`input[name="passenger_lastname_${key}"]`).val().trim();
+        const firstDocType = $(`select[name="passenger_doc_type_${key}"]`).val() || 'RUT';
+        const firstDocument = $(`input[name="passenger_doc_number_${key}"]`).val().trim();
+
+        const fullName = [firstName, firstLastName].filter(Boolean).join(' ');
+        $('#buyer_name').val(fullName);
+
+        // El RUT del comprador sigue siendo obligatorio.
+        // Solo se copia automáticamente si el primer pasajero usa RUT.
+        if (firstDocType === 'RUT') {
+            $('#buyer_rut').val(firstDocument).trigger('input');
+        }
+    }
+
+    $('#copyFirstPassenger').on('change', function() {
+        if (this.checked) {
+            copyFirstPassengerToBuyer();
+            saveFormData();
+        }
+    });
+
+    // Si el usuario marca la opción antes de terminar de escribir los datos
+    // del primer pasajero, mantenemos comprador sincronizado.
+    $(document).on(
+        'input change',
+        '#passengersTableContainer input, #passengersTableContainer select',
+        function() {
+            if (!$('#copyFirstPassenger').is(':checked') || !seats.length) {
+                return;
+            }
+
+            const firstKey = seatFieldKey(seats[0]);
+            const $row = $(this).closest(`.passenger-row-${firstKey}`);
+
+            if ($row.length) {
+                copyFirstPassengerToBuyer();
+            }
+        }
+    );
 
     // El pago parte bloqueado hasta validar el RUT del comprador.
     $('#submitBtn').prop('disabled', true);

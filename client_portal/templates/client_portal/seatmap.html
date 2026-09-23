@@ -9,7 +9,7 @@
         background: #f4f4f4;
         font-family: 'Inter', sans-serif;
     }
-    
+
     /* Cabecera del viaje */
     .trip-header-card {
         background: white;
@@ -19,13 +19,13 @@
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         border-left: 4px solid #f5821f;
     }
-    
+
     .trip-header-card h2 {
         font-size: 1.5rem;
         font-weight: 700;
         margin-bottom: 8px;
     }
-    
+
     .trip-header-card .trip-meta {
         display: flex;
         gap: 20px;
@@ -33,12 +33,12 @@
         color: #666;
         font-size: 0.85rem;
     }
-    
+
     .trip-header-card .trip-meta i {
         margin-right: 6px;
         color: #f5821f;
     }
-    
+
     /* Layout principal */
     .seat-layout {
         display: flex;
@@ -46,7 +46,7 @@
         flex-wrap: wrap;
         justify-content: center;
     }
-    
+
     .bus-container {
         flex: 1;
         min-width: 300px;
@@ -55,7 +55,7 @@
         padding: 24px 20px;
         box-shadow: 0 2px 12px rgba(0,0,0,0.08);
     }
-    
+
     /* Pestañas de pisos */
     .deck-tabs {
         display: flex;
@@ -63,7 +63,7 @@
         gap: 12px;
         margin-bottom: 24px;
     }
-    
+
     .deck-tab-btn {
         background: #f1f5f9;
         border: none;
@@ -74,16 +74,16 @@
         transition: all 0.3s ease;
         cursor: pointer;
     }
-    
+
     .deck-tab-btn.active {
         background: #f5821f;
         color: white;
     }
-    
+
     .deck-tab-btn:hover:not(.active) {
         background: #e2e8f0;
     }
-    
+
     .deck-tab-btn .badge-deck {
         background: rgba(255,255,255,0.2);
         padding: 1px 8px;
@@ -91,11 +91,11 @@
         font-size: 0.65rem;
         margin-left: 4px;
     }
-    
+
     .deck-tab-btn.active .badge-deck {
         background: rgba(255,255,255,0.2);
     }
-    
+
     /* Estructura del bus */
     .bus-wrapper {
         max-width: 320px;
@@ -106,7 +106,7 @@
         padding: 20px 12px 25px 12px;
         position: relative;
     }
-    
+
     .bus-wrapper::before {
         content: "PISO";
         position: absolute;
@@ -119,27 +119,27 @@
         letter-spacing: 4px;
         pointer-events: none;
     }
-    
+
     .bus-cabin {
         display: flex;
         justify-content: flex-start;
         padding-left: 15px;
         margin-bottom: 10px;
     }
-    
+
     .cabin-divider {
         border: none;
         border-top: 1px dashed #cbd5e1;
         margin: 10px 0 20px;
     }
-    
+
     /* ===== Grilla de asientos ===== */
     .seat-grid {
         display: grid;
         justify-content: center;
         gap: 8px 4px;
     }
-    
+
     .seat-cell {
         width: 44px;
         height: 44px;
@@ -149,23 +149,23 @@
         border-radius: 4px;
         overflow: hidden;
     }
-    
+
     .seat-cell:hover:not(.status-occupied):not(.status-sold) {
         transform: scale(1.08);
         z-index: 2;
     }
-    
+
     .seat-cell:active:not(.status-occupied):not(.status-sold) {
         transform: scale(0.95);
     }
-    
+
     .seat-cell img {
         width: 100%;
         height: 100%;
         object-fit: contain;
         transition: filter 0.3s ease;
     }
-    
+
     /* ===== NÚMEROS DE ASIENTO - ESTILO NEGRO CLARO ===== */
     .seat-number {
         position: absolute;
@@ -186,25 +186,25 @@
         text-align: center;
         border: 1px solid rgba(0,0,0,0.05);
     }
-    
+
     .seat-number.one-digit {
         font-size: 15px;
     }
-    
+
     .seat-number.two-digits {
         font-size: 11px;
     }
-    
+
     .seat-number.three-digits {
         font-size: 9px;
     }
-    
+
     .non-seat {
         width: 44px;
         height: 44px;
         visibility: hidden;
     }
-    
+
     /* ===== ESTADO: DISPONIBLE ===== */
     .status-free img { filter: none; }
     .status-free .seat-number {
@@ -212,32 +212,32 @@
         background: rgba(255, 255, 255, 0.85);
         border: 1px solid rgba(0,0,0,0.08);
     }
-    
+
     /* ===== ESTADO: SELECCIONADO (NARANJA) ===== */
-    .status-my-hold img { 
+    .status-my-hold img {
         filter: drop-shadow(0 0 10px rgba(245, 130, 31, 0.5));
         animation: pulse-glow 1.5s ease-in-out infinite;
     }
-    
+
     @keyframes pulse-glow {
         0%, 100% { filter: drop-shadow(0 0 5px rgba(245, 130, 31, 0.3)); }
         50% { filter: drop-shadow(0 0 15px rgba(245, 130, 31, 0.7)); }
     }
-    
+
     .status-my-hold .seat-number {
         color: #FFFFFF;
         background: #f5821f;
         border: 1px solid #d97414;
         box-shadow: 0 0 12px rgba(245, 130, 31, 0.4);
     }
-    
+
     /* ===== ESTADO: OCUPADO (ROJO) ===== */
-    .status-occupied img, .status-sold img { 
+    .status-occupied img, .status-sold img {
         filter: grayscale(0.3) brightness(0.8);
         cursor: not-allowed;
         opacity: 0.85;
     }
-    
+
     .status-occupied .seat-number, .status-sold .seat-number {
         color: #FFFFFF;
         background: #dc2626;
@@ -245,20 +245,20 @@
         box-shadow: 0 0 8px rgba(220, 38, 38, 0.3);
         font-weight: 800;
     }
-    
+
     /* ===== ESTADO: FUERA DE SERVICIO ===== */
     .status-disabled img {
         filter: grayscale(0.8) brightness(0.9);
         cursor: default;
         opacity: 0.5;
     }
-    
+
     .status-disabled .seat-number {
         color: #94a3b8;
         background: rgba(148, 163, 184, 0.3);
         border: 1px solid rgba(148, 163, 184, 0.2);
     }
-    
+
     /* Animación al seleccionar */
     @keyframes seat-select {
         0% { transform: scale(1); }
@@ -266,11 +266,11 @@
         60% { transform: scale(0.9); }
         100% { transform: scale(1); }
     }
-    
+
     .seat-cell.seat-selected {
         animation: seat-select 0.4s ease;
     }
-    
+
     /* ===== LEYENDA ===== */
     .legend {
         display: flex;
@@ -281,7 +281,7 @@
         border-top: 1px solid #e2e8f0;
         flex-wrap: wrap;
     }
-    
+
     .legend-item {
         display: flex;
         align-items: center;
@@ -289,39 +289,39 @@
         font-size: 0.75rem;
         color: #64748b;
     }
-    
+
     .legend-color {
         width: 20px;
         height: 20px;
         border-radius: 6px;
         border: 1px solid #e2e8f0;
     }
-    
-    .legend-color.free { 
-        background: #e2e8f0; 
+
+    .legend-color.free {
+        background: #e2e8f0;
         border-color: #cbd5e1;
     }
-    
-    .legend-color.my-hold { 
-        background: #f5821f; 
+
+    .legend-color.my-hold {
+        background: #f5821f;
         border-color: #f5821f;
         animation: pulse-legend 1.5s ease-in-out infinite;
     }
-    
+
     @keyframes pulse-legend {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.6; }
     }
-    
-    .legend-color.occupied { 
-        background: #dc2626; 
+
+    .legend-color.occupied {
+        background: #dc2626;
         border-color: #dc2626;
     }
-    
+
     .legend-item .legend-icon {
         font-size: 0.9rem;
     }
-    
+
     /* ===== PANEL DE COMPRA ===== */
     .cart-panel {
         width: 280px;
@@ -334,11 +334,11 @@
         box-shadow: 0 2px 12px rgba(0,0,0,0.08);
         transition: all 0.3s ease;
     }
-    
+
     .cart-panel:hover {
         box-shadow: 0 4px 20px rgba(0,0,0,0.12);
     }
-    
+
     .cart-panel h4 {
         font-size: 1.2rem;
         font-weight: 700;
@@ -349,7 +349,7 @@
         align-items: center;
         justify-content: space-between;
     }
-    
+
     .cart-panel h4 .seat-counter {
         font-size: 0.8rem;
         background: #f5821f;
@@ -358,27 +358,27 @@
         border-radius: 40px;
         font-weight: 600;
     }
-    
+
     .selected-seats-list {
         max-height: 250px;
         overflow-y: auto;
         margin-bottom: 8px;
     }
-    
+
     .selected-seats-list::-webkit-scrollbar {
         width: 4px;
     }
-    
+
     .selected-seats-list::-webkit-scrollbar-track {
         background: #f1f5f9;
         border-radius: 10px;
     }
-    
+
     .selected-seats-list::-webkit-scrollbar-thumb {
         background: #f5821f;
         border-radius: 10px;
     }
-    
+
     .selected-seat-item {
         display: flex;
         justify-content: space-between;
@@ -386,7 +386,7 @@
         border-bottom: 1px solid #f1f5f9;
         animation: slideIn 0.3s ease;
     }
-    
+
     @keyframes slideIn {
         from {
             opacity: 0;
@@ -397,18 +397,18 @@
             transform: translateX(0);
         }
     }
-    
+
     .selected-seat-item .seat-number-display {
         font-weight: 600;
         color: #f5821f;
         font-size: 0.95rem;
     }
-    
+
     .selected-seat-item .seat-price {
         font-weight: 600;
         color: #1a1a1a;
     }
-    
+
     .selected-seat-item .btn-remove-seat {
         background: none;
         border: none;
@@ -418,18 +418,18 @@
         padding: 0 4px;
         transition: all 0.2s ease;
     }
-    
+
     .selected-seat-item .btn-remove-seat:hover {
         transform: scale(1.2);
     }
-    
+
     .empty-seats-message {
         color: #94a3b8;
         text-align: center;
         font-size: 0.85rem;
         padding: 16px 0;
     }
-    
+
     .total-row {
         display: flex;
         justify-content: space-between;
@@ -439,15 +439,15 @@
         font-size: 1.2rem;
         font-weight: 700;
     }
-    
+
     .total-row .total-label {
         color: #1a1a1a;
     }
-    
+
     .total-row .total-value {
         color: #f5821f;
     }
-    
+
     .btn-continuar {
         background: #f5821f;
         color: white;
@@ -461,28 +461,28 @@
         cursor: pointer;
         font-size: 1rem;
     }
-    
+
     .btn-continuar:hover:not(:disabled) {
         background: #e06e10;
         transform: translateY(-2px);
         box-shadow: 0 4px 16px rgba(245, 130, 31, 0.3);
     }
-    
+
     .btn-continuar:disabled {
         background: #cbd5e1;
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
     }
-    
+
     .btn-continuar i {
         transition: transform 0.3s ease;
     }
-    
+
     .btn-continuar:hover:not(:disabled) i {
         transform: translateX(4px);
     }
-    
+
     .timer {
         font-size: 0.75rem;
         color: #e67e22;
@@ -493,116 +493,129 @@
         border-radius: 8px;
         border: 1px solid #fed7aa;
     }
-    
+
     .timer i {
         margin-right: 4px;
     }
-    
+
     .timer.warning {
         color: #e30613;
         border-color: #fca5a5;
         background: #fee2e2;
         animation: pulse-timer 1s ease-in-out infinite;
     }
-    
+
     @keyframes pulse-timer {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.6; }
     }
-    
+
     .no-deck-message {
         text-align: center;
         padding: 40px;
         color: #94a3b8;
     }
-    
+
     /* ===== RESPONSIVE ===== */
+
+    /* Tablet: separar visualmente el mapa del panel "Tu compra". */
+    @media (min-width: 769px) and (max-width: 1024px) {
+        .seat-layout {
+            row-gap: 36px;
+        }
+
+        .cart-panel {
+            margin-top: 12px;
+        }
+    }
+
     @media (max-width: 768px) {
         .seat-layout {
             flex-direction: column;
             align-items: center;
         }
-        
+
         .cart-panel {
             width: 100%;
             max-width: 340px;
             position: static;
+            margin-top: 8px;
         }
-        
+
         .bus-wrapper {
             max-width: 280px;
         }
-        
+
         .seat-cell, .non-seat {
             width: 38px;
             height: 38px;
         }
-        
+
         .seat-number {
             font-size: 11px;
             padding: 1px 3px;
             min-width: 16px;
         }
-        
+
         .seat-number.one-digit {
             font-size: 13px;
         }
-        
+
         .seat-number.two-digits {
             font-size: 10px;
         }
-        
+
         .seat-number.three-digits {
             font-size: 8px;
         }
-        
+
         .trip-header-card h2 {
             font-size: 1.2rem;
         }
-        
+
         .cart-panel h4 .seat-counter {
             font-size: 0.7rem;
         }
-        
+
         .deck-tab-btn {
             padding: 8px 18px;
             font-size: 0.85rem;
         }
     }
-    
+
     @media (max-width: 480px) {
         .seat-cell, .non-seat {
             width: 32px;
             height: 32px;
         }
-        
+
         .seat-number {
             font-size: 9px;
             padding: 1px 2px;
             min-width: 12px;
             border-radius: 3px;
         }
-        
+
         .seat-number.one-digit {
             font-size: 11px;
         }
-        
+
         .seat-number.two-digits {
             font-size: 8px;
         }
-        
+
         .seat-number.three-digits {
             font-size: 7px;
         }
-        
+
         .seat-grid {
             gap: 4px 2px;
         }
-        
+
         .bus-wrapper {
             padding: 12px 8px 16px 8px;
         }
-        
+
         .cart-panel {
             padding: 16px;
         }
@@ -738,11 +751,11 @@
 <div class="container py-4">
     <!-- Stepper -->
     {% include "includes/stepper.html" with paso_actual=3 %}
-    
+
     <!-- Cabecera del viaje -->
     <div class="trip-header-card">
         <h2>
-            <i class="fas fa-map-marker-alt" style="color: #f5821f;"></i> 
+            <i class="fas fa-map-marker-alt" style="color: #f5821f;"></i>
             {{ trip.route.origin.name }} → {{ trip.route.destination.name }}
         </h2>
         <div class="trip-meta">
@@ -752,7 +765,7 @@
             <span><i class="fas fa-clock"></i> {{ trip.duration|default:"07:00" }} horas</span>
         </div>
     </div>
-    
+
     <!-- Layout principal: Bus a la izquierda, carrito a la derecha -->
     <div class="seat-layout">
         <!-- Contenedor del bus -->
@@ -770,7 +783,7 @@
                 </button>
             </div>
             {% endif %}
-            
+
             <!-- Piso 1 -->
             <div id="deck-1" class="bus-deck" data-deck="1">
                 <div class="bus-wrapper">
@@ -785,7 +798,7 @@
                     <div id="deck-1-container" class="seat-grid"></div>
                 </div>
             </div>
-            
+
             <!-- Piso 2 (si existe) -->
             {% if trip.bus.floors == 2 %}
             <div id="deck-2" class="bus-deck" data-deck="2" style="display: none;">
@@ -796,7 +809,7 @@
                 </div>
             </div>
             {% endif %}
-            
+
             <!-- Leyenda -->
             <div class="legend">
                 <div class="legend-item">
@@ -821,7 +834,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Panel de compra -->
         <div class="cart-panel">
             <h4>
@@ -1172,7 +1185,7 @@
     function updateSelectionPanel() {
         const count = selectedSeats.length;
         $('#seatCounter').text(count);
-        
+
         if (selectedSeats.length === 0) {
             $('#selected-seats-list').html(`
                 <div class="empty-seats-message">
@@ -1184,7 +1197,7 @@
             $('#total-price').text('$0');
             return;
         }
-        
+
         let html = '';
         let total = 0;
         selectedSeats.forEach((seat, index) => {
@@ -1204,7 +1217,7 @@
         $('#selected-seats-list').html(html);
         $('#total-price').text('$' + total.toLocaleString());
         $('#continueBtn').prop('disabled', false);
-        
+
         $('.btn-remove-seat').click(function() {
             const index = parseInt($(this).data('index'));
             const seat = selectedSeats[index];
@@ -1470,7 +1483,7 @@
         }
         container.innerHTML = '';
         container.style.gridTemplateColumns = `repeat(${cols}, minmax(38px, 1fr))`;
-        
+
         let activeRowFound = false;
 
         for (let r = 0; r < grid.length; r++) {
@@ -1494,50 +1507,50 @@
                     container.appendChild(emptyDiv);
                     continue;
                 }
-                
+
                 let status = cell.status || 'free';
                 const label = cell.label ? String(cell.label).trim() : '';
                 const service = cell.service || 'semi';
-                
+
                 if (!label) {
                     const emptyDiv = document.createElement('div');
                     emptyDiv.className = 'non-seat';
                     container.appendChild(emptyDiv);
                     continue;
                 }
-                
+
                 const isSelected = selectedSeats.some(
                     s =>
                         String(s.number) === String(label) &&
                         Number(s.deck) === Number(deckNumber)
                 );
                 if (isSelected) status = 'my-hold';
-                
+
                 const div = document.createElement('div');
                 div.className = `seat-cell status-${status}`;
                 div.dataset.number = label;
                 div.dataset.deck = deckNumber;
-                
+
                 const img = document.createElement('img');
                 img.src = getSeatImage(service);
                 img.alt = `Asiento ${label}`;
                 div.appendChild(img);
-                
+
                 const numberSpan = document.createElement('span');
                 numberSpan.className = 'seat-number';
-                
+
                 const digits = label.length;
                 if (digits === 1) numberSpan.classList.add('one-digit');
                 else if (digits === 2) numberSpan.classList.add('two-digits');
                 else if (digits >= 3) numberSpan.classList.add('three-digits');
-                
+
                 numberSpan.textContent = label;
                 div.appendChild(numberSpan);
-                
+
                 if (cell.is_window) {
                     div.title = `💺 Asiento ${label} - Ventana`;
                 }
-                
+
                 if (status === 'free' || status === 'my-hold') {
                     div.onclick = () => toggleSeat(div, deckNumber, label, unitPrice);
                 } else {
@@ -1984,13 +1997,13 @@
                 sessionStorage.removeItem('tripId');
             }
         }
-        
+
         renderDeck('deck-1-container', 1, gridLower);
         if (document.getElementById('deck-2-container')) {
             renderDeck('deck-2-container', 2, gridUpper);
         }
         updateSelectionPanel();
-        
+
         if (selectedSeats.length > 0) {
             selectedSeats.forEach(seat => {
                 document.querySelectorAll(`.seat-cell[data-number="${seat.number}"][data-deck="${seat.deck}"]`).forEach(el => {
