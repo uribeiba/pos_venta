@@ -37,6 +37,34 @@
         color: var(--lp-dark);
         background: #FFFFFF;
     }
+
+    /* =========================================================
+       UX FECHAS: todo el campo abre el calendario
+       ========================================================= */
+    .input-group-custom.date-picker-field {
+        cursor: pointer;
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+
+    .input-group-custom.date-picker-field:hover,
+    .input-group-custom.date-picker-field:focus-within {
+        transform: translateY(-1px);
+        box-shadow: 0 0 0 3px rgba(217, 164, 65, .16);
+    }
+
+    .input-group-custom.date-picker-field input[type="date"] {
+        cursor: pointer;
+        min-height: 44px;
+    }
+
+    @media (max-width: 768px) {
+        .input-group-custom.date-picker-field:focus-within {
+            transform: scale(1.015);
+            position: relative;
+            z-index: 5;
+        }
+    }
+
 </style>
 {% endblock %}
 
@@ -161,7 +189,7 @@
                     <!-- FECHA IDA -->
                     <div class="col-lg-2 col-md-6">
                         <label class="search-form-label" for="fecha_viaje">Fecha Ida</label>
-                        <div class="input-group-custom">
+                        <div class="input-group-custom date-picker-field" data-date-target="fecha_viaje">
                             <i class="fa-regular fa-calendar-days"></i>
                             <input type="date" id="fecha_viaje" name="date" required>
                         </div>
@@ -170,7 +198,7 @@
                     <!-- FECHA VUELTA -->
                     <div class="col-lg-2 col-md-6">
                         <label class="search-form-label" for="fecha_vuelta">Fecha Vuelta <small class="text-muted">(Opcional)</small></label>
-                        <div class="input-group-custom">
+                        <div class="input-group-custom date-picker-field" data-date-target="fecha_vuelta">
                             <i class="fa-regular fa-calendar-check"></i>
                             <input type="date" id="fecha_vuelta" name="return_date">
                         </div>
@@ -557,4 +585,74 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 <script src="{% static 'client_portal/portena/main.js' %}"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const ida = document.getElementById('fecha_viaje');
+    const vuelta = document.getElementById('fecha_vuelta');
+
+    // Fecha mínima: hoy.
+    const hoy = new Date();
+    const localToday = [
+        hoy.getFullYear(),
+        String(hoy.getMonth() + 1).padStart(2, '0'),
+        String(hoy.getDate()).padStart(2, '0')
+    ].join('-');
+
+    if (ida) ida.min = localToday;
+    if (vuelta) vuelta.min = localToday;
+
+    if (ida && vuelta) {
+        ida.addEventListener('change', function () {
+            vuelta.min = ida.value || localToday;
+            if (vuelta.value && ida.value && vuelta.value < ida.value) {
+                vuelta.value = ida.value;
+            }
+        });
+
+        vuelta.addEventListener('change', function () {
+            if (ida.value && vuelta.value && vuelta.value < ida.value) {
+                vuelta.value = ida.value;
+            }
+        });
+    }
+
+    // Abre el selector al tocar/clickear cualquier zona del campo.
+    document.querySelectorAll('.date-picker-field').forEach(function (wrapper) {
+        const input = document.getElementById(wrapper.dataset.dateTarget);
+        if (!input) return;
+
+        const openPicker = function () {
+            input.focus({ preventScroll: true });
+
+            if (typeof input.showPicker === 'function') {
+                try {
+                    input.showPicker();
+                    return;
+                } catch (error) {
+                    // Algunos navegadores sólo permiten showPicker
+                    // durante una interacción directa del usuario.
+                }
+            }
+        };
+
+        wrapper.addEventListener('click', function (event) {
+            if (event.target !== input) {
+                openPicker();
+            }
+        });
+
+        input.addEventListener('click', function () {
+            if (typeof input.showPicker === 'function') {
+                try {
+                    input.showPicker();
+                } catch (error) {
+                    // El comportamiento nativo del input sigue disponible.
+                }
+            }
+        });
+    });
+});
+</script>
+
 {% endblock %}

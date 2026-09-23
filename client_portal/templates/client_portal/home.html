@@ -753,6 +753,34 @@
         .flash-price { font-size: 1.4rem; }
         .departure-card { flex-direction: column; align-items: stretch; text-align: center; }
     }
+
+    /* =========================================================
+       UX FECHAS: todo el campo abre el calendario
+       ========================================================= */
+    .date-picker-field {
+        cursor: pointer;
+        transition: transform .18s ease, box-shadow .18s ease;
+        border-radius: 14px;
+    }
+
+    .date-picker-field:hover,
+    .date-picker-field:focus-within {
+        transform: translateY(-1px);
+        box-shadow: 0 0 0 4px rgba(76,168,36,0.12);
+    }
+
+    .date-picker-field input[type="date"] {
+        cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+        .date-picker-field:focus-within {
+            transform: scale(1.015);
+            position: relative;
+            z-index: 5;
+        }
+    }
+
 </style>
 {% endblock %}
 
@@ -825,11 +853,15 @@
                 </div>
                 <div class="col">
                     <label for="fecha_viaje" class="form-label">Ida</label>
-                    <input type="date" id="fecha_viaje" name="date" class="form-control" required>
+                    <div class="date-picker-field" data-date-target="fecha_viaje">
+                        <input type="date" id="fecha_viaje" name="date" class="form-control" required>
+                    </div>
                 </div>
                 <div class="col">
                     <label for="fecha_vuelta" class="form-label">Vuelta <span style="font-weight: normal;">(opcional)</span></label>
-                    <input type="date" id="fecha_vuelta" name="return_date" class="form-control">
+                    <div class="date-picker-field" data-date-target="fecha_vuelta">
+                        <input type="date" id="fecha_vuelta" name="return_date" class="form-control">
+                    </div>
                 </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-search-premium">
@@ -1342,23 +1374,69 @@
             setInterval(changeSlide, 5000);
         }
 
-        // --- 3. FECHAS MÍNIMAS ---
-        const today = new Date().toISOString().split('T')[0];
+        // --- 3. FECHAS MÍNIMAS + APERTURA DEL CALENDARIO EN TODO EL CAMPO ---
+        const nowLocal = new Date();
+        const today = [
+            nowLocal.getFullYear(),
+            String(nowLocal.getMonth() + 1).padStart(2, '0'),
+            String(nowLocal.getDate()).padStart(2, '0')
+        ].join('-');
+
         $('#fecha_viaje').attr('min', today);
         $('#fecha_vuelta').attr('min', today);
+
         $('#fecha_viaje').on('change', function() {
-            let ida = $(this).val();
-            let vuelta = $('#fecha_vuelta').val();
-            if (vuelta && vuelta < ida) { $('#fecha_vuelta').val(ida); }
-            $('#fecha_vuelta').attr('min', ida);
+            const ida = $(this).val();
+            const vuelta = $('#fecha_vuelta').val();
+
+            if (vuelta && ida && vuelta < ida) {
+                $('#fecha_vuelta').val(ida);
+            }
+
+            $('#fecha_vuelta').attr('min', ida || today);
         });
+
         $('#fecha_vuelta').on('change', function() {
-            let ida = $('#fecha_viaje').val();
-            let vuelta = $(this).val();
-            if (ida && vuelta < ida) {
-                alert('La fecha de vuelta no puede ser anterior a la fecha de ida.');
+            const ida = $('#fecha_viaje').val();
+            const vuelta = $(this).val();
+
+            if (ida && vuelta && vuelta < ida) {
                 $(this).val(ida);
             }
+        });
+
+        document.querySelectorAll('.date-picker-field').forEach(function(wrapper) {
+            const input = document.getElementById(wrapper.dataset.dateTarget);
+            if (!input) return;
+
+            const openPicker = function() {
+                input.focus({ preventScroll: true });
+
+                if (typeof input.showPicker === 'function') {
+                    try {
+                        input.showPicker();
+                    } catch (error) {
+                        // Si showPicker no está disponible en ese contexto,
+                        // queda activo el comportamiento nativo del input.
+                    }
+                }
+            };
+
+            wrapper.addEventListener('click', function(event) {
+                if (event.target !== input) {
+                    openPicker();
+                }
+            });
+
+            input.addEventListener('click', function() {
+                if (typeof input.showPicker === 'function') {
+                    try {
+                        input.showPicker();
+                    } catch (error) {
+                        // Fallback: comportamiento nativo.
+                    }
+                }
+            });
         });
 
         // --- 4. CONTADORES ANIMADOS (ESTADÍSTICAS) ---
