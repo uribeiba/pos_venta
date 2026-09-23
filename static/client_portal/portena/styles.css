@@ -733,7 +733,7 @@ body {
 /* --- MANIFIESTO --- */
 .manifesto-section {
     padding: 110px 0;
-    background: url('01.png') center center / cover fixed no-repeat;
+    background: url('home.png') center center / cover no-repeat;
     position: relative;
     text-align: center;
 }
