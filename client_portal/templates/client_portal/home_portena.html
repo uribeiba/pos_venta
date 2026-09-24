@@ -54,7 +54,12 @@
 
     .input-group-custom.date-picker-field input[type="date"] {
         cursor: pointer;
-        min-height: 44px;
+        min-height: 0;
+        height: auto;
+        min-width: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        box-sizing: border-box;
     }
 
     @media (max-width: 768px) {
