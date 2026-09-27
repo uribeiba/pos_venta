@@ -3064,7 +3064,7 @@ def mercadopago_webhook(request):
     # 5. VALIDAR HMAC
     # ============================================================
 
-    signature_data_id = data_id.lower()
+    signature_data_id = data_id
 
     manifest = (
         f"id:{signature_data_id};"
@@ -3077,6 +3077,7 @@ def mercadopago_webhook(request):
         msg=manifest.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).hexdigest()
+
 
     if not hmac.compare_digest(
         expected_v1,
