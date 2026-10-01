@@ -11,7 +11,9 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import Http404
+from django.shortcuts import redirect
 from booking.views import dashboard_redirect
+from client_portal.views import home as client_home
 
 # Configuración de URL del admin desde variable de entorno
 def get_admin_url() -> str:
@@ -42,6 +44,40 @@ def get_admin_url() -> str:
 
 # Obtener URL del admin
 ADMIN_URL = get_admin_url()
+
+# ============================================================================
+# ENTRADA PRINCIPAL SEGÚN DOMINIO
+# ============================================================================
+
+def root_entry(request):
+    """
+    Entrada principal según el dominio.
+
+    - cejer.buspasss.online:
+      muestra directamente el portal público de Cejer.
+
+    - portena.online / www.portena.online:
+      redirige al portal público de La Porteña.
+
+    - buspasss.online y demás dominios:
+      conserva el login del sistema.
+    """
+    host = request.get_host().split(":")[0].lower()
+
+    if host == "cejer.buspasss.online":
+        return client_home(request)
+
+    if host in {
+        "portena.online",
+        "www.portena.online",
+    }:
+        return redirect("client_portal:home")
+
+    return LoginView.as_view(
+        template_name="registration/login.html",
+        next_page="dashboard_redirect",
+    )(request)
+
 
 # ============================================================================
 # MIDDLEWARE ADICIONAL PARA SEGURIDAD DEL ADMIN
@@ -83,10 +119,7 @@ class AdminSecurityMiddleware:
 # ============================================================================
 urlpatterns = [
     # Login/Logout
-    path('', LoginView.as_view(
-        template_name='registration/login.html',
-        next_page='dashboard_redirect'
-    ), name='login'),
+    path('', root_entry, name='login'),
     path('logout/', LogoutView.as_view(next_page='login'), name='logout'),
     path('dashboard/', dashboard_redirect, name='dashboard_redirect'),
     

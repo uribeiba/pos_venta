@@ -291,11 +291,25 @@ def home(request):
     }
 
     # ============================================================
-    # 7. PLANTILLA POR EMPRESA
+    # 7. PLANTILLA POR EMPRESA / DOMINIO
     # ============================================================
     template_name = "client_portal/home.html"
 
-    if public_company and public_company.name == "Buses La Porteña":
+    host = request.get_host().split(":")[0].lower()
+
+    # CEJER
+    if host == "cejer.buspasss.online":
+        template_name = "client_portal/home_cejer.html"
+
+    # LA PORTEÑA
+    elif host in {
+        "portena.online",
+        "www.portena.online",
+    }:
+        template_name = "client_portal/home_portena.html"
+
+    # Respaldo por empresa asociada
+    elif public_company and public_company.name == "Buses La Porteña":
         template_name = "client_portal/home_portena.html"
 
     return render(
