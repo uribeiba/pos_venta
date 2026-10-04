@@ -179,6 +179,123 @@ class CompanyDomain(models.Model):
         return f"{self.domain} — {self.company.name}"
 
 # =========================================================
+# CIUDADES HABILITADAS POR EMPRESA
+# =========================================================
+class CompanyCity(models.Model):
+    """
+    Relaciona una ciudad del catálogo global con una empresa.
+
+    Una misma ciudad puede estar habilitada para varias empresas
+    sin duplicarse en la tabla City.
+    """
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="company_cities",
+        verbose_name="Empresa",
+    )
+
+    city = models.ForeignKey(
+        City,
+        on_delete=models.CASCADE,
+        related_name="company_cities",
+        verbose_name="Ciudad",
+    )
+
+    is_active = models.BooleanField(
+        "Activa",
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Ciudad de empresa"
+        verbose_name_plural = "Ciudades de empresas"
+        ordering = ("company__name", "city__name")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "city"],
+                name="unique_company_city",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.company.name} — {self.city.name}"
+
+
+
+
+# =========================================================
+# TERMINALES HABILITADOS POR EMPRESA
+# =========================================================
+class CompanyTerminal(models.Model):
+    """
+    Relaciona un terminal del catálogo global con una empresa.
+
+    Un mismo terminal puede estar habilitado para varias empresas
+    sin duplicarse en la tabla Terminal.
+    """
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="company_terminals",
+        verbose_name="Empresa",
+    )
+
+    terminal = models.ForeignKey(
+        Terminal,
+        on_delete=models.CASCADE,
+        related_name="company_terminals",
+        verbose_name="Terminal",
+    )
+
+    is_active = models.BooleanField(
+        "Activo",
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Terminal de empresa"
+        verbose_name_plural = "Terminales de empresas"
+        ordering = ("company__name", "terminal__city__name", "terminal__name")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "terminal"],
+                name="unique_company_terminal",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.company.name} — {self.terminal.name}"
+
+
+
+
+
+
+
+
+
+# =========================================================
 # FASE 2.18.3-A1 — Propietarios / socios de la flota
 # =========================================================
 class FleetOwner(models.Model):
@@ -1184,6 +1301,27 @@ class SeatHold(models.Model):
         related_name="holds",
     )
 
+        # =========================================================
+    # FASE TRAMOS — segmento reservado
+    # =========================================================
+    boarding_stop = models.ForeignKey(
+        "TripStop",
+        on_delete=models.CASCADE,
+        related_name="holds_boarding",
+        null=True,
+        blank=True,
+        verbose_name="Parada de subida",
+    )
+
+    alighting_stop = models.ForeignKey(
+        "TripStop",
+        on_delete=models.CASCADE,
+        related_name="holds_alighting",
+        null=True,
+        blank=True,
+        verbose_name="Parada de bajada",
+    )
+
     # IMPORTANTE:
     # En venta web el cliente puede no estar autenticado.
     # Por eso user debe aceptar NULL.
@@ -1268,6 +1406,7 @@ class SeatHold(models.Model):
             expires_at__lte=now,
         ).update(active=False)
 
+
     @classmethod
     def hold(
         cls,
@@ -1276,17 +1415,25 @@ class SeatHold(models.Model):
         user=None,
         session_key=None,
         minutes=10,
+        boarding_stop=None,
+        alighting_stop=None,
     ):
         """
         Crea o renueva una reserva temporal de asiento.
 
-        SEGURIDAD DE CONCURRENCIA:
-        El asiento físico se bloquea con SELECT FOR UPDATE para impedir
-        que dos procesos reserven simultáneamente la misma butaca.
+        FASE TRAMOS:
+        - Si boarding_stop/alighting_stop no se envían,
+          se reserva el recorrido completo.
+        - Si se envían, solamente se bloquea ese segmento.
 
-        Puede utilizarse desde:
-        - POS mediante user
-        - Web mediante session_key
+        Dos segmentos chocan cuando:
+
+            inicio_existente < fin_nuevo
+            AND
+            fin_existente > inicio_nuevo
+
+        SEGURIDAD:
+        transaction.atomic() + select_for_update() sobre Seat.
         """
 
         if user is None and not session_key:
@@ -1297,18 +1444,56 @@ class SeatHold(models.Model):
         now = timezone.now()
         new_expire = now + timedelta(minutes=minutes)
 
+        # =====================================================
+        # 1. RESOLVER TRAMO
+        # =====================================================
+        trip_stops = trip.trip_stops.order_by("order")
+
+        if boarding_stop is None:
+            boarding_stop = trip_stops.first()
+
+        if alighting_stop is None:
+            alighting_stop = trip_stops.last()
+
+        if boarding_stop is None or alighting_stop is None:
+            raise ValueError(
+                "El viaje no tiene paradas configuradas."
+            )
+
+        if (
+            boarding_stop.trip_id != trip.id
+            or alighting_stop.trip_id != trip.id
+        ):
+            raise ValueError(
+                "Las paradas seleccionadas no pertenecen a este viaje."
+            )
+
+        if boarding_stop.order >= alighting_stop.order:
+            raise ValueError(
+                "La parada de bajada debe estar después "
+                "de la parada de subida."
+            )
+
+        new_start = boarding_stop.order
+        new_end = alighting_stop.order
+
         with transaction.atomic():
 
-            # -------------------------------------------------
-            # 1. BLOQUEAR ASIENTO EN POSTGRESQL
-            # -------------------------------------------------
+            # =================================================
+            # 2. BLOQUEAR ASIENTO FÍSICO EN POSTGRESQL
+            # =================================================
             locked_seat = Seat.objects.select_for_update().get(
                 pk=seat.pk
             )
 
-            # -------------------------------------------------
-            # 2. LIMPIAR HOLDS EXPIRADOS DE ESTE ASIENTO
-            # -------------------------------------------------
+            if locked_seat.bus_id != trip.bus_id:
+                raise ValueError(
+                    "El asiento no pertenece al bus de este viaje."
+                )
+
+            # =================================================
+            # 3. LIMPIAR HOLDS EXPIRADOS
+            # =================================================
             cls.objects.filter(
                 trip=trip,
                 seat=locked_seat,
@@ -1316,26 +1501,48 @@ class SeatHold(models.Model):
                 expires_at__lte=now,
             ).update(active=False)
 
-            # -------------------------------------------------
-            # 3. VERIFICAR QUE EL ASIENTO NO ESTÉ VENDIDO
-            # -------------------------------------------------
+            # =================================================
+            # 4. VERIFICAR TICKETS VENDIDOS QUE SE SUPERPONGAN
+            # =================================================
             TicketModel = apps.get_model(
                 "booking",
                 "Ticket",
             )
 
-            if TicketModel.objects.filter(
+            sold_qs = TicketModel.objects.filter(
                 trip=trip,
                 seat=locked_seat,
-            ).exists():
+            )
+
+            # Compatibilidad defensiva con registros antiguos
+            # que eventualmente no tengan tramo asignado.
+            if (
+                sold_qs.filter(
+                    boarding_stop__isnull=True
+                ).exists()
+                or sold_qs.filter(
+                    alighting_stop__isnull=True
+                ).exists()
+            ):
                 raise ValueError(
-                    "El asiento ya fue vendido."
+                    "El asiento ya fue vendido para este viaje."
                 )
 
-            # -------------------------------------------------
-            # 4. BUSCAR RESERVA ACTIVA
-            # -------------------------------------------------
-            existing_hold = (
+            sold_conflict = sold_qs.filter(
+                boarding_stop__order__lt=new_end,
+                alighting_stop__order__gt=new_start,
+            ).exists()
+
+            if sold_conflict:
+                raise ValueError(
+                    "El asiento ya fue vendido en un tramo "
+                    "que se superpone con el seleccionado."
+                )
+
+            # =================================================
+            # 5. BUSCAR HOLDS ACTIVOS QUE SE SUPERPONGAN
+            # =================================================
+            overlapping_holds = (
                 cls.objects
                 .select_for_update()
                 .filter(
@@ -1343,25 +1550,23 @@ class SeatHold(models.Model):
                     seat=locked_seat,
                     active=True,
                     expires_at__gt=now,
+                    boarding_stop__order__lt=new_end,
+                    alighting_stop__order__gt=new_start,
                 )
                 .order_by("-expires_at")
-                .first()
             )
 
-            if existing_hold:
+            own_exact_hold = None
 
-                # ---------------------------------------------
-                # Determinar si el hold pertenece al solicitante
-                # ---------------------------------------------
+            for existing_hold in overlapping_holds:
+
                 same_owner = False
 
-                # Usuario autenticado
                 if user is not None and existing_hold.user_id:
                     same_owner = (
                         existing_hold.user_id == user.id
                     )
 
-                # Sesión web
                 if (
                     session_key
                     and existing_hold.session_key
@@ -1369,45 +1574,62 @@ class SeatHold(models.Model):
                 ):
                     same_owner = True
 
+                # Otro usuario tiene un tramo que se cruza.
                 if not same_owner:
                     raise ValueError(
                         "El asiento está temporalmente reservado "
-                        "por otro usuario."
+                        "por otro usuario en un tramo coincidente."
                     )
 
-                # ---------------------------------------------
-                # Renovar reserva existente
-                # ---------------------------------------------
-                existing_hold.expires_at = new_expire
-                existing_hold.active = True
+                # Mismo usuario + mismo tramo:
+                # simplemente renovamos.
+                if (
+                    existing_hold.boarding_stop_id
+                    == boarding_stop.id
+                    and existing_hold.alighting_stop_id
+                    == alighting_stop.id
+                ):
+                    own_exact_hold = existing_hold
 
-                # Si ahora tenemos datos que antes no existían,
-                # los asociamos.
+            # =================================================
+            # 6. RENOVAR HOLD EXACTO DEL MISMO USUARIO
+            # =================================================
+            if own_exact_hold:
+
+                own_exact_hold.expires_at = new_expire
+                own_exact_hold.active = True
+                own_exact_hold.boarding_stop = boarding_stop
+                own_exact_hold.alighting_stop = alighting_stop
+
                 if user is not None:
-                    existing_hold.user = user
+                    own_exact_hold.user = user
 
                 if session_key:
-                    existing_hold.session_key = session_key
+                    own_exact_hold.session_key = session_key
 
-                existing_hold.save(
+                own_exact_hold.save(
                     update_fields=[
                         "expires_at",
                         "active",
                         "user",
                         "session_key",
+                        "boarding_stop",
+                        "alighting_stop",
                     ]
                 )
 
-                return existing_hold
+                return own_exact_hold
 
-            # -------------------------------------------------
-            # 5. CREAR NUEVA RESERVA
-            # -------------------------------------------------
+            # =================================================
+            # 7. CREAR NUEVA RESERVA DEL TRAMO
+            # =================================================
             return cls.objects.create(
                 trip=trip,
                 seat=locked_seat,
                 user=user,
                 session_key=session_key,
+                boarding_stop=boarding_stop,
+                alighting_stop=alighting_stop,
                 expires_at=new_expire,
                 active=True,
             )
@@ -1419,10 +1641,15 @@ class SeatHold(models.Model):
         seat,
         user=None,
         session_key=None,
+        boarding_stop=None,
+        alighting_stop=None,
     ):
         """
         Libera una reserva únicamente si pertenece
         al usuario o sesión solicitante.
+
+        En venta por tramos, si se entregan boarding_stop y
+        alighting_stop, libera únicamente ese segmento.
         """
 
         if user is None and not session_key:
@@ -1440,6 +1667,12 @@ class SeatHold(models.Model):
         if session_key:
             filters["session_key"] = session_key
 
+        if boarding_stop is not None:
+            filters["boarding_stop"] = boarding_stop
+
+        if alighting_stop is not None:
+            filters["alighting_stop"] = alighting_stop
+
         with transaction.atomic():
             Seat.objects.select_for_update().get(
                 pk=seat.pk
@@ -1456,6 +1689,26 @@ class SeatHold(models.Model):
 class Ticket(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.PROTECT, related_name="tickets")
     seat = models.ForeignKey(Seat, on_delete=models.PROTECT, related_name="tickets")
+        # =========================================================
+    # FASE TRAMOS — segmento vendido
+    # =========================================================
+    boarding_stop = models.ForeignKey(
+        "TripStop",
+        on_delete=models.PROTECT,
+        related_name="tickets_boarding",
+        null=True,
+        blank=True,
+        verbose_name="Parada de subida",
+    )
+
+    alighting_stop = models.ForeignKey(
+        "TripStop",
+        on_delete=models.PROTECT,
+        related_name="tickets_alighting",
+        null=True,
+        blank=True,
+        verbose_name="Parada de bajada",
+    )
     number = models.CharField("N° ticket", max_length=20, unique=True)
     buyer_name = models.CharField("Nombre pasajero", max_length=140)
     national_id = models.CharField("Documento", max_length=40, blank=True, default="")
@@ -1548,9 +1801,6 @@ class Ticket(models.Model):
         verbose_name = "Boleto"
         verbose_name_plural = "Boletos"
         ordering = ("-created_at",)
-        constraints = [
-            models.UniqueConstraint(fields=["trip", "seat"], name="uniq_ticket_trip_seat"),
-        ]
 
     def __str__(self):
         return f"{self.number} — {self.seat.number} ({self.trip})"
@@ -1659,38 +1909,85 @@ class Ticket(models.Model):
     def create_for_sale(
         cls,
         *,
-        trip,  # Trip
-        seat,  # Seat
+        trip,
+        seat,
         buyer_name: str,
         national_id: str,
         price,
-        created_by,  # User
+        created_by,
         number: Optional[str] = None,
         customer=None,
+        boarding_stop=None,
+        alighting_stop=None,
+        hold_session_key=None,
         **kwargs
     ):
         """
         Crea un ticket para la venta con validaciones atómicas.
+
+        FASE TRAMOS:
+        - Si no se indican paradas, se vende el viaje completo.
+        - Si se indican, se valida solamente el tramo seleccionado.
         """
         from django.core.exceptions import ValidationError
         from django.apps import apps
 
         if not created_by:
-            raise ValidationError("created_by es obligatorio para emitir un boleto.")
+            raise ValidationError(
+                "created_by es obligatorio para emitir un boleto."
+            )
 
-        # Extraer campos de convenio si están presentes
-        contract = kwargs.pop('contract', None)
-        is_credit = kwargs.pop('is_credit', False)
-        payment_method = kwargs.pop('payment_method', 'cash')
+        # =====================================================
+        # 1. RESOLVER TRAMO
+        # =====================================================
+        trip_stops = trip.trip_stops.order_by("order")
 
-        # Validar contrato si está presente
+        if boarding_stop is None:
+            boarding_stop = trip_stops.first()
+
+        if alighting_stop is None:
+            alighting_stop = trip_stops.last()
+
+        if boarding_stop is None or alighting_stop is None:
+            raise ValidationError(
+                "El viaje no tiene paradas configuradas."
+            )
+
+        if (
+            boarding_stop.trip_id != trip.id
+            or alighting_stop.trip_id != trip.id
+        ):
+            raise ValidationError(
+                "Las paradas seleccionadas no pertenecen a este viaje."
+            )
+
+        if boarding_stop.order >= alighting_stop.order:
+            raise ValidationError(
+                "La parada de bajada debe estar después de la parada de subida."
+            )
+
+        new_start = boarding_stop.order
+        new_end = alighting_stop.order
+
+        # =====================================================
+        # 2. EXTRAER CAMPOS ESPECIALES
+        # =====================================================
+        contract = kwargs.pop("contract", None)
+        is_credit = kwargs.pop("is_credit", False)
+        payment_method = kwargs.pop("payment_method", "cash")
+
+        # =====================================================
+        # 3. VALIDAR CONTRATO
+        # =====================================================
         if contract:
             if not contract.is_active:
                 raise ValidationError("El contrato no está activo.")
 
             today = timezone.now().date()
+
             if contract.valid_from and contract.valid_from > today:
                 raise ValidationError("El contrato aún no está vigente.")
+
             if contract.valid_to and contract.valid_to < today:
                 raise ValidationError("El contrato ha expirado.")
 
@@ -1699,51 +1996,128 @@ class Ticket(models.Model):
                     f"Crédito insuficiente. Disponible: ${contract.available_credit:,.0f}"
                 )
 
+        # =====================================================
+        # 4. TRANSACCIÓN ATÓMICA
+        # =====================================================
         with transaction.atomic():
             s = Seat.objects.select_for_update().get(pk=seat.pk)
 
-            if cls.objects.filter(trip=trip, seat=s).exists():
-                raise ValidationError("El asiento ya está ocupado para este viaje.")
+            if s.bus_id != trip.bus_id:
+                raise ValidationError(
+                    "El asiento no pertenece al bus de este viaje."
+                )
+
+            # =================================================
+            # 5. VALIDAR TICKETS EXISTENTES POR SUPERPOSICIÓN
+            # =================================================
+            existing_tickets = cls.objects.filter(
+                trip=trip,
+                seat=s,
+            )
+
+            if (
+                existing_tickets.filter(boarding_stop__isnull=True).exists()
+                or existing_tickets.filter(alighting_stop__isnull=True).exists()
+            ):
+                raise ValidationError(
+                    "El asiento ya está ocupado para este viaje."
+                )
+
+            conflict = existing_tickets.filter(
+                boarding_stop__order__lt=new_end,
+                alighting_stop__order__gt=new_start,
+            ).exists()
+
+            if conflict:
+                raise ValidationError(
+                    "El asiento ya está vendido en un tramo que se superpone con el seleccionado."
+                )
+
+            # =================================================
+            # 6. VALIDAR HOLDS ACTIVOS DE OTROS USUARIOS/SESIONES
+            # =================================================
+            now = timezone.now()
 
             SeatHold.objects.filter(
-                trip=trip, seat=s, user=created_by, active=True
+                trip=trip,
+                seat=s,
+                active=True,
+                expires_at__lte=now,
             ).update(active=False)
 
-            number = number or cls._next_number()
+            overlapping_holds = SeatHold.objects.filter(
+                trip=trip,
+                seat=s,
+                active=True,
+                expires_at__gt=now,
+                boarding_stop__order__lt=new_end,
+                alighting_stop__order__gt=new_start,
+            )
 
+            # Un hold autenticado de otro usuario bloquea.
+            if overlapping_holds.exclude(user=created_by).filter(
+                user__isnull=False
+            ).exists():
+                raise ValidationError(
+                    "El asiento está temporalmente reservado por otro usuario en un tramo coincidente."
+                )
+
+            # Un hold web anónimo activo bloquea salvo que
+            # pertenezca a la misma sesión que está confirmando
+            # esta venta web.
+            anonymous_holds = overlapping_holds.filter(
+                user__isnull=True,
+                session_key__isnull=False,
+            )
+
+            if hold_session_key:
+                anonymous_holds = anonymous_holds.exclude(
+                    session_key=hold_session_key
+                )
+
+            if anonymous_holds.exists():
+                raise ValidationError(
+                    "El asiento está temporalmente reservado por una sesión web en un tramo coincidente."
+                )
+
+            # =================================================
+            # 7. CLIENTE
+            # =================================================
             if not customer and national_id:
                 try:
-                    CustomerModel = apps.get_model(cls._meta.app_label, "Customer")
+                    CustomerModel = apps.get_model(
+                        cls._meta.app_label,
+                        "Customer",
+                    )
                     customer_obj, _ = CustomerModel.objects.get_or_create(
                         national_id=national_id,
-                        defaults={'full_name': buyer_name}
+                        defaults={"full_name": buyer_name},
                     )
                     customer = customer_obj
                 except Exception:
                     customer = None
 
-            # Si es compra a crédito, asegurar que el método de pago sea 'credit'
             if is_credit:
-                payment_method = 'credit'
+                payment_method = "credit"
 
-            # =====================================================
-            # FASE 2.18.3-A2.3.2
-            # Congelar propiedad económica al momento de emitir.
-            # =====================================================
-            #
-            # Se ignora cualquier intento accidental de pasar estos
-            # campos vía **kwargs: la fuente de verdad en una emisión
-            # normal es el bus asignado al viaje en este instante.
-            # =====================================================
-            kwargs.pop('revenue_bus', None)
-            kwargs.pop('revenue_owner', None)
+            # =================================================
+            # 8. CONGELAR PROPIEDAD ECONÓMICA
+            # =================================================
+            kwargs.pop("revenue_bus", None)
+            kwargs.pop("revenue_owner", None)
 
             revenue_bus = trip.bus
             revenue_owner = getattr(revenue_bus, "owner", None)
+            number = number or cls._next_number()
 
+            # =================================================
+            # 9. CREAR TICKET
+            # =================================================
             t = cls.objects.create(
                 trip=trip,
                 seat=s,
+                boarding_stop=boarding_stop,
+                alighting_stop=alighting_stop,
                 number=number,
                 buyer_name=(buyer_name or "").strip() or "Pasajero",
                 national_id=(national_id or "").strip(),
@@ -1758,74 +2132,134 @@ class Ticket(models.Model):
                 **kwargs,
             )
 
-            # Actualizar crédito del contrato
+            # =================================================
+            # 10. ACTUALIZAR CRÉDITO
+            # =================================================
             if contract and is_credit:
                 contract.used_credit += price
-                contract.save(update_fields=['used_credit'])
+                contract.save(update_fields=["used_credit"])
 
-            if hasattr(s, "is_occupied"):
-                s.is_occupied = True
-                s.save(update_fields=["is_occupied"])
+            # En venta por tramos NO usamos Seat.is_occupied como
+            # fuente de verdad. La disponibilidad depende del segmento.
+
+            # =================================================
+            # 11. LIBERAR HOLD EXACTO DEL MISMO VENDEDOR/TRAMO
+            # =================================================
+            SeatHold.objects.filter(
+                trip=trip,
+                seat=s,
+                user=created_by,
+                active=True,
+                boarding_stop=boarding_stop,
+                alighting_stop=alighting_stop,
+            ).update(active=False)
 
             return t
 
     @classmethod
-    def purchase(cls, trip: Trip, seat_ids, buyer_name, national_id, user, customer=None, payment_method="cash"):
+    def purchase(
+        cls,
+        trip: Trip,
+        seat_ids,
+        buyer_name,
+        national_id,
+        user,
+        customer=None,
+        payment_method="cash",
+        boarding_stop=None,
+        alighting_stop=None,
+        price=None,
+    ):
+        """
+        Compra uno o más asientos respetando disponibilidad por tramos.
+
+        Compatibilidad:
+        - Si no se indican boarding_stop/alighting_stop, vende el viaje completo.
+        - Si price es None, conserva el precio base de la ruta.
+        - No usa Seat.is_occupied como fuente de verdad.
+        """
         from django.apps import apps
 
         SeatHold.cleanup()
+
         seat_ids = list(seat_ids or [])
         if not seat_ids:
             raise ValueError("No hay asientos seleccionados.")
 
         payment_method = (payment_method or "cash").strip() or "cash"
 
+        # Resolver tramo una sola vez para toda la compra.
+        trip_stops = trip.trip_stops.order_by("order")
+        if boarding_stop is None:
+            boarding_stop = trip_stops.first()
+        if alighting_stop is None:
+            alighting_stop = trip_stops.last()
+
+        if boarding_stop is None or alighting_stop is None:
+            raise ValueError("El viaje no tiene paradas configuradas.")
+
+        if (
+            boarding_stop.trip_id != trip.id
+            or alighting_stop.trip_id != trip.id
+        ):
+            raise ValueError("Las paradas seleccionadas no pertenecen a este viaje.")
+
+        if boarding_stop.order >= alighting_stop.order:
+            raise ValueError("La parada de bajada debe estar después de la parada de subida.")
+
+        unit_price = price
+        if unit_price is None:
+            unit_price = getattr(getattr(trip, "route", None), "base_price", 0)
+
         with transaction.atomic():
-            seats = list(Seat.objects.select_for_update().filter(id__in=seat_ids))
+            seats = list(
+                Seat.objects.select_for_update()
+                .filter(id__in=seat_ids)
+                .order_by("id")
+            )
+
             if len(seats) != len(seat_ids):
                 raise ValueError("Alguno de los asientos ya no existe.")
 
             for s in seats:
                 if s.bus_id != trip.bus_id:
                     raise ValueError("Algún asiento no pertenece a este viaje.")
-                if getattr(s, "is_occupied", False):
-                    raise ValueError(f"El asiento {s.number} ya está ocupado.")
-                hold_other = SeatHold.objects.filter(trip=trip, seat=s, active=True).exclude(user=user).exists()
-                if hold_other:
-                    raise ValueError(f"El asiento {s.number} está bloqueado por otro vendedor.")
 
+            # Mantener el comportamiento anterior de cliente, pero crear/buscar
+            # una sola vez para todos los tickets de esta compra.
             if not customer and national_id:
                 try:
                     CustomerModel = apps.get_model(cls._meta.app_label, "Customer")
-                    customer_obj, created = CustomerModel.objects.get_or_create(
+                    customer_obj, _ = CustomerModel.objects.get_or_create(
                         national_id=national_id,
-                        defaults={'full_name': buyer_name}
+                        defaults={"full_name": buyer_name},
                     )
                     customer = customer_obj
                 except Exception:
                     customer = None
 
             tickets = []
-            unit_price = getattr(trip.route, "base_price", 0)
+
+            # create_for_sale es ahora la única fuente de verdad para:
+            # - solapamiento de tickets
+            # - holds por tramo
+            # - bloqueo atómico del asiento
+            # - liberación del hold exacto del vendedor
+            # - snapshot económico del bus/propietario
             for s in seats:
-                t = cls.objects.create(
+                t = cls.create_for_sale(
                     trip=trip,
                     seat=s,
-                    number=cls._next_number(),
-                    buyer_name=(buyer_name or "").strip() or "Pasajero",
-                    national_id=(national_id or "").strip(),
+                    buyer_name=buyer_name,
+                    national_id=national_id,
                     price=unit_price,
                     created_by=user,
                     customer=customer,
+                    boarding_stop=boarding_stop,
+                    alighting_stop=alighting_stop,
                     payment_method=payment_method,
                 )
                 tickets.append(t)
-
-                if hasattr(s, "is_occupied"):
-                    s.is_occupied = True
-                    s.save(update_fields=["is_occupied"])
-
-                SeatHold.objects.filter(trip=trip, seat=s, active=True).update(active=False)
 
             return tickets
 
@@ -2268,6 +2702,84 @@ class RouteStop(models.Model):
 
     def __str__(self):
         return f"{self.route} - {self.order}: {self.city}"
+
+# =========================================================
+# Paradas concretas de un viaje
+# =========================================================
+class TripStop(models.Model):
+    trip = models.ForeignKey(
+        Trip,
+        on_delete=models.CASCADE,
+        related_name="trip_stops",
+        verbose_name="Viaje",
+    )
+
+    city = models.ForeignKey(
+        City,
+        on_delete=models.PROTECT,
+        verbose_name="Ciudad",
+    )
+
+    terminal = models.ForeignKey(
+        Terminal,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Terminal / Paradero",
+    )
+
+    order = models.PositiveSmallIntegerField(
+        "Orden",
+        help_text="Orden dentro del viaje: 0, 1, 2, 3...",
+    )
+
+    scheduled_time = models.DateTimeField(
+        "Hora programada",
+        null=True,
+        blank=True,
+    )
+
+    is_origin = models.BooleanField(
+        "Es origen",
+        default=False,
+    )
+
+    is_destination = models.BooleanField(
+        "Es destino",
+        default=False,
+    )
+
+    class Meta:
+        ordering = ("order",)
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["trip", "order"],
+                name="unique_trip_stop_order",
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["trip", "order"],
+                name="trip_stop_order_idx",
+            ),
+            models.Index(
+                fields=["trip", "city"],
+                name="trip_stop_city_idx",
+            ),
+        ]
+
+        verbose_name = "Parada de viaje"
+        verbose_name_plural = "Paradas de viaje"
+
+    def __str__(self):
+        return (
+            f"{self.trip} - "
+            f"{self.order}: "
+            f"{self.city.name}"
+        )
+
 
 
 # =========================================================
@@ -2754,6 +3266,27 @@ class BookingOrder(models.Model):
         Trip,
         on_delete=models.PROTECT,
         related_name="booking_orders",
+    )
+
+    # =========================================================
+    # FASE TRAMOS — segmento congelado en la orden web
+    # =========================================================
+    boarding_stop = models.ForeignKey(
+        "TripStop",
+        on_delete=models.PROTECT,
+        related_name="booking_orders_boarding",
+        null=True,
+        blank=True,
+        verbose_name="Parada de subida",
+    )
+
+    alighting_stop = models.ForeignKey(
+        "TripStop",
+        on_delete=models.PROTECT,
+        related_name="booking_orders_alighting",
+        null=True,
+        blank=True,
+        verbose_name="Parada de bajada",
     )
 
     user = models.ForeignKey(

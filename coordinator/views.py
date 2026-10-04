@@ -25,10 +25,13 @@ from django.views.decorators.http import require_POST, require_GET, require_http
 from core.decorators import role_required
 
 from booking.models import (
-    Assistant, Bus, BusDocument, City, Company, Driver, DriverDocument,
-    Maintenance, Route, Seat, SeatHold, Terminal, Ticket, Trip, Agency, FleetOwner,
-    Parcel, FuelRecord, BusLayout, AuditLog, User
+    Assistant, Bus, BusDocument, City, Company, CompanyCity, CompanyTerminal,
+    Driver, DriverDocument, Maintenance, Route, Seat, SeatHold, Terminal,
+    Ticket, Trip, Agency, FleetOwner, Parcel, FuelRecord, BusLayout,
+    AuditLog, User
 )
+
+
 from booking.forms import (
     TerminalForm, CityForm, RouteForm, RouteStopFormSet,
     AssistantForm, DriverForm, AgencyForm, BusFullForm, TripForm, FleetOwnerForm
@@ -7648,51 +7651,352 @@ def city_create_edit(request, city_id=None):
         return redirect("coordinator:city_list")
     return render(request, "coordinator/city_form.html", {"city": city})
 
-
 @login_required
 @coordinator_required
+@require_POST
 def city_delete(request, city_id):
-    city = get_object_or_404(City, pk=city_id)
-    city.delete()
-    messages.success(request, "Ciudad eliminada.")
-    return redirect("coordinator:city_list")
+    """
+    Elimina una ciudad respetando el alcance multiempresa.
 
+    Usuario de empresa:
+    - No elimina City global.
+    - Elimina solamente CompanyCity.
+    - Si su empresa usa la ciudad en una ruta, no permite quitarla.
+
+    Superusuario:
+    - Puede eliminar City globalmente, siempre que no esté protegida.
+    """
+
+    city = get_object_or_404(City, pk=city_id)
+    scope = get_user_scope(request.user)
+
+    # ============================================================
+    # SUPERUSUARIO GLOBAL
+    # ============================================================
+    if request.user.is_superuser:
+        try:
+            city.delete()
+            messages.success(
+                request,
+                f'Ciudad "{city.name}" eliminada correctamente.'
+            )
+        except ProtectedError:
+            messages.error(
+                request,
+                (
+                    f'No se puede eliminar "{city.name}" porque está siendo '
+                    'utilizada por rutas, terminales u otros registros.'
+                )
+            )
+
+        return redirect("coordinator:cities_dashboard")
+
+    # ============================================================
+    # USUARIO DE EMPRESA
+    # ============================================================
+    company = scope.get("company")
+
+    if not company:
+        raise PermissionDenied(
+            "El usuario no tiene una empresa asignada."
+        )
+
+    company_city = get_object_or_404(
+        CompanyCity,
+        company=company,
+        city=city,
+        is_active=True,
+    )
+
+    # Comprobar si la empresa usa esta ciudad en alguna ruta
+    route_in_use = Route.objects.filter(
+        company=company
+    ).filter(
+        Q(origin=city) | Q(destination=city)
+    ).exists()
+
+    if route_in_use:
+        messages.error(
+            request,
+            (
+                f'No puedes quitar "{city.name}" de {company.name} '
+                'porque está siendo utilizada en una ruta de esta empresa.'
+            )
+        )
+        return redirect("coordinator:cities_dashboard")
+
+    # Quitar solamente la relación con esta empresa
+    company_city.delete()
+
+    messages.success(
+        request,
+        f'Ciudad "{city.name}" quitada de {company.name}.'
+    )
+
+    return redirect("coordinator:cities_dashboard")
 
 @login_required
 @coordinator_required
 def cities_dashboard(request):
+    """
+    Gestión de ciudades con alcance multiempresa.
+
+    - Superusuario:
+      ve todas las ciudades globales.
+
+    - Usuario de empresa:
+      ve solamente las ciudades asociadas a su empresa mediante CompanyCity.
+
+    - Crear:
+      reutiliza City si ya existe y crea CompanyCity para la empresa.
+
+    - Editar:
+      solo permite editar ciudades visibles para su empresa.
+    """
+
+    scope = get_user_scope(request.user)
+    company = scope.get("company")
+
+    # ============================================================
+    # VALIDAR ALCANCE
+    # ============================================================
+    if not request.user.is_superuser and not company:
+        raise PermissionDenied(
+            "El usuario no tiene una empresa asignada."
+        )
+
+    # ============================================================
+    # CIUDAD A EDITAR
+    # ============================================================
     city_to_edit = None
-    edit_id = request.GET.get('edit')
+    edit_id = request.GET.get("edit")
+
     if edit_id:
-        city_to_edit = get_object_or_404(City, pk=edit_id)
-
-    if request.method == 'POST':
-        form = CityForm(request.POST, instance=city_to_edit) if city_to_edit else CityForm(request.POST)
-        if form.is_valid():
-            city = form.save()
-            messages.success(request, f'Ciudad "{city.name}" guardada.')
-            return redirect('coordinator:cities_dashboard')
+        if request.user.is_superuser:
+            city_to_edit = get_object_or_404(
+                City,
+                pk=edit_id,
+            )
         else:
-            messages.error(request, 'Por favor corrige los errores.')
+            city_to_edit = get_object_or_404(
+                City,
+                pk=edit_id,
+                company_cities__company=company,
+                company_cities__is_active=True,
+            )
+
+    # ============================================================
+    # POST
+    # ============================================================
+    if request.method == "POST":
+
+        # --------------------------------------------------------
+        # EDICIÓN
+        # --------------------------------------------------------
+        if city_to_edit:
+            form = CityForm(
+                request.POST,
+                instance=city_to_edit,
+            )
+
+            if form.is_valid():
+
+                # Usuario de empresa:
+                # no permitir renombrar una ciudad compartida
+                if not request.user.is_superuser:
+                    other_companies = (
+                        CompanyCity.objects
+                        .filter(
+                            city=city_to_edit,
+                            is_active=True,
+                        )
+                        .exclude(company=company)
+                        .exists()
+                    )
+
+                    if other_companies:
+                        messages.error(
+                            request,
+                            (
+                                f'No puedes renombrar "{city_to_edit.name}" '
+                                'porque también está siendo utilizada por otra empresa.'
+                            )
+                        )
+                        return redirect(
+                            "coordinator:cities_dashboard"
+                        )
+
+                city = form.save()
+
+                messages.success(
+                    request,
+                    f'Ciudad "{city.name}" actualizada correctamente.'
+                )
+
+                return redirect(
+                    "coordinator:cities_dashboard"
+                )
+
+            messages.error(
+                request,
+                "Por favor corrige los errores."
+            )
+             # --------------------------------------------------------
+        # CREACIÓN / ASOCIACIÓN
+        # --------------------------------------------------------
+        else:
+            city_name = request.POST.get("name", "").strip()
+
+            if not city_name:
+                form = CityForm(request.POST)
+                messages.error(
+                    request,
+                    "Debes ingresar el nombre de la ciudad."
+                )
+
+            else:
+                # Buscar primero si la ciudad ya existe globalmente.
+                city = (
+                    City.objects
+                    .filter(name__iexact=city_name)
+                    .first()
+                )
+
+                # Si no existe, validar y crear normalmente.
+                if not city:
+                    form = CityForm(request.POST)
+
+                    if not form.is_valid():
+                        messages.error(
+                            request,
+                            "Por favor corrige los errores."
+                        )
+                    else:
+                        city = form.save()
+
+                # Si ya existe o se creó correctamente,
+                # asociarla a la empresa.
+                if city:
+
+                    # Superusuario global
+                    if request.user.is_superuser:
+                        messages.success(
+                            request,
+                            f'Ciudad "{city.name}" guardada correctamente.'
+                        )
+                        return redirect(
+                            "coordinator:cities_dashboard"
+                        )
+
+                    # Usuario de empresa
+                    company_city, created = (
+                        CompanyCity.objects.get_or_create(
+                            company=company,
+                            city=city,
+                            defaults={
+                                "is_active": True,
+                            },
+                        )
+                    )
+
+                    if not created and not company_city.is_active:
+                        company_city.is_active = True
+                        company_city.save(
+                            update_fields=["is_active"]
+                        )
+
+                    if created:
+                        messages.success(
+                            request,
+                            (
+                                f'Ciudad "{city.name}" agregada a '
+                                f'{company.name}.'
+                            )
+                        )
+                    else:
+                        messages.info(
+                            request,
+                            (
+                                f'La ciudad "{city.name}" ya pertenece a '
+                                f'{company.name}.'
+                            )
+                        )
+
+                    return redirect(
+                        "coordinator:cities_dashboard"
+                    )
+
+
+    # ============================================================
+    # GET
+    # ============================================================
     else:
-        form = CityForm(instance=city_to_edit) if city_to_edit else CityForm()
+        form = CityForm(
+            instance=city_to_edit
+        ) if city_to_edit else CityForm()
 
-    query = request.GET.get('q', '').strip()
-    cities_list = City.objects.all().order_by('name')
+    # ============================================================
+    # LISTADO
+    # ============================================================
+    query = request.GET.get(
+        "q",
+        "",
+    ).strip()
+
+    if request.user.is_superuser:
+        cities_list = City.objects.all()
+    else:
+        cities_list = City.objects.filter(
+            company_cities__company=company,
+            company_cities__is_active=True,
+        )
+
+    cities_list = (
+        cities_list
+        .distinct()
+        .order_by("name")
+    )
+
     if query:
-        cities_list = cities_list.filter(name__icontains=query)
+        cities_list = cities_list.filter(
+            name__icontains=query
+        )
 
-    paginator = Paginator(cities_list, 10)
-    cities_page = paginator.get_page(request.GET.get('page'))
+    # ============================================================
+    # PAGINACIÓN
+    # ============================================================
+    paginator = Paginator(
+        cities_list,
+        10,
+    )
 
+    cities_page = paginator.get_page(
+        request.GET.get("page")
+    )
+
+    # ============================================================
+    # CONTEXTO
+    # ============================================================
     context = {
-        'form': form,
-        'cities': cities_page,
-        'query': query,
-        'edit_mode': bool(city_to_edit),
-        'city_edit_id': city_to_edit.id if city_to_edit else None,
+        "form": form,
+        "cities": cities_page,
+        "query": query,
+        "edit_mode": bool(city_to_edit),
+        "city_edit_id": (
+            city_to_edit.id
+            if city_to_edit
+            else None
+        ),
+        "current_company": company,
     }
-    return render(request, 'ciudades/ciudades.html', context)
+
+    return render(
+        request,
+        "ciudades/ciudades.html",
+        context,
+    )
+
+
 
 
 # ============================================================================
@@ -7721,53 +8025,167 @@ def terminal_create_edit(request, terminal_id=None):
     cities = City.objects.all()
     return render(request, "coordinator/terminal_form.html", {"terminal": terminal, "cities": cities})
 
-
 @login_required
 @coordinator_required
+@require_POST
 def terminal_delete(request, terminal_id):
     terminal = get_object_or_404(Terminal, pk=terminal_id)
-    terminal.delete()
-    messages.success(request, "Terminal eliminada.")
-    return redirect("coordinator:terminal_list")
 
+    try:
+        terminal.delete()
+
+        messages.success(
+            request,
+            f'Terminal "{terminal.name}" eliminada correctamente.'
+        )
+
+    except ProtectedError:
+        messages.error(
+            request,
+            f'No se puede eliminar "{terminal.name}" porque está siendo '
+            f'utilizada como terminal de origen o destino en una o más rutas.'
+        )
+
+    return redirect("coordinator:terminals_dashboard")
 
 @login_required
 @coordinator_required
 def terminals_dashboard(request):
-    terminal_to_edit = None
-    edit_id = request.GET.get('edit')
-    if edit_id:
-        terminal_to_edit = get_object_or_404(Terminal, pk=edit_id)
+    scope = get_user_scope(request.user)
+    company = scope.get("company")
 
-    if request.method == 'POST':
-        form = TerminalForm(request.POST, instance=terminal_to_edit) if terminal_to_edit else TerminalForm(request.POST)
-        if form.is_valid():
-            terminal = form.save()
-            messages.success(request, f'Terminal {terminal.name} guardada.')
-            return redirect('coordinator:terminals_dashboard')
-        else:
-            messages.error(request, 'Por favor corrige los errores del formulario.')
-    else:
-        form = TerminalForm(instance=terminal_to_edit) if terminal_to_edit else TerminalForm()
-
-    query = request.GET.get('q', '').strip()
-    terminals_list = Terminal.objects.select_related('city').all().order_by('city__name', 'name')
-    if query:
-        terminals_list = terminals_list.filter(
-            Q(name__icontains=query) | Q(city__name__icontains=query) | Q(address__icontains=query)
+    if not request.user.is_superuser and not company:
+        raise PermissionDenied(
+            "El usuario no tiene una empresa asignada."
         )
 
-    paginator = Paginator(terminals_list, 10)
-    terminals_page = paginator.get_page(request.GET.get('page'))
+    terminal_to_edit = None
+    edit_id = request.GET.get("edit")
+
+    if edit_id:
+        if request.user.is_superuser:
+            terminal_to_edit = get_object_or_404(
+                Terminal,
+                pk=edit_id,
+            )
+        else:
+            terminal_to_edit = get_object_or_404(
+                Terminal,
+                pk=edit_id,
+                company_terminals__company=company,
+                company_terminals__is_active=True,
+            )
+
+    if request.method == "POST":
+        form = (
+            TerminalForm(
+                request.POST,
+                instance=terminal_to_edit,
+            )
+            if terminal_to_edit
+            else TerminalForm(request.POST)
+        )
+
+        if form.is_valid():
+            terminal = form.save()
+
+            if not request.user.is_superuser:
+                company_terminal, created = (
+                    CompanyTerminal.objects.get_or_create(
+                        company=company,
+                        terminal=terminal,
+                        defaults={"is_active": True},
+                    )
+                )
+
+                if (
+                    not created
+                    and not company_terminal.is_active
+                ):
+                    company_terminal.is_active = True
+                    company_terminal.save(
+                        update_fields=["is_active"]
+                    )
+
+            messages.success(
+                request,
+                f"Terminal {terminal.name} guardada."
+            )
+
+            return redirect(
+                "coordinator:terminals_dashboard"
+            )
+
+        messages.error(
+            request,
+            "Por favor corrige los errores del formulario."
+        )
+
+    else:
+        form = (
+            TerminalForm(instance=terminal_to_edit)
+            if terminal_to_edit
+            else TerminalForm()
+        )
+
+    query = request.GET.get("q", "").strip()
+
+    if request.user.is_superuser:
+        terminals_list = (
+            Terminal.objects
+            .select_related("city")
+            .all()
+        )
+    else:
+        terminals_list = (
+            Terminal.objects
+            .select_related("city")
+            .filter(
+                company_terminals__company=company,
+                company_terminals__is_active=True,
+            )
+            .distinct()
+        )
+
+    terminals_list = terminals_list.order_by(
+        "city__name",
+        "name",
+    )
+
+    if query:
+        terminals_list = terminals_list.filter(
+            Q(name__icontains=query)
+            | Q(city__name__icontains=query)
+            | Q(address__icontains=query)
+        )
+
+    paginator = Paginator(
+        terminals_list,
+        10,
+    )
+
+    terminals_page = paginator.get_page(
+        request.GET.get("page")
+    )
 
     context = {
-        'form': form,
-        'terminals': terminals_page,
-        'query': query,
-        'edit_mode': bool(terminal_to_edit),
-        'terminal_edit_id': terminal_to_edit.id if terminal_to_edit else None,
+        "form": form,
+        "terminals": terminals_page,
+        "query": query,
+        "edit_mode": bool(terminal_to_edit),
+        "terminal_edit_id": (
+            terminal_to_edit.id
+            if terminal_to_edit
+            else None
+        ),
     }
-    return render(request, 'terminales/terminales.html', context)
+
+    return render(
+        request,
+        "terminales/terminales.html",
+        context,
+    )
+
 
 
 # ============================================================================

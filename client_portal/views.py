@@ -28,7 +28,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-from booking.models import City, Customer, Promotion, Route, Seat, SeatHold, Ticket, Trip
+from booking.models import City, Customer, Promotion, Route, Seat, SeatHold, Ticket, Trip, TripStop
 from booking.views import _build_trip_grid, calculate_final_price
 
 from .company_context import get_public_company
@@ -126,28 +126,31 @@ def home(request):
             bus__company=public_company,
         )
 
+    # FASE TRAMOS:
+    # Orígenes y destinos disponibles provienen de las paradas
+    # reales de los viajes, incluyendo paradas intermedias.
+    trip_stop_city_ids = (
+        TripStop.objects
+        .filter(
+            trip__in=available_trips_qs,
+        )
+        .values_list(
+            "city_id",
+            flat=True,
+        )
+        .distinct()
+    )
+
     origin_cities = (
         City.objects
-        .filter(
-            id__in=available_trips_qs.values_list(
-                "route__origin_id",
-                flat=True,
-            )
-        )
+        .filter(id__in=trip_stop_city_ids)
         .order_by("name")
-        .distinct()
     )
 
     destination_cities = (
         City.objects
-        .filter(
-            id__in=available_trips_qs.values_list(
-                "route__destination_id",
-                flat=True,
-            )
-        )
+        .filter(id__in=trip_stop_city_ids)
         .order_by("name")
-        .distinct()
     )
 
     # ============================================================
@@ -321,14 +324,13 @@ def home(request):
 
 def search_trips(request):
     """
-    Busca viajes disponibles.
+    Busca viajes disponibles utilizando TripStop.
 
-    MULTIEMPRESA:
-    Si el dominio corresponde a una empresa, solamente permite
-    visualizar viajes cuyos buses pertenecen a esa empresa.
-
-    En localhost, mientras no exista CompanyDomain asociado,
-    conserva el comportamiento existente.
+    Permite:
+    - origen/destino extremos;
+    - paradas intermedias;
+    - valida que origen esté antes que destino;
+    - calcula disponibilidad únicamente para el tramo solicitado.
     """
 
     public_company = get_public_company(request)
@@ -359,15 +361,29 @@ def search_trips(request):
             },
         )
 
+    if origin.casefold() == destination.casefold():
+        return render(
+            request,
+            "client_portal/search_results.html",
+            {
+                "trips": [],
+                "origin": origin,
+                "destination": destination,
+                "date": date_str,
+                "return_date": return_date,
+                "error": "El origen y el destino deben ser diferentes.",
+                "public_company": public_company,
+            },
+        )
+
     # ============================================================
-    # 3. VALIDAR FECHA
+    # 3. FECHA
     # ============================================================
     try:
         date_obj = datetime.strptime(
             date_str,
             "%Y-%m-%d",
         ).date()
-
     except ValueError:
         return render(
             request,
@@ -384,28 +400,14 @@ def search_trips(request):
         )
 
     # ============================================================
-    # 4. QUERY BASE
-    # ============================================================
-    trips = Trip.objects.filter(
-        route__origin__name__iexact=origin,
-        route__destination__name__iexact=destination,
-        departure__date=date_obj,
-        departure__gte=timezone.now(),
-    )
-
-    # ============================================================
-    # 5. FILTRO MULTIEMPRESA
-    # ============================================================
-    if public_company:
-        trips = trips.filter(
-            bus__company=public_company
-        )
-
-    # ============================================================
-    # 6. OPTIMIZACIÓN / DISPONIBILIDAD
+    # 4. VIAJES CANDIDATOS
     # ============================================================
     trips = (
-        trips
+        Trip.objects
+        .filter(
+            departure__date=date_obj,
+            departure__gte=timezone.now(),
+        )
         .select_related(
             "route",
             "bus",
@@ -415,54 +417,130 @@ def search_trips(request):
             "route__destination_terminal",
             "bus__company",
         )
-        .annotate(
-            sold_count=Count("tickets"),
-            hold_count=Count(
-                "holds",
-                filter=Q(
-                    holds__active=True,
-                    holds__expires_at__gt=timezone.now(),
-                ),
-            ),
+        .prefetch_related(
+            "trip_stops__city",
+            "trip_stops__terminal",
         )
         .order_by("departure")
     )
 
+    if public_company:
+        trips = trips.filter(
+            bus__company=public_company
+        )
+
     # ============================================================
-    # 7. CORTE DE VENTA
+    # 5. BUSCAR PAR DE PARADAS VÁLIDO
     # ============================================================
-    available_trips = []
+    trips_data = []
+    now = timezone.now()
 
     for trip in trips:
 
-        if trip.cutoff_minutes == 0:
-            available_trips.append(trip)
-
-        else:
+        # Corte de venta.
+        if trip.cutoff_minutes > 0:
             cutoff_time = (
                 trip.departure
-                - timedelta(
-                    minutes=trip.cutoff_minutes
-                )
+                - timedelta(minutes=trip.cutoff_minutes)
             )
 
-            if timezone.now() < cutoff_time:
-                available_trips.append(trip)
+            if now >= cutoff_time:
+                continue
 
-    # ============================================================
-    # 8. PREPARAR RESULTADOS
-    # ============================================================
-    trips_data = []
+        stops = list(
+            trip.trip_stops.all()
+        )
 
-    for trip in available_trips:
+        boarding_stop = None
+        alighting_stop = None
 
-        sold = trip.sold_count
-        holds = trip.hold_count
+        # Buscar origen.
+        for stop in stops:
+            if stop.city.name.casefold() == origin.casefold():
+                boarding_stop = stop
+                break
 
-        free = (
-            trip.seats_total
-            - sold
-            - holds
+        if boarding_stop is None:
+            continue
+
+        # Buscar destino DESPUÉS del origen.
+        for stop in stops:
+            if (
+                stop.order > boarding_stop.order
+                and stop.city.name.casefold() == destination.casefold()
+            ):
+                alighting_stop = stop
+                break
+
+        if alighting_stop is None:
+            continue
+
+        new_start = boarding_stop.order
+        new_end = alighting_stop.order
+
+        # ========================================================
+        # 6. ASIENTOS NO DISPONIBLES EN ESTE TRAMO
+        # ========================================================
+        sold_seat_ids = set(
+            Ticket.objects
+            .filter(
+                trip=trip,
+                boarding_stop__order__lt=new_end,
+                alighting_stop__order__gt=new_start,
+            )
+            .values_list(
+                "seat_id",
+                flat=True,
+            )
+        )
+
+        held_seat_ids = set(
+            SeatHold.objects
+            .filter(
+                trip=trip,
+                active=True,
+                expires_at__gt=now,
+                boarding_stop__order__lt=new_end,
+                alighting_stop__order__gt=new_start,
+            )
+            .values_list(
+                "seat_id",
+                flat=True,
+            )
+        )
+
+        unavailable_seat_ids = (
+            sold_seat_ids | held_seat_ids
+        )
+
+        free = max(
+            0,
+            trip.seats_total - len(unavailable_seat_ids),
+        )
+
+        # ========================================================
+        # 7. HORARIOS DEL TRAMO
+        # ========================================================
+        segment_departure = (
+            boarding_stop.scheduled_time
+            or trip.departure
+        )
+
+        segment_arrival = (
+            alighting_stop.scheduled_time
+            or trip.arrival
+        )
+
+        origin_terminal = (
+            boarding_stop.terminal.name
+            if boarding_stop.terminal
+            else "Paradero"
+        )
+
+        destination_terminal = (
+            alighting_stop.terminal.name
+            if alighting_stop.terminal
+            else "Paradero"
         )
 
         service_type = "semi"
@@ -470,36 +548,34 @@ def search_trips(request):
         if trip.bus.service_type == "cama":
             service_type = "cama"
 
-        origin_terminal = (
-            trip.route.origin_terminal.name
-            if getattr(
-                trip.route,
-                "origin_terminal",
-                None,
-            )
-            else "Terminal"
-        )
-
-        destination_terminal = (
-            trip.route.destination_terminal.name
-            if getattr(
-                trip.route,
-                "destination_terminal",
-                None,
-            )
-            else "Terminal"
-        )
-
         trips_data.append({
             "id": trip.id,
-            "departure_time": trip.departure.strftime("%H:%M"),
-            "departure_date": trip.departure,
 
-            "arrival_time": (
-                trip.arrival.strftime("%H:%M")
-                if trip.arrival
+            "boarding_stop_id": boarding_stop.id,
+            "alighting_stop_id": alighting_stop.id,
+
+            "departure_time": (
+                timezone.localtime(segment_departure)
+                .strftime("%H:%M")
+                if segment_departure
                 else "--:--"
             ),
+
+            "departure_date": (
+                timezone.localtime(segment_departure)
+                if segment_departure
+                else timezone.localtime(trip.departure)
+            ),
+
+            "arrival_time": (
+                timezone.localtime(segment_arrival)
+                .strftime("%H:%M")
+                if segment_arrival
+                else "--:--"
+            ),
+
+            "origin_city": boarding_stop.city.name,
+            "destination_city": alighting_stop.city.name,
 
             "origin_terminal": origin_terminal,
             "destination_terminal": destination_terminal,
@@ -512,6 +588,8 @@ def search_trips(request):
                 else ""
             ),
 
+            # Precio provisional.
+            # Luego implementaremos tarifa específica por tramo.
             "price": float(
                 trip.route.base_price
             ),
@@ -523,7 +601,7 @@ def search_trips(request):
         })
 
     # ============================================================
-    # 9. RENDER
+    # 8. RENDER
     # ============================================================
     return render(
         request,
@@ -538,6 +616,7 @@ def search_trips(request):
             "public_company": public_company,
         },
     )
+
 
 @ensure_csrf_cookie
 def seatmap(request, trip_id):
@@ -625,13 +704,76 @@ def seatmap(request, trip_id):
         )
 
     # ============================================================
-    # 6. CONSTRUIR MAPA
+    # 6. DETERMINAR TRAMO
+    # ============================================================
+
+    boarding_stop_id = request.GET.get("boarding_stop")
+    alighting_stop_id = request.GET.get("alighting_stop")
+
+    if bool(boarding_stop_id) != bool(alighting_stop_id):
+        messages.warning(
+            request,
+            "El tramo seleccionado es inválido."
+        )
+        return redirect("client_portal:search_trips")
+
+    if boarding_stop_id and alighting_stop_id:
+        try:
+            boarding_stop_id = int(boarding_stop_id)
+            alighting_stop_id = int(alighting_stop_id)
+        except (TypeError, ValueError):
+            messages.warning(
+                request,
+                "El tramo seleccionado es inválido."
+            )
+            return redirect("client_portal:search_trips")
+
+        boarding_stop = get_object_or_404(
+            TripStop,
+            pk=boarding_stop_id,
+            trip=trip,
+        )
+
+        alighting_stop = get_object_or_404(
+            TripStop,
+            pk=alighting_stop_id,
+            trip=trip,
+        )
+
+    else:
+        trip_stops = list(
+            TripStop.objects
+            .filter(trip=trip)
+            .order_by("order")
+        )
+
+        if len(trip_stops) < 2:
+            messages.warning(
+                request,
+                "Este viaje no tiene un recorrido válido."
+            )
+            return redirect("client_portal:search_trips")
+
+        boarding_stop = trip_stops[0]
+        alighting_stop = trip_stops[-1]
+
+    if boarding_stop.order >= alighting_stop.order:
+        messages.warning(
+            request,
+            "El origen debe estar antes que el destino."
+        )
+        return redirect("client_portal:search_trips")
+
+    # ============================================================
+    # 7. CONSTRUIR MAPA
     # ============================================================
 
     grid_lower, grid_upper, cols = _build_trip_grid(
         trip=trip,
         current_user=current_user,
         session_key=session_key,
+        boarding_stop=boarding_stop,
+        alighting_stop=alighting_stop,
     )
 
     # ============================================================
@@ -653,6 +795,11 @@ def seatmap(request, trip_id):
         ),
 
         "cols": cols,
+
+        "boarding_stop": boarding_stop,
+        "alighting_stop": alighting_stop,
+        "boarding_stop_id": boarding_stop.id,
+        "alighting_stop_id": alighting_stop.id,
     }
 
     # ============================================================
@@ -708,13 +855,72 @@ def seatmap_partial(request, trip_id):
     )
 
     # ============================================================
-    # 4. CONSTRUIR MAPA
+    # 4. DETERMINAR TRAMO
+    # ============================================================
+
+    boarding_stop_id = request.GET.get("boarding_stop")
+    alighting_stop_id = request.GET.get("alighting_stop")
+
+    if bool(boarding_stop_id) != bool(alighting_stop_id):
+        return HttpResponse(
+            "Tramo inválido.",
+            status=400,
+        )
+
+    if boarding_stop_id and alighting_stop_id:
+        try:
+            boarding_stop_id = int(boarding_stop_id)
+            alighting_stop_id = int(alighting_stop_id)
+        except (TypeError, ValueError):
+            return HttpResponse(
+                "Tramo inválido.",
+                status=400,
+            )
+
+        boarding_stop = get_object_or_404(
+            TripStop,
+            pk=boarding_stop_id,
+            trip=trip,
+        )
+
+        alighting_stop = get_object_or_404(
+            TripStop,
+            pk=alighting_stop_id,
+            trip=trip,
+        )
+
+    else:
+        trip_stops = list(
+            TripStop.objects
+            .filter(trip=trip)
+            .order_by("order")
+        )
+
+        if len(trip_stops) < 2:
+            return HttpResponse(
+                "Recorrido inválido.",
+                status=400,
+            )
+
+        boarding_stop = trip_stops[0]
+        alighting_stop = trip_stops[-1]
+
+    if boarding_stop.order >= alighting_stop.order:
+        return HttpResponse(
+            "Tramo inválido.",
+            status=400,
+        )
+
+    # ============================================================
+    # 5. CONSTRUIR MAPA
     # ============================================================
 
     grid_lower, grid_upper, cols = _build_trip_grid(
         trip=trip,
         current_user=current_user,
         session_key=session_key,
+        boarding_stop=boarding_stop,
+        alighting_stop=alighting_stop,
     )
 
     # ============================================================
@@ -726,6 +932,10 @@ def seatmap_partial(request, trip_id):
         "cols": cols,
         "grid_lower": grid_lower,
         "grid_upper": grid_upper,
+        "boarding_stop": boarding_stop,
+        "alighting_stop": alighting_stop,
+        "boarding_stop_id": boarding_stop.id,
+        "alighting_stop_id": alighting_stop.id,
     }
 
     html = render_to_string(
@@ -861,7 +1071,98 @@ def hold_seat(request, trip_id):
     )
 
     # =========================================================
-    # 5. VALIDAR CORTE DE VENTA WEB
+    # 5. VALIDAR TRAMO
+    # =========================================================
+
+    boarding_stop_id = data.get("boarding_stop")
+    alighting_stop_id = data.get("alighting_stop")
+
+    if bool(boarding_stop_id) != bool(alighting_stop_id):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "El tramo seleccionado es inválido.",
+                "code": "INVALID_SEGMENT",
+            },
+            status=400,
+        )
+
+    if boarding_stop_id and alighting_stop_id:
+
+        try:
+            boarding_stop_id = int(boarding_stop_id)
+            alighting_stop_id = int(alighting_stop_id)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "El tramo seleccionado es inválido.",
+                    "code": "INVALID_SEGMENT",
+                },
+                status=400,
+            )
+
+        boarding_stop = (
+            TripStop.objects
+            .filter(
+                pk=boarding_stop_id,
+                trip=trip,
+            )
+            .first()
+        )
+
+        alighting_stop = (
+            TripStop.objects
+            .filter(
+                pk=alighting_stop_id,
+                trip=trip,
+            )
+            .first()
+        )
+
+        if boarding_stop is None or alighting_stop is None:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "El tramo no pertenece a este viaje.",
+                    "code": "INVALID_SEGMENT",
+                },
+                status=400,
+            )
+
+    else:
+
+        trip_stops = list(
+            TripStop.objects
+            .filter(trip=trip)
+            .order_by("order")
+        )
+
+        if len(trip_stops) < 2:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "El viaje no tiene un recorrido válido.",
+                    "code": "INVALID_SEGMENT",
+                },
+                status=400,
+            )
+
+        boarding_stop = trip_stops[0]
+        alighting_stop = trip_stops[-1]
+
+    if boarding_stop.order >= alighting_stop.order:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "El origen debe estar antes que el destino.",
+                "code": "INVALID_SEGMENT",
+            },
+            status=400,
+        )
+
+    # =========================================================
+    # 6. VALIDAR CORTE DE VENTA WEB
     # =========================================================
     if trip.cutoff_minutes > 0:
 
@@ -929,6 +1230,8 @@ def hold_seat(request, trip_id):
                 seat=seat,
                 user=current_user,
                 session_key=session_key,
+                boarding_stop=boarding_stop,
+                alighting_stop=alighting_stop,
             )
 
             return JsonResponse(
@@ -974,6 +1277,8 @@ def hold_seat(request, trip_id):
             user=current_user,
             session_key=session_key,
             minutes=10,
+            boarding_stop=boarding_stop,
+            alighting_stop=alighting_stop,
         )
 
     except ValueError as exc:
@@ -1081,6 +1386,7 @@ def checkout(request, trip_id):
         SeatHold,
         Ticket,
         Trip,
+        TripStop,
     )
     from booking.utils import validate_chilean_rut
     from booking.views import calculate_final_price
@@ -1140,6 +1446,73 @@ def checkout(request, trip_id):
     )
 
     # ============================================================
+    # Tramo seleccionado
+    # ============================================================
+
+    boarding_stop_id = (
+        request.GET.get("boarding_stop")
+        or request.POST.get("boarding_stop")
+    )
+
+    alighting_stop_id = (
+        request.GET.get("alighting_stop")
+        or request.POST.get("alighting_stop")
+    )
+
+    try:
+        boarding_stop_id = int(boarding_stop_id)
+        alighting_stop_id = int(alighting_stop_id)
+    except (TypeError, ValueError):
+        if request.method == "POST":
+            return json_error(
+                "El tramo seleccionado es inválido.",
+                status=400,
+                code="INVALID_SEGMENT",
+            )
+
+        messages.warning(
+            request,
+            "El tramo seleccionado es inválido."
+        )
+        return redirect("client_portal:search_trips")
+
+    boarding_stop = (
+        TripStop.objects
+        .filter(
+            pk=boarding_stop_id,
+            trip=trip,
+        )
+        .first()
+    )
+
+    alighting_stop = (
+        TripStop.objects
+        .filter(
+            pk=alighting_stop_id,
+            trip=trip,
+        )
+        .first()
+    )
+
+    if (
+        boarding_stop is None
+        or alighting_stop is None
+        or boarding_stop.order >= alighting_stop.order
+    ):
+        if request.method == "POST":
+            return json_error(
+                "El tramo seleccionado es inválido.",
+                status=400,
+                code="INVALID_SEGMENT",
+            )
+
+        messages.warning(
+            request,
+            "El tramo seleccionado es inválido."
+        )
+        return redirect("client_portal:search_trips")
+
+    # ============================================================
     # Corte de venta web
     # ============================================================
     if trip.cutoff_minutes > 0:
@@ -1187,8 +1560,14 @@ def checkout(request, trip_id):
             session_key=session_key,
             active=True,
             expires_at__gt=timezone.now(),
+            boarding_stop=boarding_stop,
+            alighting_stop=alighting_stop,
         )
-        .select_related("seat")
+        .select_related(
+            "seat",
+            "boarding_stop",
+            "alighting_stop",
+        )
         .order_by(
             "seat__deck",
             "seat__row",
@@ -1301,6 +1680,8 @@ def checkout(request, trip_id):
                 session_key=session_key,
                 active=True,
                 expires_at__gt=now,
+                boarding_stop=boarding_stop,
+                alighting_stop=alighting_stop,
             )
             .values("id", "seat_id")
             .order_by("seat_id", "id")
@@ -1358,6 +1739,8 @@ def checkout(request, trip_id):
                     .filter(
                         trip=trip,
                         seat_id__in=seat_ids,
+                        boarding_stop__order__lt=alighting_stop.order,
+                        alighting_stop__order__gt=boarding_stop.order,
                     )
                     .values_list("seat_id", flat=True)
                 )
@@ -1395,8 +1778,14 @@ def checkout(request, trip_id):
                         session_key=session_key,
                         active=True,
                         expires_at__gt=now,
+                        boarding_stop=boarding_stop,
+                        alighting_stop=alighting_stop,
                     )
-                    .select_related("seat")
+                    .select_related(
+                        "seat",
+                        "boarding_stop",
+                        "alighting_stop",
+                    )
                     .order_by("seat_id", "id")
                 )
 
@@ -1616,6 +2005,8 @@ def checkout(request, trip_id):
                         else None
                     ),
                     session_key=session_key,
+                    boarding_stop=boarding_stop,
+                    alighting_stop=alighting_stop,
                     customer=customer,
                     buyer_name=buyer_name,
                     buyer_email=buyer_email,
@@ -1746,6 +2137,14 @@ def checkout(request, trip_id):
             hold.seat.number
             for hold in reserved_list
         ],
+
+        # =====================================================
+        # FASE TRAMOS: paradas del segmento elegido
+        # =====================================================
+        "boarding_stop": boarding_stop,
+        "alighting_stop": alighting_stop,
+        "boarding_stop_id": boarding_stop.id,
+        "alighting_stop_id": alighting_stop.id,
     }
 
     return render(
@@ -1899,31 +2298,68 @@ def mercadopago_start(request, order_code):
             trip_id=order.trip_id,
         )
 
-    # Primera integración:
-    # Buses La Porteña -> sus propias credenciales
-    if company.name == "Buses La Porteña":
-        access_token = os.getenv(
-            "MERCADOPAGO_PORTENA_ACCESS_TOKEN"
-        )
-    else:
-        access_token = None
+    # ============================================================
+    # MAPA MULTI-EMPRESA → MERCADO PAGO
+    # ============================================================
+    #
+    # Cada empresa tiene su propio:
+    #   - client_key  → query param del webhook (?client=...)
+    #   - env_prefix  → prefijo de variables de entorno
+    #
+    # Para agregar una empresa nueva, sólo se añade una entrada
+    # aquí y sus credenciales en el .env
+    # ============================================================
 
-    if not access_token:
+    COMPANY_MERCADOPAGO = {
+        "Buses La Porteña": {
+            "client_key": "portena",
+            "env_prefix": "MERCADOPAGO_PORTENA",
+        },
+        # Futuras empresas (descomentar y configurar .env):
+        # "Cejer": {
+        #     "client_key": "cejer",
+        #     "env_prefix": "MERCADOPAGO_CEJER",
+        # },
+    }
+
+    company_cfg = COMPANY_MERCADOPAGO.get(company.name)
+
+    if company_cfg is None:
         logger.error(
-            "Mercado Pago sin credenciales. company=%s order=%s",
+            "Mercado Pago sin credenciales para la empresa. "
+            "company=%s order=%s",
             company.name,
             order.code,
         )
-
         messages.error(
             request,
             "Mercado Pago no está configurado para esta empresa."
         )
-
         return redirect(
             "client_portal:checkout",
             trip_id=order.trip_id,
         )
+
+    access_token = os.getenv(
+        f"{company_cfg['env_prefix']}_ACCESS_TOKEN"
+    )
+
+    if not access_token:
+        logger.error(
+            "Mercado Pago sin access token. company=%s order=%s",
+            company.name,
+            order.code,
+        )
+        messages.error(
+            request,
+            "Mercado Pago no está configurado para esta empresa."
+        )
+        return redirect(
+            "client_portal:checkout",
+            trip_id=order.trip_id,
+        )
+
+    client_key = company_cfg["client_key"]
 
     # ============================================================
     # 6. EVITAR CREAR DOS VECES LA MISMA ORDER
@@ -2008,6 +2444,16 @@ def mercadopago_start(request, order_code):
                 "auto_return": "all",
             }
         },
+
+        # =========================================================
+        # NOTA: La API Orders de Mercado Pago NO acepta
+        # "notification_url" en el payload.
+        #
+        # El webhook se configura en el panel de MP:
+        #   https://portena.online/client/mercadopago/webhook/?client=portena
+        #
+        # Evento suscrito: "Order (Mercado Pago)"
+        # =========================================================
     }
 
     # Mercado Pago indica que total_amount debe coincidir
@@ -2726,23 +3172,6 @@ def mercadopago_success(request):
                     "No fue posible bloquear todos los asientos."
                 )
 
-            existing_ticket_seats = set(
-                Ticket.objects
-                .filter(
-                    trip_id=order.trip_id,
-                    seat_id__in=seat_ids,
-                )
-                .values_list(
-                    "seat_id",
-                    flat=True,
-                )
-            )
-
-            if existing_ticket_seats:
-                raise ValueError(
-                    "Uno o más asientos ya tienen un boleto emitido."
-                )
-
             system_user = (
                 User.objects
                 .filter(username="ventas_web")
@@ -2779,6 +3208,9 @@ def mercadopago_success(request):
                     created_by=system_user,
                     payment_method="card",
                     customer=order.customer,
+                    boarding_stop=order.boarding_stop,
+                    alighting_stop=order.alighting_stop,
+                    hold_session_key=order.session_key,
                 )
 
                 created_tickets.append(ticket)
@@ -2788,6 +3220,8 @@ def mercadopago_success(request):
                 session_key=order.session_key,
                 seat_id__in=seat_ids,
                 active=True,
+                boarding_stop=order.boarding_stop,
+                alighting_stop=order.alighting_stop,
             ).update(
                 active=False
             )
@@ -4187,23 +4621,6 @@ def webpay_return(request):
             # ----------------------------------------------------
             # Evitar emisión duplicada
             # ----------------------------------------------------
-            existing_ticket_seats = set(
-                Ticket.objects
-                .filter(
-                    trip_id=order.trip_id,
-                    seat_id__in=seat_ids,
-                )
-                .values_list(
-                    "seat_id",
-                    flat=True,
-                )
-            )
-
-            if existing_ticket_seats:
-                raise ValueError(
-                    "Uno o más asientos ya tienen un boleto emitido."
-                )
-
             # ----------------------------------------------------
             # Usuario técnico de venta web
             # ----------------------------------------------------
@@ -4246,6 +4663,9 @@ def webpay_return(request):
                     created_by=system_user,
                     payment_method="card",
                     customer=order.customer,
+                    boarding_stop=order.boarding_stop,
+                    alighting_stop=order.alighting_stop,
+                    hold_session_key=order.session_key,
                 )
 
                 created_tickets.append(ticket)
@@ -4258,6 +4678,8 @@ def webpay_return(request):
                 session_key=order.session_key,
                 seat_id__in=seat_ids,
                 active=True,
+                boarding_stop=order.boarding_stop,
+                alighting_stop=order.alighting_stop,
             ).update(
                 active=False
             )
@@ -6509,6 +6931,113 @@ def renew_hold(request, trip_id):
         pk=trip_id,
     )
 
+    try:
+        data = json.loads(
+            request.body.decode("utf-8")
+        ) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "JSON inválido.",
+                "renewed": 0,
+                "code": "INVALID_JSON",
+            },
+            status=400,
+        )
+
+    boarding_stop_id = data.get("boarding_stop")
+    alighting_stop_id = data.get("alighting_stop")
+
+    if bool(boarding_stop_id) != bool(alighting_stop_id):
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "El tramo seleccionado es inválido.",
+                "renewed": 0,
+                "code": "INVALID_SEGMENT",
+            },
+            status=400,
+        )
+
+    if boarding_stop_id and alighting_stop_id:
+
+        try:
+            boarding_stop_id = int(boarding_stop_id)
+            alighting_stop_id = int(alighting_stop_id)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "El tramo seleccionado es inválido.",
+                    "renewed": 0,
+                    "code": "INVALID_SEGMENT",
+                },
+                status=400,
+            )
+
+        boarding_stop = (
+            TripStop.objects
+            .filter(
+                pk=boarding_stop_id,
+                trip=trip,
+            )
+            .first()
+        )
+
+        alighting_stop = (
+            TripStop.objects
+            .filter(
+                pk=alighting_stop_id,
+                trip=trip,
+            )
+            .first()
+        )
+
+        if boarding_stop is None or alighting_stop is None:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "El tramo no pertenece a este viaje.",
+                    "renewed": 0,
+                    "code": "INVALID_SEGMENT",
+                },
+                status=400,
+            )
+
+    else:
+        # Fallback: primera y última parada del viaje
+        trip_stops = list(
+            TripStop.objects
+            .filter(trip=trip)
+            .order_by("order")
+        )
+
+        if len(trip_stops) < 2:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "El viaje no tiene un recorrido válido.",
+                    "renewed": 0,
+                    "code": "INVALID_SEGMENT",
+                },
+                status=400,
+            )
+
+        boarding_stop = trip_stops[0]
+        alighting_stop = trip_stops[-1]
+
+    if boarding_stop.order >= alighting_stop.order:
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "El origen debe estar antes que el destino.",
+                "renewed": 0,
+                "code": "INVALID_SEGMENT",
+            },
+            status=400,
+        )
+
     now = timezone.now()
     new_expiry = now + timedelta(minutes=10)
 
@@ -6524,6 +7053,8 @@ def renew_hold(request, trip_id):
                     session_key=session_key,
                     active=True,
                     expires_at__gt=now,
+                    boarding_stop=boarding_stop,
+                    alighting_stop=alighting_stop,
                 )
                 .values("id", "seat_id")
                 .order_by("seat_id", "id")
@@ -6582,8 +7113,14 @@ def renew_hold(request, trip_id):
                         session_key=session_key,
                         active=True,
                         expires_at__gt=now,
+                        boarding_stop=boarding_stop,
+                        alighting_stop=alighting_stop,
                     )
-                    .select_related("seat")
+                    .select_related(
+                        "seat",
+                        "boarding_stop",
+                        "alighting_stop",
+                    )
                     .order_by("seat_id", "id")
             )
 
@@ -6599,34 +7136,38 @@ def renew_hold(request, trip_id):
                 )
 
             # -------------------------------------------------
-            # 4. No renovar holds cuyo asiento ya fue vendido
+            # 4. No renovar holds cuyo TRAMO ya fue vendido
             # -------------------------------------------------
-            locked_seat_ids = [
-                hold.seat_id
-                for hold in holds
-            ]
-
-            sold_seat_ids = set(
-                Ticket.objects.filter(
-                    trip=trip,
-                    seat_id__in=locked_seat_ids,
-                ).values_list(
-                    "seat_id",
-                    flat=True,
-                )
-            )
-
             renewable_holds = []
             sold_hold_ids = []
 
             for hold in holds:
-                if hold.seat_id in sold_seat_ids:
+
+                # Compatibilidad defensiva con holds antiguos.
+                if (
+                    hold.boarding_stop_id is None
+                    or hold.alighting_stop_id is None
+                ):
+                    conflict = Ticket.objects.filter(
+                        trip=trip,
+                        seat_id=hold.seat_id,
+                    ).exists()
+
+                else:
+                    conflict = Ticket.objects.filter(
+                        trip=trip,
+                        seat_id=hold.seat_id,
+                        boarding_stop__order__lt=hold.alighting_stop.order,
+                        alighting_stop__order__gt=hold.boarding_stop.order,
+                    ).exists()
+
+                if conflict:
                     sold_hold_ids.append(hold.id)
                 else:
                     renewable_holds.append(hold)
 
-            # Si por alguna inconsistencia un asiento ya fue vendido,
-            # desactivar el hold residual.
+            # Si el tramo reservado ya fue vendido,
+            # desactivar únicamente ese hold residual.
             if sold_hold_ids:
                 SeatHold.objects.filter(
                     id__in=sold_hold_ids,
@@ -6658,6 +7199,8 @@ def renew_hold(request, trip_id):
                 trip=trip,
                 session_key=session_key,
                 active=True,
+                boarding_stop=boarding_stop,
+                alighting_stop=alighting_stop,
             ).update(
                 expires_at=new_expiry
             )

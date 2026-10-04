@@ -25,8 +25,8 @@ errorlog = "/var/log/gunicorn/error.log"
 loglevel = "info"
 
 # Security
-user = "www-data"
-group = "www-data"
+# user = "ubuntu"  # gestionado por systemd
+# group = "ubuntu"  # gestionado por systemd
 
 # Process naming
 proc_name = "bus_tickets"

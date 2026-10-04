@@ -63,3 +63,23 @@ coordinator.zip
 archivos_bus_actuales.zip
 archivos_bus_actuales.zip
 archivos_bus_actuales.zip
+
+# ============================================================
+# Backups locales (NO subir a GitHub)
+# ============================================================
+*_backup_*.py
+*_backup_*.html
+*_backup_*.json
+*_backup_*.txt
+_backups_historicos/
+
+# Archivos .env de backup o temporales
+.env.backup*
+.env.backup_*
+.env.*.bak
+.env.*~
+
+# Archivos temporales del editor
+*.tmp
+*.bak
+*.orig

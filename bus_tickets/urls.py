@@ -1,49 +1,21 @@
-# ============================================================================
-# URLS CONFIGURATION - SEGURO
-# ============================================================================
-import os
-import secrets
-import string
-import warnings
-from django.contrib import admin
-from django.urls import path, include
-from django.contrib.auth.views import LoginView, LogoutView
+# bus_tickets/urls.py
+
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import Http404
+from django.contrib import admin
+from django.contrib.auth.views import LoginView, LogoutView
 from django.shortcuts import redirect
+from django.urls import include, path
+
 from booking.views import dashboard_redirect
-from client_portal.views import home as client_home
 
-# Configuración de URL del admin desde variable de entorno
-def get_admin_url() -> str:
-    """Obtiene la URL del admin desde variables de entorno o genera una aleatoria."""
-    admin_url = os.getenv("DJANGO_ADMIN_URL", "").strip()
-    
-    if admin_url:
-        # Asegurar que la URL termine con '/'
-        if not admin_url.endswith('/'):
-            admin_url += '/'
-        return admin_url
-    
-    # En desarrollo, usar una URL por defecto
-    if settings.DEBUG:
-        return 'admin-secreto/'
-    
-    # En producción, generar una URL aleatoria si no está configurada
-    random_suffix = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(16))
-    admin_path = f'admin-{random_suffix}/'
-    
-    warnings.warn(
-        f"⚠️ DJANGO_ADMIN_URL no está configurada. Usando URL generada: {admin_path}. "
-        "Se recomienda establecer esta URL en variables de entorno.",
-        RuntimeWarning
-    )
-    
-    return admin_path
 
-# Obtener URL del admin
-ADMIN_URL = get_admin_url()
+# ============================================================================
+# CONFIGURACIÓN ADMIN
+# ============================================================================
+
+ADMIN_URL = getattr(settings, "ADMIN_URL", "admin/")
+
 
 # ============================================================================
 # ENTRADA PRINCIPAL SEGÚN DOMINIO
@@ -51,26 +23,24 @@ ADMIN_URL = get_admin_url()
 
 def root_entry(request):
     """
-    Entrada principal según el dominio.
-
-    - cejer.buspasss.online:
-      muestra directamente el portal público de Cejer.
+    Entrada principal del sistema.
 
     - portena.online / www.portena.online:
-      redirige al portal público de La Porteña.
+      redirige al portal público de Buses La Porteña.
 
-    - buspasss.online y demás dominios:
+    - buspasss.online y demás dominios internos:
       conserva el login del sistema.
     """
+
     host = request.get_host().split(":")[0].lower()
 
-    if host == "cejer.buspasss.online":
-        return client_home(request)
-
-    if host in {
+    public_domains = {
         "portena.online",
         "www.portena.online",
-    }:
+	"cejer.buspasss.online",
+    }
+
+    if host in public_domains:
         return redirect("client_portal:home")
 
     return LoginView.as_view(
@@ -80,67 +50,86 @@ def root_entry(request):
 
 
 # ============================================================================
-# MIDDLEWARE ADICIONAL PARA SEGURIDAD DEL ADMIN
-# ============================================================================
-class AdminSecurityMiddleware:
-    """Middleware que añade capa adicional de seguridad al admin."""
-    
-    def __init__(self, get_response):
-        self.get_response = get_response
-    
-    def __call__(self, request):
-        response = self.get_response(request)
-        
-        # Verificar si la solicitud es para el admin
-        if request.path.startswith(f'/{ADMIN_URL}'):
-            # Añadir headers de seguridad adicionales
-            response['X-Robots-Tag'] = 'noindex, nofollow'
-            response['X-Content-Type-Options'] = 'nosniff'
-            response['X-Frame-Options'] = 'DENY'
-            
-            # Verificar IP en producción
-            if not settings.DEBUG:
-                client_ip = self.get_client_ip(request)
-                allowed_ips = os.getenv('ADMIN_ALLOWED_IPS', '').split(',')
-                if allowed_ips and client_ip not in allowed_ips:
-                    raise Http404("Página no encontrada")
-        
-        return response
-    
-    def get_client_ip(self, request):
-        """Obtiene la IP del cliente considerando proxies."""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            return x_forwarded_for.split(',')[0].strip()
-        return request.META.get('REMOTE_ADDR')
-
-# ============================================================================
 # URL PATTERNS
 # ============================================================================
+
 urlpatterns = [
-    # Login/Logout
-    path('', root_entry, name='login'),
-    path('logout/', LogoutView.as_view(next_page='login'), name='logout'),
-    path('dashboard/', dashboard_redirect, name='dashboard_redirect'),
-    
-    # Admin con URL configurable
-    path(ADMIN_URL, admin.site.urls),
-    
-    # Apps
-    path('pos/', include('booking.urls')),
-    path('coordinator/', include('coordinator.urls')),
-    path('client/', include('client_portal.urls')),
+    # ------------------------------------------------------------------------
+    # LOGIN / LOGOUT
+    # ------------------------------------------------------------------------
+
+    path(
+        "",
+        root_entry,
+        name="login",
+    ),
+
+    path(
+        "logout/",
+        LogoutView.as_view(
+            next_page="login",
+        ),
+        name="logout",
+    ),
+
+    path(
+        "dashboard/",
+        dashboard_redirect,
+        name="dashboard_redirect",
+    ),
+
+    # ------------------------------------------------------------------------
+    # DJANGO ADMIN
+    # ------------------------------------------------------------------------
+
+    path(
+        ADMIN_URL,
+        admin.site.urls,
+    ),
+
+    # ------------------------------------------------------------------------
+    # APPS
+    # ------------------------------------------------------------------------
+
+    path(
+        "pos/",
+        include("booking.urls"),
+    ),
+
+    path(
+        "coordinator/",
+        include("coordinator.urls"),
+    ),
+
+    path(
+        "client/",
+        include("client_portal.urls"),
+    ),
 ]
 
-# URLs adicionales en desarrollo
+
+# ============================================================================
+# STATIC / MEDIA EN DESARROLLO
+# ============================================================================
+
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(
+        settings.STATIC_URL,
+        document_root=settings.STATIC_ROOT,
+    )
+
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.MEDIA_ROOT,
+    )
+
 
 # ============================================================================
 # ERROR HANDLING PERSONALIZADO
 # ============================================================================
-# Manejadores de error personalizados (descomentar si existen las vistas)
-handler404 = 'bus_tickets.views.custom_404'
-# handler500 = 'booking.views.error_500'
-# handler403 = 'booking.views.error_403'
+
+handler404 = "bus_tickets.views.custom_404"
+
+# Descomentar solamente si existen estas vistas:
+# handler500 = "booking.views.error_500"
+# handler403 = "booking.views.error_403"

@@ -418,20 +418,57 @@
 
                 <div class="row mb-4">
                     <div class="col-md-2">
-                        <label class="form-label fw-semibold">Pisos</label>
-                        <select name="floors" id="id_floors" class="form-select">
-                            <option value="1" {% if bus.floors == 1 %}selected{% endif %}>1 Piso</option>
-                            <option value="2" {% if bus.floors == 2 %}selected{% endif %}>2 Pisos</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-semibold">Filas piso inf.</label>
-                        <input type="number" name="rows_lower" id="id_rows_lower" value="{{ bus.rows_lower|default:5 }}" class="form-control">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-semibold">Filas piso sup.</label>
-                        <input type="number" name="rows_upper" id="id_rows_upper" value="{{ bus.rows_upper|default:0 }}" class="form-control">
-                    </div>
+    <label class="form-label fw-semibold">Pisos</label>
+
+    <select
+        name="floors"
+        id="id_floors"
+        class="form-select"
+        tabindex="-1"
+        style="pointer-events:none; background-color:#e9ecef;"
+        title="La cantidad de pisos la define la plantilla seleccionada"
+    >
+        <option value="1" {% if bus.floors == 1 %}selected{% endif %}>1 Piso</option>
+        <option value="2" {% if bus.floors == 2 %}selected{% endif %}>2 Pisos</option>
+    </select>
+
+    <div class="form-text">
+        Definido por la plantilla.
+    </div>
+</div>
+
+<!-- Valores reales que Django guardará -->
+<input
+    type="hidden"
+    name="rows_lower"
+    id="id_rows_lower"
+    value="{{ bus.rows_lower|default:5 }}"
+>
+
+<input
+    type="hidden"
+    name="rows_upper"
+    id="id_rows_upper"
+    value="{{ bus.rows_upper|default:0 }}"
+>
+
+<div class="col-md-2">
+    <label class="form-label fw-semibold" id="activeRowsLabel">
+        Filas Piso 1
+    </label>
+
+    <input
+        type="number"
+        id="id_rows_active"
+        min="1"
+        value="{{ bus.rows_lower|default:5 }}"
+        class="form-control"
+    >
+
+    <div class="form-text">
+        Corresponde al piso seleccionado abajo.
+    </div>
+</div>
                     <div class="col-md-2">
                         <label class="form-label fw-semibold">Distribución Columnas</label>
                         <select name="cols" id="id_cols" class="form-select">
@@ -741,10 +778,12 @@
 
         if (!template) {
             updateDeckTabsVisibility();
+            syncActiveRowsControl();
             render();
             return;
         }
 
+        // La plantilla define la cantidad fisica de pisos.
         floorsInput.value = String(template.floors || 1);
         rowsLowerInput.value = String(template.rows_lower || 1);
         rowsUpperInput.value = String(template.rows_upper || 0);
@@ -755,9 +794,15 @@
         rowsUpper = parseInt(rowsUpperInput.value) || 0;
         cols = parseInt(colsInput.value) || 4;
 
+        // Si se cambia a una plantilla de un piso, volver de forma segura al Piso 1.
+        if (floors !== 2 && currentDeck === 2) {
+            currentDeck = 1;
+        }
+
         ensureSizes();
         initializeGenericTwoPlusAisleTwo(template);
         updateDeckTabsVisibility();
+        syncActiveRowsControl();
         render();
     }
     
@@ -767,6 +812,8 @@
     const floorsInput = document.getElementById('id_floors');
     const rowsLowerInput = document.getElementById('id_rows_lower');
     const rowsUpperInput = document.getElementById('id_rows_upper');
+    const activeRowsInput = document.getElementById('id_rows_active');
+    const activeRowsLabel = document.getElementById('activeRowsLabel');
     const colsInput = document.getElementById('id_cols');
     
     let layoutLower = safeParse(document.getElementById('id_layout_lower').value);
@@ -784,6 +831,25 @@
     let currentTool = 'L';
     let currentService = 'semi_cama';
     let currentDeck = 1;
+    function syncActiveRowsControl() {
+    if (!activeRowsInput) return;
+
+    if (currentDeck === 1) {
+        activeRowsInput.value = rowsLower;
+        activeRowsInput.min = 1;
+
+        if (activeRowsLabel) {
+            activeRowsLabel.textContent = 'Filas Piso 1';
+        }
+    } else {
+        activeRowsInput.value = rowsUpper;
+        activeRowsInput.min = 1;
+
+        if (activeRowsLabel) {
+            activeRowsLabel.textContent = 'Filas Piso 2';
+        }
+    }
+}
     let painting = false;
     let lastPaintedIndex = -1;
     let editModal = null;
@@ -1135,35 +1201,70 @@ cell.appendChild(img);
         document.querySelector('.service-btn[data-service="semi_cama"]').classList.add('active');
     
         document.querySelectorAll('.deck-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                currentDeck = parseInt(tab.dataset.deck);
-                document.querySelectorAll('.deck-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                render();
-            });
-        });
+    tab.addEventListener('click', () => {
+        const targetDeck = parseInt(tab.dataset.deck);
+
+        // No permitir Piso 2 en buses de un solo piso.
+        if (targetDeck === 2 && floors !== 2) {
+            return;
+        }
+
+        currentDeck = targetDeck;
+
+        document.querySelectorAll('.deck-tab').forEach(
+            t => t.classList.remove('active')
+        );
+
+        tab.classList.add('active');
+
+        syncActiveRowsControl();
+        render();
+    });
+});
         document.querySelector('.deck-tab[data-deck="1"]').classList.add('active');
         const renumberBtn = document.getElementById('renumberBtn');
         if (renumberBtn) renumberBtn.addEventListener('click', renumberSeats);
     
         updateDeckTabsVisibility();
+        syncActiveRowsControl();
     }
     
     function initDimensionListeners() {
         function updateDimensions() {
-            floors = parseInt(floorsInput.value);
-            rowsLower = parseInt(rowsLowerInput.value);
-            rowsUpper = parseInt(rowsUpperInput.value);
-            cols = parseInt(colsInput.value);
+            floors = parseInt(floorsInput.value) || 1;
+            rowsLower = parseInt(rowsLowerInput.value) || 1;
+            rowsUpper = parseInt(rowsUpperInput.value) || 0;
+            cols = parseInt(colsInput.value) || 4;
+
             ensureSizes();
+            updateDeckTabsVisibility();
+            syncActiveRowsControl();
             render();
         }
-        floorsInput.addEventListener('change', () => {
-            updateDimensions();
-            updateDeckTabsVisibility();
-        });
-        rowsLowerInput.addEventListener('input', updateDimensions);
-        rowsUpperInput.addEventListener('input', updateDimensions);
+
+        // Campo unico visible: modifica las filas del piso que se esta editando.
+        if (activeRowsInput) {
+            activeRowsInput.addEventListener('input', () => {
+                let value = parseInt(activeRowsInput.value);
+
+                if (!Number.isFinite(value) || value < 1) {
+                    value = 1;
+                }
+
+                if (currentDeck === 1) {
+                    rowsLower = value;
+                    rowsLowerInput.value = String(value);
+                } else {
+                    rowsUpper = value;
+                    rowsUpperInput.value = String(value);
+                }
+
+                ensureSizes();
+                render();
+            });
+        }
+
+        // La cantidad de pisos la controla la plantilla seleccionada.
         colsInput.addEventListener('change', updateDimensions);
 
         if (layoutTemplateSelect) {
@@ -1216,6 +1317,7 @@ cell.appendChild(img);
         initDimensionListeners();
         initSubmit();
         updateDeckTabsVisibility();
+        syncActiveRowsControl();
         render();
     });
 </script>

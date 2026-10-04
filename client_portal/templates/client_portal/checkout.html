@@ -562,6 +562,14 @@
                         <input type="hidden" id="appliedCouponDiscount" name="applied_coupon_discount">
                         <input type="hidden" id="appliedCouponType" name="applied_coupon_type">
 
+                        <!-- ========================================= -->
+                        <!-- FASE TRAMOS: paradas del segmento elegido -->
+                        <!-- ========================================= -->
+                        <input type="hidden" name="boarding_stop"
+                               value="{{ boarding_stop_id|default:'' }}">
+                        <input type="hidden" name="alighting_stop"
+                               value="{{ alighting_stop_id|default:'' }}">
+
                         <!-- Tabla de pasajeros -->
                         <div class="mb-4">
                             <h6 class="section-title">IDA</h6>

@@ -550,51 +550,87 @@
                     <div class="trip-card-inner">
                         <div class="row align-items-center">
                             <!-- Hora de salida -->
-                            <div class="col-md-2 text-center text-md-start mb-3 mb-md-0">
-                                <div class="trip-time">{{ trip.departure|time:"H:i" }}</div>
-                                <div class="trip-date">{{ trip.departure|date:"d M Y" }}</div>
-                            </div>
+<div class="col-md-2 text-center text-md-start mb-3 mb-md-0">
+    <div class="small text-uppercase fw-bold text-muted mb-1">
+        <i class="fas fa-clock me-1"></i> Salida
+    </div>
 
-                            <!-- Empresa y ruta -->
-                            <div class="col-md-4 mb-3 mb-md-0">
-                                <div class="d-flex align-items-center gap-3">
-                                    <div class="company-badge">
-                                        {{ trip.bus.company.name|slice:":1"|default:"C" }}
-                                    </div>
-                                    <div>
-                                        <div class="route-destinations">{{ origin }} → {{ destination }}</div>
-                                        <div class="route-terminals">
-                                            {{ trip.route.origin.terminal_name|default:"Terminal" }} → {{ trip.route.destination.terminal_name|default:"Terminal" }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+    <div class="fw-bold"
+         style="font-size: 1.8rem; line-height: 1; color: var(--brand-blue, #0B3B78);">
+        {{ trip.departure_time }}
+    </div>
 
-                            <!-- Disponibilidad y servicio -->
-                            <div class="col-md-3 mb-3 mb-md-0">
-                                <div class="d-flex flex-wrap gap-2">
-                                    <span class="seat-badge">
-                                        <i class="fas fa-chair"></i> {{ trip.free_seats }} asientos
-                                    </span>
-                                    {% if trip.service_type == 'cama' %}
-                                    <span class="service-badge service-cama">
-                                        <i class="fas fa-bed"></i> Salón Cama
-                                    </span>
-                                    {% else %}
-                                    <span class="service-badge service-semi">
-                                        <i class="fas fa-chair"></i> Semi Cama
-                                    </span>
-                                    {% endif %}
-                                </div>
-                            </div>
+    <div class="small text-muted mt-1">
+        {{ trip.departure_date|date:"d M Y" }}
+    </div>
+</div>
 
+<!-- Empresa, ruta y terminales -->
+<div class="col-md-4 mb-3 mb-md-0">
+    <div class="d-flex align-items-start gap-3">
+
+        <div class="company-badge">
+            {{ trip.bus_company|slice:":1"|default:"C" }}
+        </div>
+
+        <div>
+            <div class="route-destinations">
+                {{ origin }} → {{ destination }}
+            </div>
+
+            <div class="route-terminals mt-1">
+                <i class="fas fa-map-marker-alt me-1"></i>
+                {{ trip.origin_terminal }}
+                →
+                {{ trip.destination_terminal }}
+            </div>
+
+            <div class="small text-muted mt-2">
+                <i class="fas fa-bus me-1"></i>
+                Bus {{ trip.bus_plate }}
+
+                <span class="mx-2">•</span>
+
+                <i class="fas fa-flag-checkered me-1"></i>
+                Llegada {{ trip.arrival_time }} hrs
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Disponibilidad y servicio -->
+<div class="col-md-3 mb-3 mb-md-0">
+    <div class="d-flex flex-wrap gap-2">
+
+        <span class="seat-badge">
+            <i class="fas fa-chair"></i>
+            {{ trip.free_seats }} asientos
+        </span>
+
+        {% if trip.service_type == 'cama' %}
+        <span class="service-badge service-cama">
+            <i class="fas fa-bed"></i>
+            Salón Cama
+        </span>
+        {% else %}
+        <span class="service-badge service-semi">
+            <i class="fas fa-chair"></i>
+            Semi Cama
+        </span>
+        {% endif %}
+
+    </div>
+</div>
+
+                
+                            
                             <!-- Precio y acción -->
                             <div class="col-md-3 text-md-end">
                                 <div>
                                     <span class="price-amount">${{ trip.price|floatformat:0|intcomma }}</span>
                                     <span class="price-label">por persona</span>
                                 </div>
-                                <a href="/client/seatmap/{{ trip.id }}/{% if return_date %}?return_date={{ return_date }}{% endif %}" class="btn-select-trip mt-2">
+                                <a href="/client/seatmap/{{ trip.id }}/?boarding_stop={{ trip.boarding_stop_id }}&alighting_stop={{ trip.alighting_stop_id }}{% if return_date %}&return_date={{ return_date }}{% endif %}" class="btn-select-trip mt-2">
                                     <i class="fas fa-check-circle me-2"></i>Seleccionar Asientos
                                 </a>
                             </div>

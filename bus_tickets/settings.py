@@ -1,6 +1,7 @@
 # ============================================================================
 # ENVIRONMENT VARIABLES
 # ============================================================================
+import logging
 import os
 import sys
 import warnings
@@ -605,6 +606,14 @@ if os.getenv('ENABLE_METRICS', 'False') == 'True':
 # ============================================================================
 # INICIO
 # ============================================================================
-print(f"✅ Sistema iniciado en modo {'DESARROLLO' if DEBUG else 'PRODUCCIÓN'}")
+# ============================================================
+# LOG DE ARRANQUE (no expone DEBUG en consola pública)
+# ============================================================
+_logger = logging.getLogger(__name__)
+_logger.info(
+    "Sistema iniciado. DEBUG=%s",
+    DEBUG,
+)
+
 print(f"📂 Directorio de logs: {LOG_DIR}")
 print(f"🔑 SECRET_KEY {'✅ CONFIGURADA' if SECRET_KEY else '❌ FALTANTE'}")

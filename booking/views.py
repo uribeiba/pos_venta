@@ -410,6 +410,8 @@ def _build_trip_grid(
     trip: Trip,
     current_user=None,
     session_key=None,
+    boarding_stop=None,
+    alighting_stop=None,
 ):
     """
     Construye los grids de asientos de un viaje.
@@ -486,7 +488,18 @@ def _build_trip_grid(
     sold_subq = Ticket.objects.filter(
         trip=trip,
         seat=OuterRef("pk"),
-    ).values("pk")
+    )
+
+    if (
+        boarding_stop is not None
+        and alighting_stop is not None
+    ):
+        sold_subq = sold_subq.filter(
+            boarding_stop__order__lt=alighting_stop.order,
+            alighting_stop__order__gt=boarding_stop.order,
+        )
+
+    sold_subq = sold_subq.values("pk")
 
     # ============================================================
     # 3. SUBQUERY: CUALQUIER HOLD ACTIVO
@@ -497,7 +510,18 @@ def _build_trip_grid(
         seat=OuterRef("pk"),
         active=True,
         expires_at__gt=now,
-    ).values("pk")
+    )
+
+    if (
+        boarding_stop is not None
+        and alighting_stop is not None
+    ):
+        hold_active_subq = hold_active_subq.filter(
+            boarding_stop__order__lt=alighting_stop.order,
+            alighting_stop__order__gt=boarding_stop.order,
+        )
+
+    hold_active_subq = hold_active_subq.values("pk")
 
     # ============================================================
     # 4. DETERMINAR PROPIETARIO ACTUAL
@@ -557,7 +581,18 @@ def _build_trip_grid(
             seat=OuterRef("pk"),
             active=True,
             expires_at__gt=now,
-        ).values("pk")
+        )
+
+        if (
+            boarding_stop is not None
+            and alighting_stop is not None
+        ):
+            hold_by_owner_subq = hold_by_owner_subq.filter(
+                boarding_stop__order__lt=alighting_stop.order,
+                alighting_stop__order__gt=boarding_stop.order,
+            )
+
+        hold_by_owner_subq = hold_by_owner_subq.values("pk")
 
     # ============================================================
     # 6. CONSTRUIR PRIORIDAD DE ESTADOS

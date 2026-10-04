@@ -756,7 +756,7 @@
     <div class="trip-header-card">
         <h2>
             <i class="fas fa-map-marker-alt" style="color: #f5821f;"></i>
-            {{ trip.route.origin.name }} → {{ trip.route.destination.name }}
+            {{ boarding_stop.city.name }} → {{ alighting_stop.city.name }}
         </h2>
         <div class="trip-meta">
             <span><i class="far fa-calendar-alt"></i> {{ trip.departure|date:"l d M, H:i" }} hrs</span>
@@ -1047,6 +1047,8 @@
     });
 
     const tripId = {{ trip.id }};
+    const boardingStopId = Number("{{ boarding_stop_id|default:'0' }}");
+    const alightingStopId = Number("{{ alighting_stop_id|default:'0' }}");
     const unitPrice = parseFloat("{{ trip.route.base_price|default:'0' }}");
     const cols = parseInt("{{ cols|default:5 }}") || 5;
     let gridLower = {{ grid_lower|safe }};
@@ -1246,7 +1248,9 @@
                 JSON.stringify({
                     seat_number: seatNumber,
                     deck: deck,
-                    release: true
+                    release: true,
+                    boarding_stop: boardingStopId,
+                    alighting_stop: alightingStopId
                 }),
 
             contentType:
@@ -1709,7 +1713,9 @@
 
             data: JSON.stringify({
                 seat_number: number,
-                deck: deck
+                deck: deck,
+                boarding_stop: boardingStopId,
+                alighting_stop: alightingStopId
             }),
 
             contentType: 'application/json',
@@ -1729,6 +1735,8 @@
                     if (!alreadyStored) {
                         selectedSeats.push({
                             tripId: Number(tripId),
+                            boardingStopId: Number(boardingStopId),
+                            alightingStopId: Number(alightingStopId),
                             deck: Number(deck),
                             number: String(number),
                             price: Number(price)
@@ -1951,7 +1959,10 @@
         if (selectedSeats.length === 0) return;
         sessionStorage.setItem('selectedSeats', JSON.stringify(selectedSeats));
         sessionStorage.setItem('tripId', tripId);
-        window.location.href = `/client/checkout/${tripId}/`;
+        window.location.href =
+            `/client/checkout/${tripId}/` +
+            `?boarding_stop=${boardingStopId}` +
+            `&alighting_stop=${alightingStopId}`;
     });
 
     $(document).ready(function() {
@@ -2014,6 +2025,11 @@
             $.ajax({
                 url: `/client/api/hold/renew/${tripId}/`,
                 type: 'POST',
+                data: JSON.stringify({
+                    boarding_stop: boardingStopId,
+                    alighting_stop: alightingStopId
+                }),
+                contentType: 'application/json',
                 success: function(res) {
                     if (res.success && res.new_expiry) {
                         holdsExpireAt = res.new_expiry;
