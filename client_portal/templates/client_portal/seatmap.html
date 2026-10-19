@@ -17,7 +17,7 @@
         padding: 20px;
         margin-bottom: 24px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        border-left: 4px solid #f5821f;
+        border-left: 4px solid var(--primary);
     }
 
     .trip-header-card h2 {
@@ -36,7 +36,7 @@
 
     .trip-header-card .trip-meta i {
         margin-right: 6px;
-        color: #f5821f;
+        color: var(--primary);
     }
 
     /* Layout principal */
@@ -76,7 +76,7 @@
     }
 
     .deck-tab-btn.active {
-        background: #f5821f;
+        background: var(--primary);
         color: white;
     }
 
@@ -213,22 +213,22 @@
         border: 1px solid rgba(0,0,0,0.08);
     }
 
-    /* ===== ESTADO: SELECCIONADO (NARANJA) ===== */
+    /* ===== ESTADO: SELECCIONADO (COLOR EMPRESA) ===== */
     .status-my-hold img {
-        filter: drop-shadow(0 0 10px rgba(245, 130, 31, 0.5));
+        filter: drop-shadow(0 0 10px var(--primary));
         animation: pulse-glow 1.5s ease-in-out infinite;
     }
 
     @keyframes pulse-glow {
-        0%, 100% { filter: drop-shadow(0 0 5px rgba(245, 130, 31, 0.3)); }
-        50% { filter: drop-shadow(0 0 15px rgba(245, 130, 31, 0.7)); }
+        0%, 100% { filter: drop-shadow(0 0 5px var(--primary)); }
+        50% { filter: drop-shadow(0 0 15px var(--primary)); }
     }
 
     .status-my-hold .seat-number {
         color: #FFFFFF;
-        background: #f5821f;
-        border: 1px solid #d97414;
-        box-shadow: 0 0 12px rgba(245, 130, 31, 0.4);
+        background: var(--primary);
+        border: 1px solid rgba(0,0,0,0.2);
+        box-shadow: 0 0 12px var(--primary);
     }
 
     /* ===== ESTADO: OCUPADO (ROJO) ===== */
@@ -303,8 +303,8 @@
     }
 
     .legend-color.my-hold {
-        background: #f5821f;
-        border-color: #f5821f;
+        background: var(--primary);
+        border-color: var(--primary);
         animation: pulse-legend 1.5s ease-in-out infinite;
     }
 
@@ -344,7 +344,7 @@
         font-weight: 700;
         margin-bottom: 16px;
         padding-bottom: 12px;
-        border-bottom: 2px solid #f5821f;
+        border-bottom: 2px solid var(--primary);
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -352,7 +352,7 @@
 
     .cart-panel h4 .seat-counter {
         font-size: 0.8rem;
-        background: #f5821f;
+        background: var(--primary);
         color: white;
         padding: 2px 12px;
         border-radius: 40px;
@@ -375,7 +375,7 @@
     }
 
     .selected-seats-list::-webkit-scrollbar-thumb {
-        background: #f5821f;
+        background: var(--primary);
         border-radius: 10px;
     }
 
@@ -400,7 +400,7 @@
 
     .selected-seat-item .seat-number-display {
         font-weight: 600;
-        color: #f5821f;
+        color: var(--primary);
         font-size: 0.95rem;
     }
 
@@ -445,11 +445,11 @@
     }
 
     .total-row .total-value {
-        color: #f5821f;
+        color: var(--primary);
     }
 
     .btn-continuar {
-        background: #f5821f;
+        background: var(--primary);
         color: white;
         border: none;
         width: 100%;
@@ -463,9 +463,9 @@
     }
 
     .btn-continuar:hover:not(:disabled) {
-        background: #e06e10;
+        filter: brightness(0.9);
         transform: translateY(-2px);
-        box-shadow: 0 4px 16px rgba(245, 130, 31, 0.3);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
     }
 
     .btn-continuar:disabled {
@@ -485,13 +485,13 @@
 
     .timer {
         font-size: 0.75rem;
-        color: #e67e22;
+        color: var(--primary);
         text-align: center;
         margin-top: 12px;
         padding: 8px;
-        background: #fff7f0;
+        background: #f8fafc;
         border-radius: 8px;
-        border: 1px solid #fed7aa;
+        border: 1px solid #e2e8f0;
     }
 
     .timer i {
@@ -708,9 +708,9 @@
         padding: 0 13px;
         margin: 14px auto 2px;
         border-radius: 999px;
-        background: #fff7ed;
-        border: 1px solid #fed7aa;
-        color: #f5821f;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        color: var(--primary);
         font-weight: 800;
     }
 
@@ -719,14 +719,14 @@
         min-height: 48px;
         border: 0;
         border-radius: 14px;
-        background: #f5821f;
+        background: var(--primary);
         color: #fff;
         font-weight: 800;
         transition: transform .15s ease, filter .15s ease;
     }
 
     #seatUnavailableModal .btn-choose-another:hover {
-        filter: brightness(.96);
+        filter: brightness(.9);
         color: #fff;
     }
 
@@ -755,7 +755,7 @@
     <!-- Cabecera del viaje -->
     <div class="trip-header-card">
         <h2>
-            <i class="fas fa-map-marker-alt" style="color: #f5821f;"></i>
+            <i class="fas fa-map-marker-alt" style="color: var(--primary);"></i>
             {{ boarding_stop.city.name }} → {{ alighting_stop.city.name }}
         </h2>
         <div class="trip-meta">
@@ -972,15 +972,6 @@
 
 
     function getCsrfToken() {
-        /*
-         * 1) Camino normal: cookie csrftoken.
-         * 2) Fallback seguro: input generado por {% csrf_token %}.
-         *
-         * El fallback es importante para:
-         * - primera visita
-         * - ventana incógnita
-         * - navegador sin cookie CSRF previa
-         */
         const cookieToken = getCookie('csrftoken');
 
         if (cookieToken) {
@@ -1001,7 +992,6 @@
 
 
     function sameOrigin(url) {
-        // Las URL relativas pertenecen al mismo origen.
         if (!/^(https?:)?\/\//i.test(url)) {
             return true;
         }
@@ -1083,9 +1073,6 @@
             `Reserva expira en <strong>${remaining}</strong>`
         );
 
-        // =====================================================
-        // RESERVA EXPIRADA
-        // =====================================================
         if (remaining === "00:00") {
 
             if (timerInterval) {
@@ -1095,8 +1082,6 @@
 
             holdsExpireAt = null;
 
-            // Limpiar únicamente el estado local.
-            // El backend/Celery mantiene la verdad definitiva.
             selectedSeats = [];
 
             sessionStorage.removeItem(
@@ -1128,10 +1113,6 @@
                 }
             );
 
-            /*
-             * Recargar al cerrar el modal para volver a consultar
-             * al backend y reconstruir el estado real del bus.
-             */
             const modalElement =
                 document.getElementById(
                     'seatUnavailableModal'
@@ -1162,9 +1143,6 @@
             return;
         }
 
-        // =====================================================
-        // ÚLTIMO MINUTO
-        // =====================================================
         const parts =
             remaining.split(':');
 
@@ -1256,9 +1234,6 @@
             contentType:
                 'application/json',
 
-            // =================================================
-            // RESPUESTA DEL BACKEND
-            // =================================================
             success: function(res) {
 
                 if (res.success) {
@@ -1295,9 +1270,6 @@
                         }
                     );
 
-                    // =========================================
-                    // SINCRONIZAR sessionStorage
-                    // =========================================
                     if (selectedSeats.length > 0) {
 
                         sessionStorage.setItem(
@@ -1325,9 +1297,6 @@
 
                     updateSelectionPanel();
 
-                    // =========================================
-                    // DETENER TIMER SI YA NO HAY ASIENTOS
-                    // =========================================
                     if (selectedSeats.length === 0) {
 
                         if (timerInterval) {
@@ -1348,9 +1317,6 @@
                     return;
                 }
 
-                // =============================================
-                // HTTP 200 pero success=false
-                // =============================================
                 showSeatUnavailableModal(
                     seatNumber,
                     {
@@ -1372,9 +1338,6 @@
                 );
             },
 
-            // =================================================
-            // ERROR HTTP
-            // =================================================
             error: function(xhr) {
 
                 const response =
@@ -1566,9 +1529,6 @@
         }
     }
 
-    // =========================================================
-    // MODAL PROFESIONAL PARA CONFLICTOS DE ASIENTO
-    // =========================================================
     function showSeatUnavailableModal(
         seatNumber,
         options = {}
@@ -1701,7 +1661,6 @@
                 `.seat-cell[data-number="${number}"][data-deck="${deck}"]`
             );
 
-        // Si ya pertenece a esta sesión, hacer clic lo libera.
         if (isSelected) {
             removeSeat(number, deck);
             return;
@@ -1724,7 +1683,6 @@
 
                 if (res.success) {
 
-                    // Evita duplicar el mismo asiento localmente.
                     const alreadyStored =
                         selectedSeats.some(
                             s =>
@@ -1743,7 +1701,6 @@
                         });
                     }
 
-                    // Mantener selección local sincronizada.
                     sessionStorage.setItem(
                         'selectedSeats',
                         JSON.stringify(selectedSeats)
@@ -1754,7 +1711,6 @@
                         String(tripId)
                     );
 
-                    // Marcar sólo asiento + piso correctos.
                     matchingElements.forEach(el => {
                         el.classList.remove(
                             'status-free',
@@ -1793,7 +1749,6 @@
                     return;
                 }
 
-                // Respuesta 200 pero success=false.
                 showSeatUnavailableModal(
                     number,
                     {
@@ -1813,9 +1768,6 @@
                 const code =
                     response.code || '';
 
-                // =============================================
-                // 409 = conflicto real de disponibilidad
-                // =============================================
                 if (xhr.status === 409) {
 
                     markSeatAsOccupied(
@@ -1842,13 +1794,6 @@
 
                     } else {
 
-                        /*
-                         * HELD_BY_OTHER o cualquier otro
-                         * conflicto de reserva.
-                         *
-                         * No mostramos el mensaje técnico
-                         * del backend al cliente.
-                         */
                         showSeatUnavailableModal(
                             number,
                             {
@@ -1868,9 +1813,6 @@
                     return;
                 }
 
-                // =============================================
-                // 403 = CSRF / sesión
-                // =============================================
                 if (xhr.status === 403) {
 
                     showSeatUnavailableModal(
@@ -1894,9 +1836,6 @@
                     return;
                 }
 
-                // =============================================
-                // 404 = asiento/viaje no encontrado
-                // =============================================
                 if (xhr.status === 404) {
 
                     showSeatUnavailableModal(
@@ -1920,9 +1859,6 @@
                     return;
                 }
 
-                // =============================================
-                // Error genérico / red / servidor
-                // =============================================
                 showSeatUnavailableModal(
                     number,
                     {
@@ -1946,7 +1882,6 @@
         });
     }
 
-    // Cambio entre pisos
     $('.deck-tab-btn').click(function() {
         const deck = $(this).data('deck');
         $('.deck-tab-btn').removeClass('active');
@@ -1973,15 +1908,6 @@
             try {
                 const parsed = JSON.parse(saved);
 
-                /*
-                 * Restaurar selección únicamente si pertenece
-                 * al viaje actual.
-                 *
-                 * Compatibilidad:
-                 * - nueva versión: cada asiento contiene tripId
-                 * - versión anterior: sessionStorage guardaba tripId
-                 *   en una clave separada
-                 */
                 const belongsToCurrentTrip =
                     Array.isArray(parsed) &&
                     parsed.length > 0 &&
@@ -1998,7 +1924,6 @@
                         price: Number(seat.price)
                     }));
                 } else {
-                    // Evita arrastrar asientos de otro viaje.
                     sessionStorage.removeItem('selectedSeats');
                     sessionStorage.removeItem('tripId');
                 }
@@ -2047,11 +1972,6 @@
                     }
                 },
                 error: function(xhr) {
-                    /*
-                     * Si la sesión ya no posee holds activos,
-                     * limpiar la selección local para no mostrar
-                     * butacas falsamente reservadas.
-                     */
                     if (xhr.status === 404 || xhr.status === 409) {
                         selectedSeats = [];
                         sessionStorage.removeItem('selectedSeats');
