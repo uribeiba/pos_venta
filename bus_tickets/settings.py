@@ -180,8 +180,13 @@ def get_cors_allowed_origins() -> list:
     origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
     
     for origin in origins:
-        if not origin.startswith("https://") and not origin.startswith("http://localhost"):
-            raise ValueError(f"En producción, todos los orígenes CORS deben usar HTTPS. Origen inválido: {origin}")
+        # Validar que tenga un esquema válido
+        if not origin.startswith(("http://", "https://")):
+            raise ValueError(f"Origen CORS inválido (debe incluir http:// o https://): {origin}")
+        
+        # Advertir si es HTTP inseguro en producción, pero NO bloquear el arranque
+        if origin.startswith("http://") and not origin.startswith("http://localhost") and not origin.startswith("http://127.0.0.1"):
+            warnings.warn(f"⚠️ CORS usando HTTP inseguro en producción: {origin}. Se recomienda usar HTTPS.", RuntimeWarning)
     
     return origins
 
@@ -217,7 +222,9 @@ def get_csrf_trusted_origins() -> list:
                 f"CSRF_TRUSTED_ORIGINS debe incluir el esquema (http:// o https://). "
                 f"Origen inválido: {origin}"
             )
-    
+        if origin.startswith("http://") and not origin.startswith("http://localhost") and not origin.startswith("http://127.0.0.1"):
+            warnings.warn(f"⚠️ CSRF usando HTTP inseguro en producción: {origin}. Se recomienda usar HTTPS.", RuntimeWarning)
+            
     return origins
 
 CSRF_TRUSTED_ORIGINS = get_csrf_trusted_origins()
