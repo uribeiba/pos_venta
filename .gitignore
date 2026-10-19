@@ -83,3 +83,4 @@ _backups_historicos/
 *.tmp
 *.bak
 *.orig
+client_portal_backup_*
