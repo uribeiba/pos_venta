@@ -593,6 +593,72 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // =========================================================
+    // LÓGICA DE CIUDADES (Evitar seleccionar la misma ida y vuelta)
+    // =========================================================
+    const selectOrigen = document.getElementById('origen');
+    const selectDestino = document.getElementById('destino');
+    const btnSwap = document.getElementById('btnSwap');
+
+    function syncCityOptions() {
+        if (!selectOrigen || !selectDestino) return;
+
+        const origenValue = selectOrigen.value;
+        const destinoValue = selectDestino.value;
+
+        // 1. Primero, habilitar y mostrar todas las opciones en ambos selectores
+        Array.from(selectOrigen.options).forEach(opt => {
+            opt.disabled = false;
+            opt.style.display = '';
+        });
+        Array.from(selectDestino.options).forEach(opt => {
+            opt.disabled = false;
+            opt.style.display = '';
+        });
+
+        // 2. Si hay un Origen seleccionado, ocultarlo en Destino
+        if (origenValue) {
+            Array.from(selectDestino.options).forEach(opt => {
+                if (opt.value === origenValue) {
+                    opt.disabled = true;
+                    opt.style.display = 'none'; // Lo oculta de la lista
+                }
+            });
+        }
+
+        // 3. Si hay un Destino seleccionado, ocultarlo en Origen
+        if (destinoValue) {
+            Array.from(selectOrigen.options).forEach(opt => {
+                if (opt.value === destinoValue) {
+                    opt.disabled = true;
+                    opt.style.display = 'none'; // Lo oculta de la lista
+                }
+            });
+        }
+    }
+
+    // Escuchar los cambios en los selectores
+    if (selectOrigen) selectOrigen.addEventListener('change', syncCityOptions);
+    if (selectDestino) selectDestino.addEventListener('change', syncCityOptions);
+
+    // Lógica para el botón de intercambio de ciudades
+    if (btnSwap) {
+        btnSwap.addEventListener('click', function() {
+            const temp = selectOrigen.value;
+            selectOrigen.value = selectDestino.value;
+            selectDestino.value = temp;
+            
+            // Actualizar las listas después del intercambio
+            syncCityOptions();
+        });
+    }
+
+    // Ejecutar al cargar la página (por si el navegador guardó los valores)
+    syncCityOptions();
+
+    // =========================================================
+    // LÓGICA DE FECHAS
+    // =========================================================
     const ida = document.getElementById('fecha_viaje');
     const vuelta = document.getElementById('fecha_vuelta');
 
