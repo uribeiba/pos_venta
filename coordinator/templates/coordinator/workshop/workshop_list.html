@@ -1,0 +1,65 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% block title %}Talleres{% endblock %}
+{% block content %}
+<div class="container-fluid px-4 py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4 p-4 rounded-4" style="background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);color:#fff">
+        <div>
+            <div class="small text-uppercase fw-bold opacity-75">Taller</div>
+            <h3 class="mb-0 fw-bold"><i class="fas fa-warehouse me-2"></i>Talleres</h3>
+        </div>
+        <a href="{% url 'coordinator:workshop_new' %}" class="btn btn-light"><i class="fas fa-plus me-1"></i>Nuevo taller</a>
+    </div>
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Código</th>
+                        <th>Tipo</th>
+                        <th>Teléfono</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in workshops %}
+                    <tr>
+                        <td class="fw-bold">{{ w.name }}</td>
+                        <td>{{ w.code|default:"—" }}</td>
+                        <td>
+                            {% if w.is_internal %}
+                                <span class="badge bg-primary">Interno</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Externo</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ w.phone|default:"—" }}</td>
+                        <td>
+                            {% if w.is_active %}
+                                <span class="badge bg-success">Activo</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'coordinator:workshop_edit' w.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-warehouse fa-2x mb-2 d-block opacity-25"></i>
+                            No hay talleres registrados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

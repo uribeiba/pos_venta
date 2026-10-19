@@ -1,0 +1,560 @@
+{% extends 'client_portal/base_public.html' %}
+{% load static %}
+
+{% block title %}Buses La Porteña - Desde 1958 | Juntos en cada destino{% endblock %}
+
+{% block extra_css %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,600;0,700;0,800;0,900;1,400;1,700&family=Playfair+Display:ital,wght@0,700;1,400;1,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'client_portal/portena/styles.css' %}">
+
+<style>
+    /*
+     * BUSCADOR MULTIEMPRESA
+     * Los selectores de origen y destino usan las ciudades reales
+     * disponibles para la empresa detectada por dominio.
+     * Este bloque sólo adapta <select> al diseño existente.
+     */
+    .input-group-custom select {
+        border: none;
+        background: transparent;
+        width: 100%;
+        font-weight: 700;
+        color: var(--lp-dark);
+        font-size: 0.95rem;
+        outline: none;
+        cursor: pointer;
+        appearance: auto;
+    }
+
+    .input-group-custom select:invalid {
+        color: var(--lp-muted);
+        font-weight: 600;
+    }
+
+    .input-group-custom select option {
+        color: var(--lp-dark);
+        background: #FFFFFF;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- NAVBAR -->
+    <nav class="navbar navbar-expand-xl fixed-top navbar-laportena" id="mainNavbar">
+        <div class="container">
+            <a class="navbar-brand navbar-brand-logo" href="#inicio" aria-label="Buses La Porteña - Inicio">
+                <img src="{% static 'client_portal/portena/logo-laportena.png' %}" alt="Logo Buses La Porteña" class="brand-mark">
+                <span class="logo-text">
+                    <span class="logo-title">BUSES LA PORTEÑA</span>
+                    <span class="logo-subtitle">DESDE 1958</span>
+                </span>
+            </a>
+
+            <button class="navbar-toggler border-0 text-white" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                <i class="fa-solid fa-bars fa-lg"></i>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarContent">
+                <ul class="navbar-nav mx-auto mb-2 mb-lg-0">
+                    <li class="nav-item"><a class="nav-link active" href="#inicio">Inicio</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#destinos">Destinos</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#horarios">Horarios</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#flota">Nuestra Flota</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#nosotros">Nosotros</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#faq">Preguntas Frecuentes</a></li>
+                </ul>
+
+                <div class="d-flex align-items-center gap-2">
+                    <a href="{% url 'client_portal:my_reservations' %}" class="btn btn-reserve-secondary"><i class="fa-regular fa-bookmark me-1"></i> Mis reservas</a>
+                    <a href="#buscador" class="btn btn-search-nav"><i class="fa-solid fa-magnifying-glass me-1"></i> Buscar pasajes</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HERO SECTION -->
+    <section class="hero-section" id="inicio">
+        <div class="hero-overlay"></div>
+        <div class="container hero-content">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <!--
+                    HERO LIMPIO:
+                    Se eliminó la insignia "Trayectoria · Seguridad · Compromiso"
+                    para dar más aire visual al logo y al título principal.
+                    -->
+<h1 class="hero-title">
+                        Tu próximo destino <br>
+                        <span>comienza aquí.</span>
+                    </h1>
+
+                    <p class="hero-subtitle">
+                        Más de 65 años conectando los caminos, ciudades y familias de Chile con máxima puntualidad y confort visual.
+                    </p>
+
+                    <div class="hero-slogan-box">
+                        <p class="hero-slogan">"Juntos en cada destino."</p>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-3">
+                        <a href="#buscador" class="btn-hero-primary">
+                            <i class="fa-solid fa-ticket me-2"></i> BUSCAR PASAJES
+                        </a>
+                        <a href="#destinos" class="btn-hero-secondary">
+                            CONOCE NUESTROS DESTINOS
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- BUSCADOR FLOATING CARD -->
+    <div class="container search-container" id="buscador">
+        <div class="search-card">
+            <div class="search-card-header">
+                <h2 class="search-card-title">
+                    <i class="fa-solid fa-bus text-danger"></i> Planifica tu viaje
+                </h2>
+                <span class="badge bg-light text-dark border font-monospace">Compra Online 100% Segura</span>
+            </div>
+
+            <form id="searchForm" method="get" action="{% url 'client_portal:search_trips' %}">
+                <div class="row g-3 align-items-end">
+                    <!-- ORIGEN -->
+                    <div class="col-lg-3 col-md-6">
+                        <label class="search-form-label" for="origen">Origen</label>
+                        <div class="input-group-custom">
+                            <i class="fa-solid fa-location-dot"></i>
+                            <select id="origen" name="origin" required>
+                                <option value="">Selecciona origen</option>
+                                {% for city in origin_cities %}
+                                    <option value="{{ city.name }}">{{ city.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- SWAP BUTTON -->
+                    <div class="col-lg-1 col-md-12 d-none d-lg-flex justify-content-center">
+                        <button type="button" class="btn-swap" id="btnSwap" title="Intercambiar ciudades">
+                            <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                        </button>
+                    </div>
+
+                    <!-- DESTINO -->
+                    <div class="col-lg-3 col-md-6">
+                        <label class="search-form-label" for="destino">Destino</label>
+                        <div class="input-group-custom">
+                            <i class="fa-solid fa-location-crosshairs"></i>
+                            <select id="destino" name="destination" required>
+                                <option value="">Selecciona destino</option>
+                                {% for city in destination_cities %}
+                                    <option value="{{ city.name }}">{{ city.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- FECHA IDA -->
+                    <div class="col-lg-2 col-md-6">
+                        <label class="search-form-label" for="fecha_viaje">Fecha Ida</label>
+                        <div class="input-group-custom">
+                            <i class="fa-regular fa-calendar-days"></i>
+                            <input type="date" id="fecha_viaje" name="date" required>
+                        </div>
+                    </div>
+
+                    <!-- FECHA VUELTA -->
+                    <div class="col-lg-2 col-md-6">
+                        <label class="search-form-label" for="fecha_vuelta">Fecha Vuelta <small class="text-muted">(Opcional)</small></label>
+                        <div class="input-group-custom">
+                            <i class="fa-regular fa-calendar-check"></i>
+                            <input type="date" id="fecha_vuelta" name="return_date">
+                        </div>
+                    </div>
+
+                    <!-- SUBMIT BUTTON -->
+                    <div class="col-lg-12 mt-4">
+                        <button type="submit" class="btn-submit-search">
+                            <i class="fa-solid fa-magnifying-glass"></i> BUSCAR PASAJES
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <div class="search-notice">
+                <i class="fa-solid fa-circle-info text-primary"></i>
+                <span>Completa el origen, destino y fecha para consultar los asientos disponibles en tiempo real.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- TRAYECTORIA / SEGURIDAD / COMPROMISO -->
+    <section class="pillars-section" id="nosotros">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">NUESTROS PILARES</span>
+                <h2 class="section-title">El estándar La Porteña</h2>
+                <p class="section-subtitle">Construimos la red de transporte con los valores que nos han destacado por más de seis décadas.</p>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-lg-4 col-md-6">
+                    <div class="pillar-card">
+                        <div class="pillar-number">01</div>
+                        <div class="pillar-icon">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                        </div>
+                        <h3 class="pillar-title">TRAYECTORIA</h3>
+                        <p class="pillar-desc">
+                            Desde 1958 conectando caminos, ciudades y personas. Nuestra historia nos brinda la solidez y el conocimiento absoluto de las rutas interurbanas.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-lg-4 col-md-6">
+                    <div class="pillar-card">
+                        <div class="pillar-number">02</div>
+                        <div class="pillar-icon">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <h3 class="pillar-title">SEGURIDAD</h3>
+                        <p class="pillar-desc">
+                            Cada viaje se construye sobre experiencia, mantenimiento riguroso y responsabilidad constante. Tu tranquilidad es nuestro estándar operativo.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="col-lg-4 col-md-12">
+                    <div class="pillar-card">
+                        <div class="pillar-number">03</div>
+                        <div class="pillar-icon">
+                            <i class="fa-solid fa-handshake"></i>
+                        </div>
+                        <h3 class="pillar-title">COMPROMISO</h3>
+                        <p class="pillar-desc">
+                            Nuestro destino más importante siempre es que llegues bien. Ofrecemos puntualidad, confort y una vocación de servicio ininterrumpida.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PRÓXIMAS SALIDAS (BOARD) -->
+    <section class="departures-section" id="horarios">
+        <div class="container">
+            <div class="row align-items-center mb-5">
+                <div class="col-lg-7">
+                    <span class="section-tag">TABLERO DE SALIDAS</span>
+                    <h2 class="section-title mb-0">Próximas Salidas Frecuentes</h2>
+                </div>
+                <div class="col-lg-5 text-lg-end mt-3 mt-lg-0">
+                    <span class="text-white-50"><i class="fa-solid fa-sync fa-spin me-2 text-primary"></i> Actualizado en tiempo real</span>
+                </div>
+            </div>
+
+            <div class="terminal-board">
+                <div class="departure-row">
+                    <div class="dep-time"><i class="fa-regular fa-clock me-2"></i>07:30</div>
+                    <div class="dep-route">
+                        <span>Valparaíso</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                        <span>Santiago / Centro</span>
+                    </div>
+                    <div class="dep-price">Desde $ --.---</div>
+                    <div class="dep-status">Disponible</div>
+                    <a href="#buscador" class="btn btn-sm btn-outline-light rounded-pill px-3">Ver horario</a>
+                </div>
+
+                <div class="departure-row">
+                    <div class="dep-time"><i class="fa-regular fa-clock me-2"></i>08:15</div>
+                    <div class="dep-route">
+                        <span>Viña del Mar</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                        <span>La Calera</span>
+                    </div>
+                    <div class="dep-price">Desde $ --.---</div>
+                    <div class="dep-status">Disponible</div>
+                    <a href="#buscador" class="btn btn-sm btn-outline-light rounded-pill px-3">Ver horario</a>
+                </div>
+
+                <div class="departure-row">
+                    <div class="dep-time"><i class="fa-regular fa-clock me-2"></i>09:00</div>
+                    <div class="dep-route">
+                        <span>Valparaíso</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                        <span>Viña del Mar</span>
+                    </div>
+                    <div class="dep-price">Desde $ --.---</div>
+                    <div class="dep-status">Disponible</div>
+                    <a href="#buscador" class="btn btn-sm btn-outline-light rounded-pill px-3">Ver horario</a>
+                </div>
+
+                <div class="departure-row">
+                    <div class="dep-time"><i class="fa-regular fa-clock me-2"></i>10:30</div>
+                    <div class="dep-route">
+                        <span>La Calera</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                        <span>Valparaíso</span>
+                    </div>
+                    <div class="dep-price">Desde $ --.---</div>
+                    <div class="dep-status">Disponible</div>
+                    <a href="#buscador" class="btn btn-sm btn-outline-light rounded-pill px-3">Ver horario</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DESTINOS -->
+    <section class="destinations-section" id="destinos">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">RUTAS Y CONEXIONES</span>
+                <h2 class="section-title">Destinos para seguir conectados</h2>
+                <p class="section-subtitle">Encuentra tu próxima ruta con Buses La Porteña y viaja con la seguridad que nos caracteriza.</p>
+            </div>
+
+            <div class="row g-4">
+                <!-- Valparaíso -->
+                <div class="col-lg-4 col-md-6">
+                    <div class="destination-card">
+                        <img src="https://commons.wikimedia.org/wiki/Special:FilePath/Valparaiso%20(Unsplash).jpg?width=1400" alt="Valparaíso, Chile" class="destination-img" loading="lazy">
+                        <div class="destination-overlay">
+                            <h3 class="destination-name">Valparaíso</h3>
+                            <p class="destination-desc">Historia, puerto principal, arquitectura icónica y conectividad permanente.</p>
+                            <a href="#buscador" class="destination-link">Ver horarios disponibles <i class="fa-solid fa-arrow-right"></i></a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Viña del Mar -->
+                <div class="col-lg-4 col-md-6">
+                    <div class="destination-card">
+                        <img src="https://commons.wikimedia.org/wiki/Special:FilePath/Vi%C3%B1a%20del%20Mar%20Avenida%20Marina%2C%20Castillo%20Wulff%2001.jpg?width=1400" alt="Viña del Mar, Chile" class="destination-img" loading="lazy">
+                        <div class="destination-overlay">
+                            <h3 class="destination-name">Viña del Mar</h3>
+                            <p class="destination-desc">Costa, turismo y conexión estratégica con todo el valle central.</p>
+                            <a href="#buscador" class="destination-link">Ver horarios disponibles <i class="fa-solid fa-arrow-right"></i></a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- La Calera / Centro -->
+                <div class="col-lg-4 col-md-12">
+                    <div class="destination-card">
+                        <img src="https://commons.wikimedia.org/wiki/Special:FilePath/Letras%203D%20La%20Calera%2020200302%2001.jpg?width=1400" alt="La Calera, Chile" class="destination-img" loading="lazy">
+                        <div class="destination-overlay">
+                            <h3 class="destination-name">La Calera / Centro</h3>
+                            <p class="destination-desc">El corazón comercial e industrial que une la región con las principales arterias del país.</p>
+                            <a href="#buscador" class="destination-link">Ver horarios disponibles <i class="fa-solid fa-arrow-right"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- HISTORIA DESDE 1958 -->
+    <section class="history-banner">
+        <div class="history-bg-year">1958</div>
+
+        <svg class="route-line-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+            <path fill="none" stroke="#D9A441" stroke-width="2" stroke-dasharray="8 8" d="M0,160 Q360,320 720,160 T1440,160"></path>
+        </svg>
+
+        <div class="container position-relative z-2 text-center">
+            <span class="badge bg-outline-gold text-gold border border-gold px-3 py-2 rounded-pill mb-3 font-monospace">NUESTRA HISTORIA</span>
+            <h2 class="display-3 fw-black text-white mb-3">Más que kilómetros,<br>una historia sobre ruedas.</h2>
+            <p class="lead text-white-50 max-w-700 mx-auto mb-4 fs-4">
+                Décadas conectando personas, familias, trabajadores y ciudades a través de las rutas de Chile.
+            </p>
+            <div class="d-inline-block border-top border-bottom border-gold py-2 px-4">
+                <span class="h4 text-gold font-accent italic mb-0">Buses La Porteña · Juntos en cada destino</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- FLOTA SECTION -->
+    <section class="fleet-section" id="flota">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">TECNOLOGÍA Y CONFORT</span>
+                <h2 class="section-title">Nuestra Flota</h2>
+                <p class="section-subtitle">Diseñada para recorrer kilómetros con la mayor comodidad, seguridad y confianza técnica.</p>
+            </div>
+
+            <div class="fleet-card">
+                <div class="row align-items-center g-4">
+                    <div class="col-lg-7">
+                        <div class="fleet-img-container">
+                            <img src="{% static 'client_portal/portena/home.png' %}" alt="Bus La Porteña Real en Valparaíso">
+                        </div>
+                    </div>
+
+                    <div class="col-lg-5">
+                        <h3 class="h2 text-white fw-bold mb-3">Unidades Modernas de Larga Distancia</h3>
+                        <p class="text-white-50 mb-4">
+                            Nuestros buses cuentan con los más altos estándares mecánicos y de habitabilidad, adaptados para garantizar un viaje placentero en cada recorrido.
+                        </p>
+
+                        <div class="mb-4">
+                            <span class="badge-feature"><i class="fa-solid fa-chair"></i> Asientos Reclinables Confort</span>
+                            <span class="badge-feature"><i class="fa-solid fa-snowflake"></i> Climatización Bi-Zona</span>
+                            <span class="badge-feature"><i class="fa-solid fa-shield-cat"></i> Control GPS Permanente</span>
+                            <span class="badge-feature"><i class="fa-solid fa-wifi"></i> Conexión a Bordo</span>
+                            <span class="badge-feature"><i class="fa-solid fa-spray-can-sparkles"></i> Sanitización Certificada</span>
+                        </div>
+
+                        <a href="#buscador" class="btn btn-hero-primary btn-sm">
+                            <i class="fa-solid fa-bus me-2"></i> Viaja en nuestra flota
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- MANIFIESTO -->
+    <section class="manifesto-section">
+        <div class="manifesto-overlay"></div>
+        <div class="container position-relative z-2">
+            <h2 class="manifesto-title">
+                NO SOLO MOVEMOS BUSES.<br>
+                <span>MOVEMOS HISTORIAS.</span>
+            </h2>
+            <p class="lead text-white-50 max-w-600 mx-auto fs-4">
+                Cada ruta conecta personas. Cada viaje crea un nuevo destino.
+            </p>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq-section" id="faq">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">RESOLVEMOS TUS DUDAS</span>
+                <h2 class="section-title">Preguntas Frecuentes</h2>
+                <p class="section-subtitle">Información clave para planificar tu próximo recorrido con Buses La Porteña.</p>
+            </div>
+
+            <div class="row justify-content-center">
+                <div class="col-lg-8">
+                    <div class="accordion" id="faqAccordion">
+
+                        <div class="accordion-item accordion-item-laportena">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button accordion-button-laportena" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                    ¿Cómo compraré mis pasajes online?
+                                </button>
+                            </h2>
+                            <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body accordion-body-laportena">
+                                    Próximamente podrás cotizar, elegir tu origen, destino y fecha desde este buscador para procesar tu pago de forma instantánea y segura con código QR directo en tu teléfono.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item accordion-item-laportena">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button accordion-button-laportena collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                    ¿Dónde podré consultar los horarios?
+                                </button>
+                            </h2>
+                            <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body accordion-body-laportena">
+                                    Todos nuestros horarios de salida actualizados entre Valparaíso, Viña del Mar, La Calera y Santiago estarán disponibles directamente en el tablero interactivo de la plataforma digital.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item accordion-item-laportena">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button accordion-button-laportena collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                    ¿Podré seleccionar mi asiento en línea?
+                                </button>
+                            </h2>
+                            <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body accordion-body-laportena">
+                                    Sí, el nuevo sistema digital integrado te permitirá ver el mapa interactivo del bus para seleccionar exactamente la ubicación de tu preferencia.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item accordion-item-laportena">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button accordion-button-laportena collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                                    ¿Dónde podré revisar mis reservas realizadas?
+                                </button>
+                            </h2>
+                            <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body accordion-body-laportena">
+                                    En el menú superior, haciendo clic en el botón "Mis reservas", podrás ingresar tu RUT o código de compra para descargar tu e-ticket en cualquier instante.
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA FINAL -->
+    <section class="py-5 bg-danger text-white position-relative overflow-hidden" style="background: linear-gradient(135deg, var(--lp-red) 0%, var(--lp-red-dark) 100%) !important;">
+        <div class="container text-center py-4 position-relative z-2">
+            <h2 class="display-5 fw-black mb-3">¿LISTO PARA TU PRÓXIMO VIAJE?</h2>
+            <p class="lead mb-4 max-w-600 mx-auto text-white-75">
+                Muy pronto podrás buscar horarios, seleccionar tu asiento y comprar tu pasaje online con total respaldo y comodidad.
+            </p>
+            <a href="#buscador" class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-danger shadow-lg">
+                BUSCAR PASAJES AHORA
+            </a>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer-laportena">
+        <div class="container">
+            <div class="row g-4 align-items-center">
+                <div class="col-lg-6 text-center text-lg-start">
+                    <div class="footer-brand-title">BUSES LA PORTEÑA</div>
+                    <div class="footer-slogan">"Juntos en cada destino"</div>
+                    <div class="d-flex justify-content-center justify-content-lg-start gap-3 text-white-50 fw-semibold">
+                        <span>Trayectoria</span> ·
+                        <span>Seguridad</span> ·
+                        <span>Compromiso</span>
+                    </div>
+                </div>
+
+                <div class="col-lg-6 text-center text-lg-end">
+                    <span class="badge bg-outline-gold border border-gold text-gold px-3 py-2 rounded-pill font-monospace">
+                        DESDE 1958 CONECTANDO CHILE
+                    </span>
+                </div>
+            </div>
+
+            <div class="footer-copy text-center">
+                <p class="mb-0">&copy; 1958 - 2026 Buses La Porteña. Todos los derechos reservados.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- TOAST NOTIFICATION -->
+    <div class="toast-custom" id="searchToast">
+        <i class="fa-solid fa-circle-check text-gold fa-lg"></i>
+        <div>
+            <strong>¡Búsqueda registrada!</strong>
+            <div class="small text-white-50" id="toastMessage">El buscador será habilitado próximamente en el sistema final.</div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script src="{% static 'client_portal/portena/main.js' %}"></script>
+{% endblock %}

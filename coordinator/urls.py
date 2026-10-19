@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import workshop_views
 
 app_name = 'coordinator'
 
@@ -146,5 +147,24 @@ urlpatterns = [
     path('seguridad/respaldos/eliminar/<str:filename>/', views.seguridad_eliminar_respaldo, name='seguridad_eliminar_respaldo'),
     path('seguridad/respaldos/programacion/', views.seguridad_guardar_programacion, name='seguridad_guardar_programacion'),
     path('seguridad/incidentes/resolver/<int:incident_id>/', views.seguridad_resolver_incidente, name='seguridad_resolver_incidente'),
+    
+    
+        # ===== MÓDULO TALLER =====
+    path('taller/', workshop_views.workshop_dashboard, name='workshop_dashboard'),
+    
+    path('taller/ordenes/', workshop_views.workshop_order_list, name='workshop_order_list'),
+    path('taller/ordenes/nueva/', workshop_views.workshop_order_create, name='workshop_order_new'),
+    path('taller/ordenes/<int:order_id>/', workshop_views.workshop_order_detail, name='workshop_order_detail'),
+    path('taller/ordenes/<int:order_id>/editar/', workshop_views.workshop_order_edit, name='workshop_order_edit'),
+    path('taller/ordenes/<int:order_id>/cerrar/', workshop_views.workshop_order_close, name='workshop_order_close'),
+    
+    path('taller/mecanicos/', workshop_views.workshop_mechanic_list, name='workshop_mechanic_list'),
+    path('taller/mecanicos/nuevo/', workshop_views.workshop_mechanic_create, name='workshop_mechanic_new'),
+    path('taller/mecanicos/<int:mechanic_id>/editar/', workshop_views.workshop_mechanic_edit, name='workshop_mechanic_edit'),
+    
+    path('taller/talleres/', workshop_views.workshop_list, name='workshop_list'),
+    path('taller/talleres/nuevo/', workshop_views.workshop_create, name='workshop_new'),
+    path('taller/talleres/<int:workshop_id>/editar/', workshop_views.workshop_edit, name='workshop_edit'),
+    path('taller/reportes/', workshop_views.workshop_reports, name='workshop_reports'),
     
 ]

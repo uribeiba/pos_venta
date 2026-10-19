@@ -1,0 +1,1283 @@
+{% extends 'client_portal/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard de Ventas | Cejer{% endblock %}
+
+{% block extra_css %}
+{{ block.super }}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .dashboard-container {
+        padding: 20px 0;
+    }
+    
+    /* ===== HEADER ===== */
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    
+    .dashboard-header h1 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+    }
+    
+    .dashboard-header .subtitle {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+    
+    .dashboard-header .header-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .dashboard-header .badge {
+        background: #f5821f;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 40px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    
+    /* ===== BOTÓN DE EXPORTACIÓN ===== */
+    .btn-export {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        color: #64748b;
+        border-radius: 40px !important;
+        padding: 8px 18px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .btn-export:hover {
+        background: #f1f5f9;
+        border-color: #f5821f;
+        color: #f5821f;
+    }
+    
+    .btn-export .dropdown-menu {
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        border: none;
+        padding: 6px 0;
+    }
+    
+    .btn-export .dropdown-item {
+        padding: 8px 20px;
+        font-size: 0.85rem;
+        transition: all 0.2s ease;
+    }
+    
+    .btn-export .dropdown-item:hover {
+        background: #fff7f0;
+        color: #f5821f;
+    }
+    
+    .btn-export .dropdown-item i {
+        width: 20px;
+        text-align: center;
+    }
+    
+    /* ===== NOTIFICACIONES ===== */
+    .notification-bell {
+        position: relative;
+        cursor: pointer;
+    }
+    
+    .notification-bell .bell-icon {
+        font-size: 1.3rem;
+        color: #64748b;
+        transition: all 0.3s ease;
+        background: none;
+        border: none;
+        padding: 4px 8px;
+    }
+    
+    .notification-bell .bell-icon:hover {
+        color: #f5821f;
+    }
+    
+    .notification-bell .badge-notification {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #e30613;
+        color: white;
+        font-size: 0.55rem;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 40px;
+        min-width: 18px;
+        text-align: center;
+        display: none;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.15); }
+    }
+    
+    .notification-dropdown {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        width: 360px;
+        max-height: 400px;
+        overflow-y: auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+        border: 1px solid #e2e8f0;
+        display: none;
+        z-index: 1000;
+    }
+    
+    .notification-dropdown.show {
+        display: block;
+    }
+    
+    .notification-dropdown .dropdown-header {
+        padding: 12px 16px;
+        font-weight: 700;
+        color: #1a1a1a;
+        border-bottom: 1px solid #e2e8f0;
+        position: sticky;
+        top: 0;
+        background: white;
+        border-radius: 12px 12px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .notification-dropdown .dropdown-header .clear-all {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        cursor: pointer;
+        background: none;
+        border: none;
+    }
+    
+    .notification-dropdown .dropdown-header .clear-all:hover {
+        color: #e30613;
+    }
+    
+    .notification-item {
+        padding: 10px 16px;
+        border-bottom: 1px solid #f1f5f9;
+        transition: all 0.2s ease;
+        animation: slideDown 0.3s ease;
+    }
+    
+    .notification-item:hover {
+        background: #f8fafc;
+    }
+    
+    .notification-item:last-child {
+        border-bottom: none;
+    }
+    
+    .notification-item .notif-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .notification-item .notif-top .notif-number {
+        font-weight: 700;
+        color: #f5821f;
+        font-size: 0.85rem;
+    }
+    
+    .notification-item .notif-top .notif-user {
+        font-size: 0.7rem;
+        color: #94a3b8;
+    }
+    
+    .notification-item .notif-route {
+        font-size: 0.85rem;
+        color: #1a1a1a;
+        margin: 2px 0;
+    }
+    
+    .notification-item .notif-bottom {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+    
+    .notification-item .notif-bottom .notif-price {
+        color: #f5821f;
+        font-weight: 600;
+    }
+    
+    .notification-item .notif-time {
+        font-size: 0.6rem;
+        color: #94a3b8;
+        margin-top: 2px;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* ===== TARJETAS DE ESTADÍSTICAS ===== */
+    .dashboard-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        text-align: center;
+        transition: all 0.3s ease;
+        border: 1px solid #f1f5f9;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card .stat-icon {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        font-size: 2rem;
+        opacity: 0.08;
+    }
+    
+    .stat-card .stat-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        position: relative;
+    }
+    
+    .stat-card .stat-label {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-top: 4px;
+    }
+    
+    .stat-card .stat-change {
+        font-size: 0.7rem;
+        margin-top: 4px;
+        font-weight: 600;
+    }
+    
+    .stat-card .stat-change.positive {
+        color: #10b981;
+    }
+    
+    .stat-card .stat-change.negative {
+        color: #e30613;
+    }
+    
+    /* Colores por tipo */
+    .stat-card.revenue .stat-value { color: #f5821f; }
+    .stat-card.revenue .stat-icon { color: #f5821f; }
+    .stat-card.tickets .stat-value { color: #3b82f6; }
+    .stat-card.tickets .stat-icon { color: #3b82f6; }
+    .stat-card.today .stat-value { color: #10b981; }
+    .stat-card.today .stat-icon { color: #10b981; }
+    .stat-card.month .stat-value { color: #8b5cf6; }
+    .stat-card.month .stat-icon { color: #8b5cf6; }
+    
+    /* ===== GRÁFICOS ===== */
+    .dashboard-charts {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    
+    .chart-container {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid #f1f5f9;
+    }
+    
+    .chart-container h4 {
+        margin-top: 0;
+        margin-bottom: 16px;
+        font-size: 1rem;
+        color: #1a1a1a;
+        border-bottom: 2px solid #f5821f;
+        padding-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .chart-container h4 .chart-icon {
+        font-size: 1.1rem;
+    }
+    
+    .chart-container canvas {
+        max-height: 250px;
+    }
+    
+    /* ===== CANALES ===== */
+    .channels-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    
+    .channel-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        text-align: center;
+        border: 1px solid #f1f5f9;
+        transition: all 0.3s ease;
+    }
+    
+    .channel-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+    
+    .channel-card .channel-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+    
+    .channel-card .channel-label {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+    
+    .channel-card .channel-sub {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        margin-top: 2px;
+    }
+    
+    .channel-card.web .channel-value { color: #3b82f6; }
+    .channel-card.pos .channel-value { color: #f5821f; }
+    
+    /* ===== TABLAS ===== */
+    .dashboard-tables {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    
+    .table-container {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid #f1f5f9;
+    }
+    
+    .table-container h4 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        font-size: 1rem;
+        color: #1a1a1a;
+        border-bottom: 2px solid #f5821f;
+        padding-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .table-container table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+    
+    .table-container th,
+    .table-container td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    
+    .table-container th {
+        background: #f8fafc;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.5px;
+    }
+    
+    .table-container tr:hover td {
+        background: #fafafa;
+    }
+    
+    /* ===== OCUPACIÓN ===== */
+    .occupancy-bar {
+        width: 80px;
+        height: 8px;
+        background: #e2e8f0;
+        border-radius: 4px;
+        overflow: hidden;
+        display: inline-block;
+        vertical-align: middle;
+        margin-right: 8px;
+    }
+    
+    .occupancy-bar .fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 1s ease;
+    }
+    
+    .occupancy-bar .fill.high {
+        background: linear-gradient(90deg, #10b981, #34d399);
+    }
+    .occupancy-bar .fill.medium {
+        background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    }
+    .occupancy-bar .fill.low {
+        background: linear-gradient(90deg, #e30613, #f87171);
+    }
+    
+    /* ===== FILTROS ===== */
+    .date-filter {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+        background: white;
+        padding: 12px 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        flex-wrap: wrap;
+        border: 1px solid #f1f5f9;
+    }
+    
+    .date-filter label {
+        font-weight: 600;
+        color: #1a1a1a;
+        font-size: 0.85rem;
+    }
+    
+    .date-filter select {
+        padding: 6px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        background: white;
+    }
+    
+    .date-filter .btn-refresh {
+        background: #f5821f;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 16px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-left: auto;
+        transition: all 0.3s ease;
+    }
+    
+    .date-filter .btn-refresh:hover {
+        background: #e06e10;
+        transform: scale(1.02);
+    }
+    
+    .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .filter-group label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+    
+    .filter-group select {
+        padding: 4px 8px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        background: white;
+    }
+    
+    /* ===== LOADING ===== */
+    .loading {
+        text-align: center;
+        padding: 40px;
+        color: #64748b;
+    }
+    
+    .loading .spinner {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #f5821f;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 992px) {
+        .dashboard-charts {
+            grid-template-columns: 1fr;
+        }
+        .dashboard-tables {
+            grid-template-columns: 1fr;
+        }
+        .channels-container {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .dashboard-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .dashboard-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .date-filter {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .date-filter .btn-refresh {
+            margin-left: 0;
+        }
+        .notification-dropdown {
+            width: calc(100vw - 32px);
+            right: -10px;
+        }
+        .stat-card .stat-value {
+            font-size: 1.4rem;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .dashboard-stats {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .stat-card {
+            padding: 14px;
+        }
+        .stat-card .stat-value {
+            font-size: 1.2rem;
+        }
+        .stat-card .stat-label {
+            font-size: 0.7rem;
+        }
+        .chart-container {
+            padding: 14px;
+        }
+        .table-container {
+            padding: 14px;
+            overflow-x: auto;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="dashboard-container">
+        <!-- ===== HEADER ===== -->
+        <div class="dashboard-header">
+            <div>
+                <h1>📊 Dashboard de Ventas</h1>
+                <span class="subtitle">Panel de control para administradores y gerentes</span>
+            </div>
+            <div class="header-actions">
+                <!-- Botón de Exportar -->
+                <div class="btn-export dropdown">
+                    <button class="btn btn-export dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-file-export me-1"></i> Exportar
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" id="exportPDF"><i class="fas fa-file-pdf text-danger me-2"></i> Exportar PDF</a></li>
+                        <li><a class="dropdown-item" href="#" id="exportExcel"><i class="fas fa-file-excel text-success me-2"></i> Exportar Excel</a></li>
+                    </ul>
+                </div>
+                
+                <!-- Notificaciones -->
+                <div class="notification-bell" id="notificationBell">
+                    <button class="bell-icon" id="notificationBtn" title="Notificaciones">
+                        <i class="fas fa-bell"></i>
+                    </button>
+                    <span class="badge-notification" id="notificationBadge">0</span>
+                    
+                    <div class="notification-dropdown" id="notificationDropdown">
+                        <div class="dropdown-header">
+                            <span>🔔 Nuevas ventas</span>
+                            <button class="clear-all" id="clearNotifications">Marcar todas como leídas</button>
+                        </div>
+                        <div id="notificationList">
+                            <div class="notification-item" style="text-align: center; color: #94a3b8; font-size: 0.85rem; padding: 20px;">
+                                No hay nuevas ventas
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <span class="badge">
+                    <i class="fas fa-sync-alt"></i> En tiempo real
+                </span>
+            </div>
+        </div>
+        
+        <!-- ===== FILTROS ===== -->
+        <div class="date-filter">
+            <label><i class="fas fa-calendar-alt me-1"></i> Período:</label>
+            <select id="periodSelect">
+                <option value="7">Últimos 7 días</option>
+                <option value="15">Últimos 15 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+                <option value="60">Últimos 60 días</option>
+                <option value="90">Últimos 90 días</option>
+            </select>
+            
+            <div class="filter-group">
+                <label><i class="fas fa-store me-1"></i> Agencia:</label>
+                <select id="agencyFilter">
+                    <option value="all">Todas</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label><i class="fas fa-user me-1"></i> Vendedor:</label>
+                <select id="sellerFilter">
+                    <option value="all">Todos</option>
+                </select>
+            </div>
+            
+            <button class="btn-refresh" id="refreshBtn">
+                <i class="fas fa-sync-alt me-1"></i> Actualizar
+            </button>
+        </div>
+        
+        <!-- ===== LOADING ===== -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p class="mt-3">Cargando datos del dashboard...</p>
+        </div>
+        
+        <!-- ===== CONTENIDO ===== -->
+        <div id="content" style="display: none;">
+            <!-- Tarjetas de estadísticas -->
+            <div class="dashboard-stats" id="statsContainer"></div>
+            
+            <!-- Ventas por Canal -->
+            <div class="channels-container" id="channelsContainer"></div>
+            
+            <!-- Gráficos Fila 1 -->
+            <div class="dashboard-charts">
+                <div class="chart-container">
+                    <h4><span class="chart-icon">📈</span> Ventas diarias</h4>
+                    <canvas id="dailyChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h4><span class="chart-icon">💰</span> Ingresos por ruta</h4>
+                    <canvas id="routeChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Gráficos Fila 2 -->
+            <div class="dashboard-charts">
+                <div class="chart-container">
+                    <h4><span class="chart-icon">🕐</span> Ventas por hora</h4>
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h4><span class="chart-icon">📅</span> Ventas por día de la semana</h4>
+                    <canvas id="weekdayChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Gráficos Fila 3 -->
+            <div class="dashboard-charts">
+                <div class="chart-container">
+                    <h4><span class="chart-icon">🔝</span> Top vendedores</h4>
+                    <canvas id="sellersChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h4><span class="chart-icon">💳</span> Métodos de pago</h4>
+                    <canvas id="paymentChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Tablas -->
+            <div class="dashboard-tables">
+                <div class="table-container">
+                    <h4><span class="chart-icon">🚌</span> Ocupación de viajes (próximos 7 días)</h4>
+                    <div id="occupancyTable"></div>
+                </div>
+                <div class="table-container">
+                    <h4><span class="chart-icon">🏆</span> Top rutas</h4>
+                    <div id="routesTable"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    let dailyChart = null;
+    let routeChart = null;
+    let sellersChart = null;
+    let paymentChart = null;
+    let hourlyChart = null;
+    let weekdayChart = null;
+    
+    // ===== NOTIFICACIONES =====
+    let lastCheck = new Date().toISOString();
+    let notificationCount = 0;
+    let notificationIds = [];
+    
+    function formatCurrency(amount) {
+        return '$' + amount.toLocaleString('es-CL');
+    }
+    
+    // ===== CARGAR DATOS =====
+    function loadData(days) {
+        $('#loading').show();
+        $('#content').hide();
+        
+        $.ajax({
+            url: '/client/admin/dashboard/stats/?days=' + days,
+            type: 'GET',
+            success: function(data) {
+                if (data.success) {
+                    renderStats(data);
+                    renderChannels(data);
+                    renderCharts(data);
+                    renderTables(data);
+                    populateFilters(data);
+                    $('#loading').hide();
+                    $('#content').show();
+                } else {
+                    alert('Error cargando datos: ' + data.error);
+                    $('#loading').hide();
+                }
+            },
+            error: function() {
+                alert('Error al cargar los datos del dashboard');
+                $('#loading').hide();
+            }
+        });
+    }
+    
+    // ===== POBLAR FILTROS =====
+    function populateFilters(data) {
+        if (data.agency_sales && data.agency_sales.length > 0) {
+            const $agencyFilter = $('#agencyFilter');
+            $agencyFilter.find('option:not(:first)').remove();
+            data.agency_sales.forEach(function(agency) {
+                $agencyFilter.append('<option value="' + agency.agency + '">' + agency.agency + '</option>');
+            });
+        }
+        
+        if (data.top_sellers && data.top_sellers.length > 0) {
+            const $sellerFilter = $('#sellerFilter');
+            $sellerFilter.find('option:not(:first)').remove();
+            data.top_sellers.forEach(function(seller) {
+                $sellerFilter.append('<option value="' + seller.name + '">' + seller.name + '</option>');
+            });
+        }
+    }
+    
+    // ===== RENDER ESTADÍSTICAS =====
+    function renderStats(data) {
+        const summary = data.summary;
+        const statsHTML = `
+            <div class="stat-card revenue">
+                <div class="stat-icon">💰</div>
+                <div class="stat-value">${formatCurrency(summary.total_revenue)}</div>
+                <div class="stat-label">💰 Ingresos totales</div>
+                <div class="stat-change ${summary.revenue_change >= 0 ? 'positive' : 'negative'}">
+                    ${summary.revenue_change >= 0 ? '↑' : '↓'} ${Math.abs(summary.revenue_change).toFixed(1)}%
+                </div>
+            </div>
+            <div class="stat-card tickets">
+                <div class="stat-icon">🎫</div>
+                <div class="stat-value">${summary.total_tickets}</div>
+                <div class="stat-label">🎫 Boletos vendidos</div>
+                <div class="stat-change ${summary.tickets_change >= 0 ? 'positive' : 'negative'}">
+                    ${summary.tickets_change >= 0 ? '↑' : '↓'} ${Math.abs(summary.tickets_change).toFixed(1)}%
+                </div>
+            </div>
+            <div class="stat-card today">
+                <div class="stat-icon">📅</div>
+                <div class="stat-value">${summary.tickets_today}</div>
+                <div class="stat-label">📅 Boletos hoy</div>
+                <div class="stat-sub" style="font-size:0.7rem; color:#94a3b8;">${formatCurrency(summary.revenue_today)}</div>
+            </div>
+            <div class="stat-card month">
+                <div class="stat-icon">📆</div>
+                <div class="stat-value">${summary.tickets_month}</div>
+                <div class="stat-label">📆 Boletos este mes</div>
+                <div class="stat-sub" style="font-size:0.7rem; color:#94a3b8;">${formatCurrency(summary.revenue_month)}</div>
+            </div>
+        `;
+        $('#statsContainer').html(statsHTML);
+    }
+    
+    // ===== RENDER CANALES =====
+    function renderChannels(data) {
+        const channels = data.channels;
+        const channelsHTML = `
+            <div class="channel-card web">
+                <div class="channel-value">${channels.web_tickets}</div>
+                <div class="channel-label">🌐 Ventas Web</div>
+                <div class="channel-sub">${formatCurrency(channels.web_revenue)}</div>
+            </div>
+            <div class="channel-card pos">
+                <div class="channel-value">${channels.pos_tickets}</div>
+                <div class="channel-label">🏪 Ventas POS (Agencias)</div>
+                <div class="channel-sub">${formatCurrency(channels.pos_revenue)}</div>
+            </div>
+        `;
+        $('#channelsContainer').html(channelsHTML);
+    }
+    
+    // ===== RENDER GRÁFICOS =====
+    function renderCharts(data) {
+        // Gráfico diario
+        if (dailyChart) dailyChart.destroy();
+        const ctx = document.getElementById('dailyChart').getContext('2d');
+        dailyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.daily_sales.days,
+                datasets: [
+                    {
+                        label: 'Ingresos ($)',
+                        data: data.daily_sales.revenue,
+                        backgroundColor: 'rgba(245, 130, 31, 0.6)',
+                        borderColor: '#f5821f',
+                        borderWidth: 2,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Boletos',
+                        data: data.daily_sales.tickets,
+                        backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        position: 'left',
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+        
+        // Gráfico de rutas
+        if (routeChart) routeChart.destroy();
+        const routeCtx = document.getElementById('routeChart').getContext('2d');
+        const routeData = data.route_sales.slice(0, 8);
+        routeChart = new Chart(routeCtx, {
+            type: 'doughnut',
+            data: {
+                labels: routeData.map(r => r.route),
+                datasets: [{
+                    data: routeData.map(r => r.revenue),
+                    backgroundColor: [
+                        '#f5821f', '#10b981', '#3b82f6', '#8b5cf6',
+                        '#ef4444', '#f59e0b', '#06b6d4', '#ec4899'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'right', labels: { font: { size: 10 } } }
+                }
+            }
+        });
+        
+        // Gráfico de vendedores
+        if (sellersChart) sellersChart.destroy();
+        const sellersCtx = document.getElementById('sellersChart').getContext('2d');
+        sellersChart = new Chart(sellersCtx, {
+            type: 'bar',
+            data: {
+                labels: data.top_sellers.map(s => s.name),
+                datasets: [{
+                    label: 'Boletos vendidos',
+                    data: data.top_sellers.map(s => s.tickets),
+                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                    borderColor: '#3b82f6',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+        
+        // Gráfico de métodos de pago
+        if (paymentChart) paymentChart.destroy();
+        const paymentCtx = document.getElementById('paymentChart').getContext('2d');
+        const paymentData = data.payment_methods;
+        paymentChart = new Chart(paymentCtx, {
+            type: 'pie',
+            data: {
+                labels: paymentData.map(p => p.method),
+                datasets: [{
+                    data: paymentData.map(p => p.tickets),
+                    backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+        
+        // Gráfico por hora
+        if (hourlyChart) hourlyChart.destroy();
+        const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+        hourlyChart = new Chart(hourlyCtx, {
+            type: 'bar',
+            data: {
+                labels: data.hourly_sales.labels,
+                datasets: [{
+                    label: 'Boletos',
+                    data: data.hourly_sales.count,
+                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                    borderColor: '#3b82f6',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+        
+        // Gráfico por día de la semana
+        if (weekdayChart) weekdayChart.destroy();
+        const weekdayCtx = document.getElementById('weekdayChart').getContext('2d');
+        weekdayChart = new Chart(weekdayCtx, {
+            type: 'bar',
+            data: {
+                labels: data.weekday_sales.labels,
+                datasets: [{
+                    label: 'Boletos',
+                    data: data.weekday_sales.count,
+                    backgroundColor: [
+                        'rgba(16, 185, 129, 0.6)',
+                        'rgba(59, 130, 246, 0.6)',
+                        'rgba(245, 158, 11, 0.6)',
+                        'rgba(239, 68, 68, 0.6)',
+                        'rgba(139, 92, 246, 0.6)',
+                        'rgba(6, 182, 212, 0.6)',
+                        'rgba(236, 72, 153, 0.6)'
+                    ],
+                    borderColor: [
+                        '#10b981', '#3b82f6', '#f59e0b',
+                        '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+    
+    // ===== RENDER TABLAS =====
+    function renderTables(data) {
+        // Tabla de ocupación
+        let occupancyHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Viaje</th>
+                        <th>Ocupación</th>
+                        <th>Asientos</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        data.occupancy.forEach(trip => {
+            let barClass = 'low';
+            if (trip.occupancy > 60) barClass = 'high';
+            else if (trip.occupancy > 30) barClass = 'medium';
+            
+            occupancyHTML += `
+                <tr>
+                    <td><small>${trip.route}</small><br><small style="color:#94a3b8; font-size:0.65rem;">${trip.departure}</small></td>
+                    <td>
+                        <div class="occupancy-bar">
+                            <div class="fill ${barClass}" style="width: ${trip.occupancy}%"></div>
+                        </div>
+                        ${trip.occupancy}%
+                    </td>
+                    <td>${trip.sold}/${trip.total}</td>
+                </tr>
+            `;
+        });
+        
+        occupancyHTML += `</tbody></table>`;
+        if (data.occupancy.length === 0) {
+            occupancyHTML = '<p style="color: #64748b; text-align: center; padding: 20px;">No hay viajes próximos</p>';
+        }
+        $('#occupancyTable').html(occupancyHTML);
+        
+        // Tabla de rutas
+        let routesHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ruta</th>
+                        <th>Boletos</th>
+                        <th>Ingresos</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        data.route_sales.slice(0, 10).forEach(route => {
+            routesHTML += `
+                <tr>
+                    <td>${route.route}</td>
+                    <td>${route.tickets}</td>
+                    <td style="font-weight:600; color:#f5821f;">${formatCurrency(route.revenue)}</td>
+                </tr>
+            `;
+        });
+        
+        routesHTML += `</tbody></table>`;
+        if (data.route_sales.length === 0) {
+            routesHTML = '<p style="color: #64748b; text-align: center; padding: 20px;">No hay ventas en este período</p>';
+        }
+        $('#routesTable').html(routesHTML);
+    }
+    
+    // ===== NOTIFICACIONES EN TIEMPO REAL =====
+    function checkNotifications() {
+        $.ajax({
+            url: '/client/admin/dashboard/notifications/?last_check=' + encodeURIComponent(lastCheck),
+            type: 'GET',
+            success: function(data) {
+                if (data.success && data.new_count > 0) {
+                    // Filtrar notificaciones duplicadas
+                    const newNotifs = data.notifications.filter(n => !notificationIds.includes(n.id));
+                    
+                    if (newNotifs.length > 0) {
+                        notificationCount += newNotifs.length;
+                        newNotifs.forEach(n => notificationIds.push(n.id));
+                        
+                        // Actualizar badge
+                        const $badge = $('#notificationBadge');
+                        $badge.text(notificationCount);
+                        $badge.show();
+                        
+                        // Agregar notificaciones a la lista
+                        const $list = $('#notificationList');
+                        
+                        // Eliminar mensaje vacío si existe
+                        $list.find('.empty-message').remove();
+                        
+                        newNotifs.forEach(function(notif) {
+                            const $item = $(`
+                                <div class="notification-item">
+                                    <div class="notif-top">
+                                        <span class="notif-number">🎫 ${notif.number}</span>
+                                        <span class="notif-user">${notif.created_by}</span>
+                                    </div>
+                                    <div class="notif-route">${notif.route}</div>
+                                    <div class="notif-bottom">
+                                        <span>👤 ${notif.buyer}</span>
+                                        <span class="notif-price">${formatCurrency(notif.price)}</span>
+                                    </div>
+                                    <div class="notif-time">${new Date(notif.created_at).toLocaleTimeString()}</div>
+                                </div>
+                            `);
+                            $list.prepend($item);
+                        });
+                        
+                        // Limitar a 20 notificaciones
+                        while ($list.children().length > 20) {
+                            $list.children().last().remove();
+                        }
+                        
+                        // Actualizar lastCheck
+                        lastCheck = data.timestamp;
+                        
+                        // Efecto de sonido (opcional)
+                        if (newNotifs.length > 0) {
+                            // Vibrar en móvil si soporta
+                            if (navigator.vibrate) {
+                                navigator.vibrate(100);
+                            }
+                        }
+                    }
+                }
+            },
+            error: function() {
+                // Silencioso
+            }
+        });
+    }
+    
+    // ===== EXPORTAR REPORTES =====
+    $('#exportPDF').click(function(e) {
+        e.preventDefault();
+        const days = $('#periodSelect').val();
+        window.location.href = '/client/admin/dashboard/export/pdf/?days=' + days;
+    });
+    
+    $('#exportExcel').click(function(e) {
+        e.preventDefault();
+        const days = $('#periodSelect').val();
+        window.location.href = '/client/admin/dashboard/export/excel/?days=' + days;
+    });
+    
+    // ===== EVENTOS =====
+    $('#periodSelect').change(function() {
+        loadData($(this).val());
+    });
+    
+    $('#refreshBtn').click(function() {
+        loadData($('#periodSelect').val());
+    });
+    
+    // Filtros de agencia y vendedor (UI - para implementar después)
+    $('#agencyFilter, #sellerFilter').change(function() {
+        console.log('Filtro aplicado:', {
+            agency: $('#agencyFilter').val(),
+            seller: $('#sellerFilter').val()
+        });
+    });
+    
+    // ===== NOTIFICACIONES - Toggle dropdown =====
+    $('#notificationBtn').click(function(e) {
+        e.stopPropagation();
+        $('#notificationDropdown').toggleClass('show');
+    });
+    
+    $(document).click(function(e) {
+        if (!$(e.target).closest('#notificationBell').length) {
+            $('#notificationDropdown').removeClass('show');
+        }
+    });
+    
+    // Marcar notificaciones como leídas
+    $('#clearNotifications').click(function() {
+        notificationCount = 0;
+        notificationIds = [];
+        $('#notificationBadge').hide();
+        $('#notificationList').html(`
+            <div class="notification-item empty-message" style="text-align: center; color: #94a3b8; font-size: 0.85rem; padding: 20px;">
+                No hay nuevas ventas
+            </div>
+        `);
+        $('#notificationDropdown').removeClass('show');
+    });
+    
+    // ===== INICIAR =====
+    // Cargar datos iniciales
+    loadData(30);
+    
+    // Verificar notificaciones cada 15 segundos
+    setInterval(checkNotifications, 15000);
+    
+    // Verificar notificaciones al cargar la página
+    setTimeout(checkNotifications, 2000);
+});
+</script>
+{% endblock %}

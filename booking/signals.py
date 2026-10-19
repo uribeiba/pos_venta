@@ -1,5 +1,5 @@
 # booking/signals.py
-from datetime import timezone
+from django.utils import timezone  # CORREGIDO: antes importaba de datetime
 import logging
 import json
 from django.db.models.signals import post_save, post_delete, pre_save
@@ -8,7 +8,7 @@ from django.contrib.auth.signals import user_logged_in, user_logged_out, user_lo
 from django.contrib.auth.models import User
 from django.db import IntegrityError
 from django.core.exceptions import ObjectDoesNotExist
-from .models import AuditLog, UserProfile
+from .models import AuditLog, UserProfile, Trip, TripStop, RouteStop
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,63 @@ def ensure_userprofile_once(sender, instance, created: bool, **kwargs):
 
 
 # ============================================================================
+# SEÑAL PARA CREACIÓN AUTOMÁTICA DE PARADAS EN VIAJES (TRIPSTOPS)
+# ============================================================================
+
+@receiver(post_save, sender=Trip)
+def create_trip_stops_on_creation(sender, instance, created, **kwargs):
+    """
+    Cuando se crea un viaje nuevo (Trip), automáticamente le copia las paradas
+    de su Ruta (RouteStop) a la tabla TripStop.
+    Esto es vital para que el portal público (client_portal) pueda encontrar los viajes.
+    """
+    if created and not instance.trip_stops.exists():
+        # Buscar si la ruta tiene paradas predefinidas
+        route_stops = list(instance.route.stops.all().order_by('order'))
+        trip_stops_to_create = []
+
+        if route_stops:
+            # Copiar las paradas configuradas en la Ruta
+            for index, rs in enumerate(route_stops):
+                trip_stops_to_create.append(
+                    TripStop(
+                        trip=instance,
+                        city=rs.city,
+                        terminal=rs.terminal,
+                        order=rs.order,
+                        is_origin=(index == 0),
+                        is_destination=(index == len(route_stops) - 1),
+                    )
+                )
+        else:
+            # Si la ruta no tiene paradas intermedias, crear origen y destino base
+            trip_stops_to_create.append(
+                TripStop(
+                    trip=instance,
+                    city=instance.route.origin,
+                    terminal=instance.route.origin_terminal,
+                    order=1,
+                    is_origin=True,
+                    scheduled_time=instance.departure
+                )
+            )
+            trip_stops_to_create.append(
+                TripStop(
+                    trip=instance,
+                    city=instance.route.destination,
+                    terminal=instance.route.destination_terminal,
+                    order=2,
+                    is_destination=True,
+                    scheduled_time=instance.arrival
+                )
+            )
+            
+        if trip_stops_to_create:
+            TripStop.objects.bulk_create(trip_stops_to_create)
+            logger.info(f"✅ Paradas creadas automáticamente para el viaje {instance.id}")
+
+
+# ============================================================================
 # SEÑALES DE AUDITORÍA - LOGIN/LOGOUT
 # ============================================================================
 
@@ -65,7 +122,7 @@ def log_login(sender, request, user, **kwargs):
             user=user,
             action='login',
             ip_address=request.META.get('REMOTE_ADDR', ''),
-            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],  # Limitar longitud
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
             session_key=request.session.session_key
         )
         logger.info(f"🔐 Login: {user.username} desde {request.META.get('REMOTE_ADDR', 'desconocido')}")
@@ -125,7 +182,6 @@ def log_user_change(sender, instance, **kwargs):
             old = User.objects.get(pk=instance.pk)
             changes = {}
             
-            # Campos a monitorear
             fields_to_check = [
                 'username', 'email', 'first_name', 'last_name',
                 'is_active', 'is_staff', 'is_superuser'
@@ -183,8 +239,6 @@ def log_user_create(sender, instance, created, **kwargs):
 def log_user_delete(sender, instance, **kwargs):
     """Registra eliminación de usuario en auditoría."""
     try:
-        # Intentar obtener el usuario que eliminó (desde el middleware)
-        # Si no está disponible, registrar como sistema
         requesting_user = None
         try:
             from threading import local
@@ -209,81 +263,3 @@ def log_user_delete(sender, instance, **kwargs):
         logger.warning(f"🗑️ Usuario eliminado: {instance.username} por {requesting_user}")
     except Exception as e:
         logger.error(f"❌ Error registrando eliminación de usuario: {e}")
-
-
-# ============================================================================
-# SEÑALES PARA AUDITORÍA DE MODELOS CRÍTICOS (Opcional)
-# ============================================================================
-
-# from .models import Ticket, Trip, CashRegister
-
-# @receiver(post_save, sender=Ticket)
-# def log_ticket_change(sender, instance, created, **kwargs):
-#     """Registra cambios en tickets."""
-#     if created:
-#         AuditLog.objects.create(
-#             user=instance.created_by,
-#             action='create',
-#             model_name='Ticket',
-#             object_id=str(instance.pk),
-#             object_repr=f"Ticket {instance.number}",
-#             changes={
-#                 'trip': str(instance.trip),
-#                 'seat': instance.seat.number,
-#                 'price': str(instance.price),
-#                 'payment_method': instance.payment_method
-#             }
-#         )
-
-
-# ============================================================================
-# SEÑAL PARA LIMPIEZA DE HOLD EXPIRADOS (Alternativa a Celery)
-# ============================================================================
-
-# from .models import SeatHold
-
-# @receiver(pre_save, sender=SeatHold)
-# def check_expired_holds(sender, instance, **kwargs):
-#     """Limpia holds expirados antes de guardar uno nuevo."""
-#     if instance.active and instance.expires_at <= timezone.now():
-#         instance.active = False
-#         logger.debug(f"🔄 Hold expirado desactivado: {instance}")
-
-
-# ============================================================================
-# MIDDLEWARE PARA CAPTURAR USUARIO EN REQUEST (opcional)
-# ============================================================================
-
-# import threading
-# _request_local = threading.local()
-
-# class AuditMiddleware:
-#     """Middleware para capturar el usuario actual en todas las señales."""
-    
-#     def __init__(self, get_response):
-#         self.get_response = get_response
-    
-#     def __call__(self, request):
-#         # Guardar usuario en thread local
-#         if request.user.is_authenticated:
-#             _request_local.user = request.user
-#         else:
-#             _request_local.user = None
-        
-#         response = self.get_response(request)
-#         return response
-
-
-# ============================================================================
-# NOTA SOBRE LA SEÑAL ENSURE_USERPROFILE_ONCE
-# ============================================================================
-#
-# Esta señal es CRÍTICA para el funcionamiento del sistema.
-# Sin ella, los usuarios nuevos no tendrán perfil y muchas vistas fallarán.
-#
-# Si por alguna razón quieres desactivarla temporalmente, asegúrate de:
-# 1. Crear perfiles manualmente para usuarios existentes
-# 2. Tener un sistema de creación de perfiles alternativo
-#
-# Para desactivarla temporalmente (no recomendado), descomenta la línea:
-# @receiver(post_save, sender=User, dispatch_uid="booking.ensure_userprofile_once")

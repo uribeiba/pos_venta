@@ -1264,3 +1264,258 @@ class ContractEmployeeAdmin(admin.ModelAdmin):
     search_fields = ('customer__full_name', 'customer__national_id', 'employee_id')
     autocomplete_fields = ('customer',)
     raw_id_fields = ('customer',)
+
+# ============================================================
+# ============================================================
+# ADMIN: MÓDULO TALLER MECÁNICO
+# ============================================================
+# ============================================================
+
+from .models import (
+    Workshop,
+    Mechanic,
+    MaintenanceOrder,
+    MaintenanceOrderItem,
+)
+
+
+# ============================================================
+# INLINE: Items dentro de la orden
+# ============================================================
+class MaintenanceOrderItemInline(admin.TabularInline):
+    model = MaintenanceOrderItem
+    extra = 1
+    fields = (
+        "description",
+        "is_labor",
+        "quantity",
+        "unit_price",
+        "subtotal",
+    )
+    readonly_fields = ("subtotal",)
+
+
+# ============================================================
+# WORKSHOP (Talleres)
+# ============================================================
+@admin.register(Workshop)
+class WorkshopAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "company",
+        "code",
+        "is_internal",
+        "phone",
+        "is_active",
+    )
+    list_filter = (
+        "company",
+        "is_internal",
+        "is_active",
+    )
+    search_fields = (
+        "name",
+        "code",
+        "company__name",
+    )
+    list_editable = ("is_active",)
+    ordering = ("company", "name")
+
+    fieldsets = (
+        ("Identificación", {
+            "fields": ("company", "name", "code"),
+        }),
+        ("Contacto", {
+            "fields": ("address", "phone", "email"),
+        }),
+        ("Estado", {
+            "fields": ("is_internal", "is_active"),
+        }),
+    )
+
+
+# ============================================================
+# MECHANIC (Mecánicos / Eléctricos / Jefes)
+# ============================================================
+@admin.register(Mechanic)
+class MechanicAdmin(admin.ModelAdmin):
+    list_display = (
+        "full_name",
+        "role",
+        "company",
+        "workshop",
+        "rut",
+        "phone",
+        "is_active",
+    )
+    list_filter = (
+        "company",
+        "role",
+        "is_active",
+        "workshop",
+    )
+    search_fields = (
+        "first_name",
+        "last_name",
+        "rut",
+        "phone",
+    )
+    list_editable = ("is_active",)
+    ordering = ("last_name", "first_name")
+
+    fieldsets = (
+        ("Identificación", {
+            "fields": ("company", "workshop", "user"),
+        }),
+        ("Datos personales", {
+            "fields": (
+                "first_name",
+                "last_name",
+                "rut",
+                "phone",
+                "email",
+            ),
+        }),
+        ("Rol", {
+            "fields": ("role", "is_active"),
+        }),
+    )
+
+    def full_name(self, obj):
+        return obj.full_name
+    full_name.short_description = "Nombre completo"
+
+
+# ============================================================
+# MAINTENANCE ORDER (Órdenes de taller)
+# ============================================================
+@admin.register(MaintenanceOrder)
+class MaintenanceOrderAdmin(admin.ModelAdmin):
+
+    inlines = [MaintenanceOrderItemInline]
+
+    list_display = (
+        "id",
+        "bus_plate",
+        "company",
+        "workshop",
+        "reason",
+        "status",
+        "entry_date",
+        "total_cost_display",
+    )
+    list_filter = (
+        "company",
+        "workshop",
+        "reason",
+        "status",
+        "entry_date",
+    )
+    search_fields = (
+        "bus__plate",
+        "description",
+        "notes",
+    )
+    date_hierarchy = "entry_date"
+    ordering = ("-entry_date",)
+    readonly_fields = (
+        "total_cost",
+        "created_at",
+        "updated_at",
+    )
+
+    fieldsets = (
+        ("Identificación", {
+            "fields": (
+                "company",
+                "workshop",
+                "bus",
+                "reason",
+                "status",
+            ),
+        }),
+        ("Fechas y kilometraje", {
+            "fields": (
+                "entry_date",
+                "exit_date",
+                "odometer_in",
+                "odometer_out",
+            ),
+        }),
+        ("Trabajo", {
+            "fields": (
+                "description",
+                "notes",
+            ),
+        }),
+        ("Responsables", {
+            "fields": (
+                "chief",
+                "mechanic",
+                "electrician",
+            ),
+        }),
+        ("Costos", {
+            "fields": (
+                "labor_cost",
+                "parts_cost",
+                "other_cost",
+                "total_cost",
+            ),
+        }),
+        ("Próxima mantención", {
+            "fields": (
+                "next_maintenance_date",
+                "next_maintenance_km",
+            ),
+        }),
+        ("Auditoría", {
+            "fields": (
+                "created_by",
+                "created_at",
+                "updated_at",
+            ),
+            "classes": ("collapse",),
+        }),
+    )
+
+    def bus_plate(self, obj):
+        return obj.bus.plate
+    bus_plate.short_description = "Patente"
+    bus_plate.admin_order_field = "bus__plate"
+
+    def total_cost_display(self, obj):
+        return f"${obj.total_cost:,.0f}".replace(",", ".")
+    total_cost_display.short_description = "Costo total"
+    total_cost_display.admin_order_field = "total_cost"
+
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+# ============================================================
+# MAINTENANCE ORDER ITEM (Items sueltos)
+# ============================================================
+@admin.register(MaintenanceOrderItem)
+class MaintenanceOrderItemAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "order",
+        "description",
+        "is_labor",
+        "quantity",
+        "unit_price",
+        "subtotal",
+    )
+    list_filter = (
+        "is_labor",
+    )
+    search_fields = (
+        "description",
+        "order__bus__plate",
+    )
+    ordering = ("-id",)
+
+

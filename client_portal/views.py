@@ -1,5 +1,6 @@
 # client_portal/views.py
 # ==================== IMPORTS ====================
+import unicodedata
 import base64
 import io
 import json
@@ -59,7 +60,13 @@ try:
 except ImportError:
     HAS_REPORTLAB = False
 
-# ... resto del código (todas las funciones)
+def remove_accents(text):
+    """Quita las tildes y diéresis de un texto y lo pasa a minúsculas."""
+    if not text:
+        return ""
+    # Normaliza el texto, lo convierte a ASCII (ignorando tildes) y a minúsculas
+    text = unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8')
+    return text.lower().strip()
 
 # ==================== HELPERS ====================
 
@@ -321,27 +328,24 @@ def home(request):
         context,
     )
 
-
 def search_trips(request):
     """
     Busca viajes disponibles utilizando TripStop.
-
-    Permite:
-    - origen/destino extremos;
-    - paradas intermedias;
-    - valida que origen esté antes que destino;
-    - calcula disponibilidad únicamente para el tramo solicitado.
+    Permite origen/destino extremos e intermedios, ignorando tildes y mayúsculas.
     """
-
     public_company = get_public_company(request)
 
     # ============================================================
     # 1. PARÁMETROS
     # ============================================================
-    origin = request.GET.get("origin", "").strip()
-    destination = request.GET.get("destination", "").strip()
+    origin_raw = request.GET.get("origin", "").strip()
+    destination_raw = request.GET.get("destination", "").strip()
     date_str = request.GET.get("date", "").strip()
     return_date = request.GET.get("return_date", "").strip()
+
+    # Normalizamos los parámetros de búsqueda (quitamos tildes y mayúsculas)
+    origin = remove_accents(origin_raw)
+    destination = remove_accents(destination_raw)
 
     # ============================================================
     # 2. VALIDACIÓN BÁSICA
@@ -352,8 +356,8 @@ def search_trips(request):
             "client_portal/search_results.html",
             {
                 "trips": [],
-                "origin": origin,
-                "destination": destination,
+                "origin": origin_raw,
+                "destination": destination_raw,
                 "date": date_str,
                 "return_date": return_date,
                 "error": "Por favor completa todos los campos de búsqueda",
@@ -361,14 +365,14 @@ def search_trips(request):
             },
         )
 
-    if origin.casefold() == destination.casefold():
+    if origin == destination:
         return render(
             request,
             "client_portal/search_results.html",
             {
                 "trips": [],
-                "origin": origin,
-                "destination": destination,
+                "origin": origin_raw,
+                "destination": destination_raw,
                 "date": date_str,
                 "return_date": return_date,
                 "error": "El origen y el destino deben ser diferentes.",
@@ -390,8 +394,8 @@ def search_trips(request):
             "client_portal/search_results.html",
             {
                 "trips": [],
-                "origin": origin,
-                "destination": destination,
+                "origin": origin_raw,
+                "destination": destination_raw,
                 "date": date_str,
                 "return_date": return_date,
                 "error": "La fecha ingresada no es válida",
@@ -454,20 +458,20 @@ def search_trips(request):
         boarding_stop = None
         alighting_stop = None
 
-        # Buscar origen.
+        # Buscar origen comparando SIN tildes
         for stop in stops:
-            if stop.city.name.casefold() == origin.casefold():
+            if remove_accents(stop.city.name) == origin:
                 boarding_stop = stop
                 break
 
         if boarding_stop is None:
             continue
 
-        # Buscar destino DESPUÉS del origen.
+        # Buscar destino DESPUÉS del origen comparando SIN tildes
         for stop in stops:
             if (
                 stop.order > boarding_stop.order
-                and stop.city.name.casefold() == destination.casefold()
+                and remove_accents(stop.city.name) == destination
             ):
                 alighting_stop = stop
                 break
@@ -588,8 +592,6 @@ def search_trips(request):
                 else ""
             ),
 
-            # Precio provisional.
-            # Luego implementaremos tarifa específica por tramo.
             "price": float(
                 trip.route.base_price
             ),
@@ -608,8 +610,8 @@ def search_trips(request):
         "client_portal/search_results.html",
         {
             "trips": trips_data,
-            "origin": origin,
-            "destination": destination,
+            "origin": origin_raw, # Enviamos el original para mostrarlo en pantalla
+            "destination": destination_raw,
             "date": date_str,
             "return_date": return_date,
             "total_results": len(trips_data),

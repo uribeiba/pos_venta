@@ -1,0 +1,237 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}{% if is_new %}Nueva orden{% else %}Editar OT-{{ order.id|stringformat:"05d" }}{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-hero{background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 12px 30px rgba(30,64,175,.14)}
+    .form-card{border:0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
+    .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:800}
+    .items-table input, .items-table select{border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px}
+    .items-table th{font-size:.72rem;text-transform:uppercase;color:#64748b}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-3">
+
+    <div class="form-hero mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="small text-uppercase fw-bold opacity-75">Taller · Órdenes</div>
+                <h3 class="mb-1 fw-bold">
+                    <i class="fas fa-clipboard-list me-2"></i>
+                    {% if is_new %}Registrar entrada al taller{% else %}Editar OT-{{ order.id|stringformat:"05d" }}{% endif %}
+                </h3>
+                <div class="small opacity-75">Ingresa los datos del bus, responsables y trabajo realizado.</div>
+            </div>
+            <a href="{% url 'coordinator:workshop_order_list' %}" class="btn btn-outline-light">
+                <i class="fas fa-arrow-left me-1"></i>Volver
+            </a>
+        </div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="form-card p-4 mb-3">
+                    <div class="section-label mb-3">Identificación</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Taller *</label>
+                            <select name="workshop" class="form-select" required>
+                                <option value="">— Seleccionar —</option>
+                                {% for w in workshops %}
+                                <option value="{{ w.id }}" {% if not is_new and order.workshop_id == w.id %}selected{% endif %}>{{ w.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Bus (patente) *</label>
+                            <select name="bus" class="form-select" required>
+                                <option value="">— Seleccionar —</option>
+                                {% for b in buses %}
+                                <option value="{{ b.id }}" {% if not is_new and order.bus_id == b.id %}selected{% endif %}>{{ b.plate }} · {{ b.brand }} {{ b.model }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Motivo *</label>
+                            <select name="reason" class="form-select" required>
+                                {% for value, label in reason_choices %}
+                                <option value="{{ value }}" {% if not is_new and order.reason == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Estado *</label>
+                            <select name="status" class="form-select" required>
+                                {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if not is_new and order.status == value %}selected{% elif is_new and value == "open" %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-card p-4 mb-3">
+                    <div class="section-label mb-3">Fechas y kilometraje</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Fecha ingreso *</label>
+                            <input type="datetime-local" name="entry_date" class="form-control" required
+                                value="{% if not is_new %}{{ order.entry_date|date:'Y-m-d\TH:i' }}{% endif %}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Fecha salida</label>
+                            <input type="datetime-local" name="exit_date" class="form-control"
+                                value="{% if not is_new and order.exit_date %}{{ order.exit_date|date:'Y-m-d\TH:i' }}{% endif %}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Kilometraje ingreso</label>
+                            <input type="number" name="odometer_in" class="form-control" value="{{ order.odometer_in|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Kilometraje salida</label>
+                            <input type="number" name="odometer_out" class="form-control" value="{{ order.odometer_out|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-card p-4 mb-3">
+                    <div class="section-label mb-3">Responsables</div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Jefe de taller</label>
+                            <select name="chief" class="form-select">
+                                <option value="">—</option>
+                                {% for m in mechanics %}
+                                <option value="{{ m.id }}" {% if not is_new and order.chief_id == m.id %}selected{% endif %}>{{ m.full_name }} ({{ m.get_role_display }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Mecánico</label>
+                            <select name="mechanic" class="form-select">
+                                <option value="">—</option>
+                                {% for m in mechanics %}
+                                <option value="{{ m.id }}" {% if not is_new and order.mechanic_id == m.id %}selected{% endif %}>{{ m.full_name }} ({{ m.get_role_display }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Eléctrico</label>
+                            <select name="electrician" class="form-select">
+                                <option value="">—</option>
+                                {% for m in mechanics %}
+                                <option value="{{ m.id }}" {% if not is_new and order.electrician_id == m.id %}selected{% endif %}>{{ m.full_name }} ({{ m.get_role_display }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-card p-4 mb-3">
+                    <div class="section-label mb-3">Trabajo y notas</div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Descripción del trabajo</label>
+                        <textarea name="description" class="form-control" rows="3">{{ order.description|default:'' }}</textarea>
+                    </div>
+                    <div>
+                        <label class="form-label small fw-bold">Notas internas</label>
+                        <textarea name="notes" class="form-control" rows="2">{{ order.notes|default:'' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="form-card p-4 mb-3">
+                    <div class="section-label mb-3">Próxima mantención</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Fecha próxima</label>
+                            <input type="date" name="next_maintenance_date" class="form-control"
+                                value="{{ order.next_maintenance_date|date:'Y-m-d' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Próximo km</label>
+                            <input type="number" name="next_maintenance_km" class="form-control" value="{{ order.next_maintenance_km|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="form-card p-4 mb-3">
+                    <div class="section-label mb-3">Items (piezas y mano de obra)</div>
+                    <div id="items-container">
+                        {% if not is_new %}
+                            {% for item in order.items.all %}
+                            <div class="item-row border rounded p-2 mb-2">
+                                <input type="text" name="item_description" class="form-control form-control-sm mb-2" value="{{ item.description }}" placeholder="Descripción">
+                                <div class="row g-1 mb-2">
+                                    <div class="col-4"><input type="number" step="0.01" name="item_quantity" class="form-control form-control-sm" value="{{ item.quantity }}" placeholder="Cant."></div>
+                                    <div class="col-8"><input type="number" step="0.01" name="item_price" class="form-control form-control-sm" value="{{ item.unit_price }}" placeholder="Precio"></div>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" name="item_is_labor" value="{{ forloop.counter0 }}" class="form-check-input" {% if item.is_labor %}checked{% endif %}>
+                                    <label class="form-check-label small">Es mano de obra</label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                        <div class="item-row border rounded p-2 mb-2">
+                            <input type="text" name="item_description" class="form-control form-control-sm mb-2" placeholder="Descripción">
+                            <div class="row g-1 mb-2">
+                                <div class="col-4"><input type="number" step="0.01" name="item_quantity" class="form-control form-control-sm" value="1" placeholder="Cant."></div>
+                                <div class="col-8"><input type="number" step="0.01" name="item_price" class="form-control form-control-sm" placeholder="Precio"></div>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" name="item_is_labor" value="__INDEX__" class="form-check-input">
+                                <label class="form-check-label small">Es mano de obra</label>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" id="add-item" class="btn btn-outline-primary btn-sm w-100">
+                        <i class="fas fa-plus me-1"></i>Agregar item
+                    </button>
+                    <div class="info-box mt-3 small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        El total se calcula automáticamente al guardar.
+                    </div>
+                </div>
+
+                <div class="form-card p-3">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-save me-1"></i>Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+let itemIndex = {{ order.items.count|default:0 }};
+document.getElementById('add-item').addEventListener('click', function() {
+    const container = document.getElementById('items-container');
+    const html = `
+        <div class="item-row border rounded p-2 mb-2">
+            <input type="text" name="item_description" class="form-control form-control-sm mb-2" placeholder="Descripción">
+            <div class="row g-1 mb-2">
+                <div class="col-4"><input type="number" step="0.01" name="item_quantity" class="form-control form-control-sm" value="1" placeholder="Cant."></div>
+                <div class="col-8"><input type="number" step="0.01" name="item_price" class="form-control form-control-sm" placeholder="Precio"></div>
+            </div>
+            <div class="form-check">
+                <input type="checkbox" name="item_is_labor" value="${itemIndex}" class="form-check-input">
+                <label class="form-check-label small">Es mano de obra</label>
+            </div>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', html);
+    itemIndex++;
+});
+</script>
+{% endblock %}

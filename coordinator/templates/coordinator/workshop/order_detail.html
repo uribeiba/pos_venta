@@ -1,0 +1,136 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}OT-{{ order.id|stringformat:"05d" }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .det-hero{background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 12px 30px rgba(30,64,175,.14)}
+    .det-card{border:0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
+    .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:800}
+    .info-item{margin-bottom:14px}
+    .info-item .label{font-size:.72rem;color:#64748b;font-weight:700;text-transform:uppercase}
+    .info-item .value{font-size:.95rem;color:#0f172a;font-weight:600}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-3">
+
+    <div class="det-hero mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="small text-uppercase fw-bold opacity-75">Taller · Orden de trabajo</div>
+                <h3 class="mb-1 fw-bold">
+                    <i class="fas fa-clipboard-check me-2"></i>OT-{{ order.id|stringformat:"05d" }}
+                </h3>
+                <div class="small opacity-75">
+                    {{ order.bus.plate }} · {{ order.workshop.name }} · {{ order.entry_date|date:"d/m/Y H:i" }}
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{% url 'coordinator:workshop_order_list' %}" class="btn btn-outline-light">
+                    <i class="fas fa-arrow-left me-1"></i>Volver
+                </a>
+                <a href="{% url 'coordinator:workshop_order_edit' order.id %}" class="btn btn-light">
+                    <i class="fas fa-edit me-1"></i>Editar
+                </a>
+                {% if order.status != "done" %}
+                <form method="post" action="{% url 'coordinator:workshop_order_close' order.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success" onclick="return confirm('¿Cerrar esta orden?')">
+                        <i class="fas fa-check me-1"></i>Cerrar
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="det-card p-3"><div class="info-item"><div class="label">Estado</div><div class="value">
+            {% if order.status == "open" %}<span class="badge bg-warning text-dark">Abierta</span>
+            {% elif order.status == "in_progress" %}<span class="badge bg-info text-dark">En proceso</span>
+            {% elif order.status == "done" %}<span class="badge bg-success">Terminada</span>
+            {% else %}<span class="badge bg-secondary">Cancelada</span>{% endif %}
+        </div></div></div></div>
+        <div class="col-md-3"><div class="det-card p-3"><div class="info-item"><div class="label">Motivo</div><div class="value">{{ order.get_reason_display }}</div></div></div></div>
+        <div class="col-md-3"><div class="det-card p-3"><div class="info-item"><div class="label">Ingreso</div><div class="value">{{ order.entry_date|date:"d/m/Y H:i" }}</div></div></div></div>
+        <div class="col-md-3"><div class="det-card p-3"><div class="info-item"><div class="label">Salida</div><div class="value">{{ order.exit_date|date:"d/m/Y H:i"|default:"—" }}</div></div></div></div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="det-card p-4 mb-3">
+                <div class="section-label mb-3">Bus y kilometraje</div>
+                <div class="row">
+                    <div class="col-md-3"><div class="info-item"><div class="label">Patente</div><div class="value"><span class="badge bg-dark">{{ order.bus.plate }}</span></div></div></div>
+                    <div class="col-md-3"><div class="info-item"><div class="label">Marca / Modelo</div><div class="value">{{ order.bus.brand }} {{ order.bus.model }}</div></div></div>
+                    <div class="col-md-3"><div class="info-item"><div class="label">Km Ingreso</div><div class="value">{{ order.odometer_in|default:"—" }}</div></div></div>
+                    <div class="col-md-3"><div class="info-item"><div class="label">Km Salida</div><div class="value">{{ order.odometer_out|default:"—" }}</div></div></div>
+                </div>
+            </div>
+
+            <div class="det-card p-4 mb-3">
+                <div class="section-label mb-3">Responsables</div>
+                <div class="row">
+                    <div class="col-md-4"><div class="info-item"><div class="label">Jefe de taller</div><div class="value">{{ order.chief.full_name|default:"—" }}</div></div></div>
+                    <div class="col-md-4"><div class="info-item"><div class="label">Mecánico</div><div class="value">{{ order.mechanic.full_name|default:"—" }}</div></div></div>
+                    <div class="col-md-4"><div class="info-item"><div class="label">Eléctrico</div><div class="value">{{ order.electrician.full_name|default:"—" }}</div></div></div>
+                </div>
+            </div>
+
+            <div class="det-card p-4 mb-3">
+                <div class="section-label mb-3">Trabajo</div>
+                <p class="mb-2">{{ order.description|default:"Sin descripción." }}</p>
+                {% if order.notes %}<hr><div class="small text-muted"><strong>Notas:</strong> {{ order.notes }}</div>{% endif %}
+            </div>
+
+            <div class="det-card">
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Items</h6></div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead class="table-light">
+                            <tr><th>Descripción</th><th>Tipo</th><th class="text-end">Cant.</th><th class="text-end">Precio</th><th class="text-end">Subtotal</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for item in order.items.all %}
+                            <tr>
+                                <td>{{ item.description }}</td>
+                                <td>{% if item.is_labor %}<span class="badge bg-info text-dark">Mano de obra</span>{% else %}<span class="badge bg-secondary">Repuesto</span>{% endif %}</td>
+                                <td class="text-end">{{ item.quantity }}</td>
+                                <td class="text-end">${{ item.unit_price|floatformat:0|intcomma }}</td>
+                                <td class="text-end fw-bold">${{ item.subtotal|floatformat:0|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center py-3 text-muted">Sin items</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="det-card p-4 mb-3">
+                <div class="section-label mb-3">Costos</div>
+                <div class="d-flex justify-content-between mb-2"><span>Mano de obra</span><strong>${{ order.labor_cost|floatformat:0|intcomma }}</strong></div>
+                <div class="d-flex justify-content-between mb-2"><span>Repuestos</span><strong>${{ order.parts_cost|floatformat:0|intcomma }}</strong></div>
+                <div class="d-flex justify-content-between mb-2"><span>Otros</span><strong>${{ order.other_cost|floatformat:0|intcomma }}</strong></div>
+                <hr>
+                <div class="d-flex justify-content-between"><span class="fw-bold">TOTAL</span><span class="fw-bold fs-5 text-primary">${{ order.total_cost|floatformat:0|intcomma }}</span></div>
+            </div>
+
+            {% if order.next_maintenance_date or order.next_maintenance_km %}
+            <div class="det-card p-4">
+                <div class="section-label mb-3">Próxima mantención</div>
+                {% if order.next_maintenance_date %}<div class="mb-2"><strong>Fecha:</strong> {{ order.next_maintenance_date|date:"d/m/Y" }}</div>{% endif %}
+                {% if order.next_maintenance_km %}<div><strong>Km:</strong> {{ order.next_maintenance_km }}</div>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

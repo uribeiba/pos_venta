@@ -1,0 +1,122 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Órdenes de Taller{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ord-hero{background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 12px 30px rgba(30,64,175,.14)}
+    .ord-card{border:0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.06);overflow:hidden}
+    .filter-bar{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px}
+    .table thead th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#475569;white-space:nowrap}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-3">
+
+    <div class="ord-hero mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="small text-uppercase fw-bold opacity-75">Taller · Órdenes</div>
+                <h3 class="mb-1 fw-bold"><i class="fas fa-clipboard-list me-2"></i>Órdenes de trabajo</h3>
+                <div class="small opacity-75">Todas las órdenes del taller</div>
+            </div>
+            <a href="{% url 'coordinator:workshop_order_new' %}" class="btn btn-light">
+                <i class="fas fa-plus me-1"></i>Nueva orden
+            </a>
+        </div>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="filter-bar mb-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted">Buscar</label>
+                <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Patente, descripción...">
+            </div>
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted">Taller</label>
+                <select name="workshop" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    {% for w in workshops %}
+                    <option value="{{ w.id }}" {% if current_workshop == w.id|stringformat:"s" %}selected{% endif %}>{{ w.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted">Estado</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="fas fa-filter me-1"></i>Filtrar
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- TABLA -->
+    <div class="ord-card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>OT</th>
+                        <th>Patente</th>
+                        <th>Taller</th>
+                        <th>Motivo</th>
+                        <th>Responsable</th>
+                        <th>Ingreso</th>
+                        <th class="text-end">Costo</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'coordinator:workshop_order_detail' order.id %}" class="fw-bold text-primary">
+                                OT-{{ order.id|stringformat:"05d" }}
+                            </a>
+                        </td>
+                        <td><span class="badge bg-dark">{{ order.bus.plate }}</span></td>
+                        <td>{{ order.workshop.name }}</td>
+                        <td>{{ order.get_reason_display }}</td>
+                        <td>{{ order.mechanic.full_name|default:"—" }}</td>
+                        <td>{{ order.entry_date|date:"d/m/Y" }}</td>
+                        <td class="text-end fw-bold">${{ order.total_cost|floatformat:0|intcomma }}</td>
+                        <td>
+                            {% if order.status == "open" %}<span class="badge bg-warning text-dark">Abierta</span>
+                            {% elif order.status == "in_progress" %}<span class="badge bg-info text-dark">En proceso</span>
+                            {% elif order.status == "done" %}<span class="badge bg-success">Terminada</span>
+                            {% else %}<span class="badge bg-secondary">Cancelada</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'coordinator:workshop_order_detail' order.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>
+                            No hay órdenes con esos filtros.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

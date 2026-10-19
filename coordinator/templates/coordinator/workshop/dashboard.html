@@ -1,0 +1,208 @@
+{% extends 'coordinator/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Taller Mecánico{% endblock %}
+
+{% block extra_css %}
+<style>
+    .workshop-hero{background:linear-gradient(115deg,#172554 0%,#1d4ed8 100%);color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 12px 30px rgba(30,64,175,.14)}
+    .workshop-card{border:0;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.06);overflow:hidden}
+    .kpi{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:15px;height:100%;position:relative;overflow:hidden}
+    .kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+    .kpi.primary{--accent:#1d4ed8}
+    .kpi.success{--accent:#10b981}
+    .kpi.warning{--accent:#f59e0b}
+    .kpi.danger{--accent:#ef4444}
+    .kpi.slate{--accent:#475569}
+    .kpi-label{font-size:.72rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .kpi-value{font-size:1.55rem;font-weight:850;color:#0f172a}
+    .kpi-icon{position:absolute;right:14px;top:14px;opacity:.15;font-size:2rem}
+    .quick-access{display:flex;flex-direction:column;gap:10px;padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;height:100%;transition:.15s}
+    .quick-access:hover{border-color:#1d4ed8;transform:translateY(-1px);box-shadow:0 6px 16px rgba(29,78,216,.1)}
+    .quick-access-icon{width:42px;height:42px;border-radius:12px;background:#eff6ff;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+    .status-dot{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;font-weight:800}
+    .table thead th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#475569;white-space:nowrap}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-3">
+
+    <!-- HERO -->
+    <div class="workshop-hero mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="small text-uppercase fw-bold opacity-75">Taller · Panel de control</div>
+                <h3 class="mb-1 fw-bold"><i class="fas fa-screwdriver-wrench me-2"></i>Taller Mecánico</h3>
+                <div class="small opacity-75">
+                    {% if company %}{{ company.name }}{% else %}Todas las empresas{% endif %}
+                </div>
+            </div>
+            <a href="{% url 'coordinator:workshop_order_new' %}" class="btn btn-light">
+                <i class="fas fa-plus me-1"></i>Nueva orden
+            </a>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="kpi warning">
+                <i class="fas fa-clipboard-list kpi-icon"></i>
+                <div class="kpi-label">Órdenes abiertas</div>
+                <div class="kpi-value">{{ open_orders }}</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="kpi success">
+                <i class="fas fa-check-circle kpi-icon"></i>
+                <div class="kpi-label">Terminadas este mes</div>
+                <div class="kpi-value">{{ done_this_month }}</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="kpi primary">
+                <i class="fas fa-users kpi-icon"></i>
+                <div class="kpi-label">Mecánicos activos</div>
+                <div class="kpi-value">{{ active_mechanics }}</div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="kpi slate">
+                <i class="fas fa-dollar-sign kpi-icon"></i>
+                <div class="kpi-label">Gasto del mes</div>
+                <div class="kpi-value">${{ month_cost|floatformat:0|intcomma }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACCESOS RÁPIDOS -->
+    <div class="mb-3">
+        <h6 class="text-uppercase text-muted fw-bold small mb-3">
+            <i class="fas fa-bolt me-1"></i>Accesos rápidos
+        </h6>
+    </div>
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-xl-3">
+            <a href="{% url 'coordinator:workshop_order_list' %}" class="quick-access text-decoration-none text-dark">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="quick-access-icon"><i class="fas fa-clipboard-list"></i></div>
+                    <div>
+                        <div class="fw-bold">Órdenes de trabajo</div>
+                        <div class="small text-muted">Ver, crear y cerrar órdenes</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <a href="{% url 'coordinator:workshop_mechanic_list' %}" class="quick-access text-decoration-none text-dark">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="quick-access-icon"><i class="fas fa-user-gear"></i></div>
+                    <div>
+                        <div class="fw-bold">Mecánicos</div>
+                        <div class="small text-muted">{{ total_mechanics }} registrados</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <a href="{% url 'coordinator:workshop_list' %}" class="quick-access text-decoration-none text-dark">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="quick-access-icon"><i class="fas fa-warehouse"></i></div>
+                    <div>
+                        <div class="fw-bold">Talleres</div>
+                        <div class="small text-muted">{{ total_workshops }} registrados</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <a href="{% url 'coordinator:workshop_order_new' %}" class="quick-access text-decoration-none text-dark">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="quick-access-icon"><i class="fas fa-plus-circle"></i></div>
+                    <div>
+                        <div class="fw-bold">Nueva orden</div>
+                        <div class="small text-muted">Ingresar bus al taller</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- ÚLTIMAS ÓRDENES -->
+    <div class="workshop-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h6 class="mb-0 fw-bold">
+                <i class="fas fa-history me-2 text-primary"></i>Últimas órdenes
+            </h6>
+            <a href="{% url 'coordinator:workshop_order_list' %}" class="btn btn-sm btn-outline-primary">
+                Ver todas <i class="fas fa-arrow-right ms-1"></i>
+            </a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>OT</th>
+                        <th>Patente</th>
+                        <th>Taller</th>
+                        <th>Motivo</th>
+                        <th>Responsable</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Costo</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in recent_orders %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'coordinator:workshop_order_detail' order.id %}" class="fw-bold text-primary">
+                                OT-{{ order.id|stringformat:"05d" }}
+                            </a>
+                        </td>
+                        <td><span class="badge bg-dark">{{ order.bus.plate }}</span></td>
+                        <td>{{ order.workshop.name }}</td>
+                        <td>{{ order.get_reason_display }}</td>
+                        <td>
+                            {% if order.mechanic %}
+                                {{ order.mechanic.full_name }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ order.entry_date|date:"d/m/Y H:i" }}</td>
+                        <td class="text-end fw-bold">${{ order.total_cost|floatformat:0|intcomma }}</td>
+                        <td>
+                            {% if order.status == "open" %}
+                                <span class="badge bg-warning text-dark">Abierta</span>
+                            {% elif order.status == "in_progress" %}
+                                <span class="badge bg-info text-dark">En proceso</span>
+                            {% elif order.status == "done" %}
+                                <span class="badge bg-success">Terminada</span>
+                            {% elif order.status == "cancelled" %}
+                                <span class="badge bg-secondary">Cancelada</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>
+                            No hay órdenes registradas todavía.
+                            <div class="mt-3">
+                                <a href="{% url 'coordinator:workshop_order_new' %}" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-plus me-1"></i>Crear primera orden
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

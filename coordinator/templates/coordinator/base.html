@@ -319,6 +319,22 @@
                             </ul>
                         </li>
 
+
+                        <!-- Grupo: Taller -->
+                        <li>
+                            <div class="nav-header" data-bs-toggle="collapse" data-bs-target="#tallerMenu" aria-expanded="false">
+                                <span><i class="fas fa-screwdriver-wrench me-2"></i> Taller</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                            <ul class="submenu collapse" id="tallerMenu">
+                                <li><a href="{% url 'coordinator:workshop_dashboard' %}" class="nav-item"><i class="fas fa-gauge-high"></i> Panel</a></li>
+                                <li><a href="{% url 'coordinator:workshop_order_list' %}" class="nav-item"><i class="fas fa-clipboard-list"></i> Órdenes de trabajo</a></li>
+                                <li><a href="{% url 'coordinator:workshop_mechanic_list' %}" class="nav-item"><i class="fas fa-user-gear"></i> Mecánicos</a></li>
+                                <li><a href="{% url 'coordinator:workshop_list' %}" class="nav-item"><i class="fas fa-warehouse"></i> Talleres</a></li>
+                            </ul>
+                        </li>
+
+
                         <!-- Grupo: Configuración (colapsado por defecto) -->
                         <li>
                             <div class="nav-header" data-bs-toggle="collapse" data-bs-target="#configMenu" aria-expanded="false">

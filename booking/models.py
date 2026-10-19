@@ -3593,3 +3593,495 @@ class PaymentTransaction(models.Model):
             f"{self.buy_order} - "
             f"{self.status}"
         )
+
+
+# ============================================================
+# ============================================================
+# MÓDULO TALLER MECÁNICO
+# ============================================================
+# ============================================================
+#
+# Modelos para gestión de talleres, mecánicos y órdenes de trabajo.
+# Diseñado multi-empresa (cada empresa ve solo sus talleres).
+# ============================================================
+
+
+class Workshop(models.Model):
+    """
+    Taller (propio o externo) donde se atienden los buses.
+    Ejemplo: "Transportes Rojas" (taller de Cejer).
+    """
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="workshops",
+        verbose_name="Empresa",
+    )
+
+    name = models.CharField(
+        "Nombre del taller",
+        max_length=150,
+    )
+
+    code = models.CharField(
+        "Código interno",
+        max_length=20,
+        blank=True,
+    )
+
+    address = models.CharField(
+        "Dirección",
+        max_length=200,
+        blank=True,
+    )
+
+    phone = models.CharField(
+        "Teléfono",
+        max_length=30,
+        blank=True,
+    )
+
+    email = models.EmailField(
+        "Email",
+        blank=True,
+    )
+
+    is_internal = models.BooleanField(
+        "Taller interno",
+        default=True,
+        help_text="Marcar si es taller propio de la empresa",
+    )
+
+    is_active = models.BooleanField(
+        "Activo",
+        default=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Taller"
+        verbose_name_plural = "Talleres"
+        unique_together = [("company", "name")]
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.company.name})"
+
+
+class Mechanic(models.Model):
+    """
+    Mecánico, eléctrico o jefe de taller.
+    Puede tener un User asociado (para login) o no.
+    """
+
+    ROLE_CHIEF = "chief"
+    ROLE_MECHANIC = "mechanic"
+    ROLE_ELECTRICIAN = "electrician"
+    ROLE_BOTH = "both"
+    ROLE_HELPER = "helper"
+
+    ROLE_CHOICES = [
+        (ROLE_CHIEF, "Jefe de Taller"),
+        (ROLE_MECHANIC, "Mecánico"),
+        (ROLE_ELECTRICIAN, "Eléctrico"),
+        (ROLE_BOTH, "Mecánico y Eléctrico"),
+        (ROLE_HELPER, "Ayudante"),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="mechanics",
+        verbose_name="Empresa",
+    )
+
+    workshop = models.ForeignKey(
+        Workshop,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="mechanics",
+        verbose_name="Taller",
+    )
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="mechanic_profile",
+        verbose_name="Usuario del sistema",
+        help_text="Opcional: para que el mecánico pueda iniciar sesión",
+    )
+
+    first_name = models.CharField(
+        "Nombre",
+        max_length=100,
+    )
+
+    last_name = models.CharField(
+        "Apellido",
+        max_length=100,
+    )
+
+    rut = models.CharField(
+        "RUT",
+        max_length=20,
+        blank=True,
+    )
+
+    phone = models.CharField(
+        "Teléfono",
+        max_length=30,
+        blank=True,
+    )
+
+    email = models.EmailField(
+        "Email",
+        blank=True,
+    )
+
+    role = models.CharField(
+        "Rol",
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default=ROLE_MECHANIC,
+    )
+
+    is_active = models.BooleanField(
+        "Activo",
+        default=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Mecánico"
+        verbose_name_plural = "Mecánicos"
+        ordering = ["last_name", "first_name"]
+
+    def __str__(self):
+        return (
+            f"{self.first_name} {self.last_name} "
+            f"({self.get_role_display()})"
+        )
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip()
+
+
+class MaintenanceOrder(models.Model):
+    """
+    Orden de trabajo: una entrada de bus al taller.
+    """
+
+    REASON_PREVENTIVE = "preventive"
+    REASON_CORRECTIVE = "corrective"
+    REASON_OIL = "oil_change"
+    REASON_TIRES = "tires"
+    REASON_BRAKES = "brakes"
+    REASON_ELECTRICAL = "electrical"
+    REASON_BODYWORK = "bodywork"
+    REASON_INSPECTION = "inspection"
+    REASON_OTHER = "other"
+
+    REASON_CHOICES = [
+        (REASON_PREVENTIVE, "Mantención preventiva"),
+        (REASON_CORRECTIVE, "Reparación correctiva"),
+        (REASON_OIL, "Cambio de aceite"),
+        (REASON_TIRES, "Neumáticos"),
+        (REASON_BRAKES, "Frenos"),
+        (REASON_ELECTRICAL, "Eléctrico"),
+        (REASON_BODYWORK, "Carrocería"),
+        (REASON_INSPECTION, "Revisión técnica"),
+        (REASON_OTHER, "Otro"),
+    ]
+
+    STATUS_OPEN = "open"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_DONE = "done"
+    STATUS_CANCELLED = "cancelled"
+
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Abierta"),
+        (STATUS_IN_PROGRESS, "En proceso"),
+        (STATUS_DONE, "Terminada"),
+        (STATUS_CANCELLED, "Cancelada"),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="maintenance_orders",
+        verbose_name="Empresa",
+    )
+
+    workshop = models.ForeignKey(
+        Workshop,
+        on_delete=models.PROTECT,
+        related_name="orders",
+        verbose_name="Taller",
+    )
+
+    bus = models.ForeignKey(
+        Bus,
+        on_delete=models.PROTECT,
+        related_name="maintenance_orders",
+        verbose_name="Bus",
+    )
+
+    entry_date = models.DateTimeField(
+        "Fecha y hora de ingreso",
+    )
+
+    exit_date = models.DateTimeField(
+        "Fecha y hora de salida",
+        null=True,
+        blank=True,
+    )
+
+    odometer_in = models.PositiveIntegerField(
+        "Kilometraje al ingreso",
+        null=True,
+        blank=True,
+    )
+
+    odometer_out = models.PositiveIntegerField(
+        "Kilometraje al salir",
+        null=True,
+        blank=True,
+    )
+
+    reason = models.CharField(
+        "Motivo",
+        max_length=20,
+        choices=REASON_CHOICES,
+    )
+
+    description = models.TextField(
+        "Descripción del trabajo",
+        blank=True,
+    )
+
+    chief = models.ForeignKey(
+        Mechanic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_as_chief",
+        verbose_name="Jefe de taller",
+    )
+
+    mechanic = models.ForeignKey(
+        Mechanic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_as_mechanic",
+        verbose_name="Mecánico responsable",
+    )
+
+    electrician = models.ForeignKey(
+        Mechanic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders_as_electrician",
+        verbose_name="Eléctrico responsable",
+    )
+
+    status = models.CharField(
+        "Estado",
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_OPEN,
+    )
+
+    labor_cost = models.DecimalField(
+        "Mano de obra",
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    parts_cost = models.DecimalField(
+        "Repuestos",
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    other_cost = models.DecimalField(
+        "Otros costos",
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    total_cost = models.DecimalField(
+        "Costo total",
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    next_maintenance_date = models.DateField(
+        "Próxima mantención (fecha)",
+        null=True,
+        blank=True,
+    )
+
+    next_maintenance_km = models.PositiveIntegerField(
+        "Próximo km de mantención",
+        null=True,
+        blank=True,
+    )
+
+    notes = models.TextField(
+        "Notas",
+        blank=True,
+    )
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="maintenance_orders_created",
+        verbose_name="Creado por",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        verbose_name = "Orden de taller"
+        verbose_name_plural = "Órdenes de taller"
+        ordering = ["-entry_date"]
+        indexes = [
+            models.Index(fields=["company", "status"]),
+            models.Index(fields=["bus", "entry_date"]),
+            models.Index(fields=["workshop", "status"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"OT-{self.id:05d} | "
+            f"{self.bus.plate} | "
+            f"{self.entry_date:%Y-%m-%d}"
+        )
+
+    def recalculate_total(self):
+        """Recalcula el total basado en los items."""
+        parts = (
+            self.items.filter(is_labor=False)
+            .aggregate(total=models.Sum("subtotal"))["total"]
+            or 0
+        )
+        labor = (
+            self.items.filter(is_labor=True)
+            .aggregate(total=models.Sum("subtotal"))["total"]
+            or 0
+        )
+
+        self.parts_cost = parts
+        self.labor_cost = labor
+        self.total_cost = parts + labor + self.other_cost
+
+        self.save(
+            update_fields=[
+                "parts_cost",
+                "labor_cost",
+                "total_cost",
+                "updated_at",
+            ]
+        )
+
+
+class MaintenanceOrderItem(models.Model):
+    """
+    Item (pieza o trabajo) dentro de una orden de taller.
+    """
+
+    order = models.ForeignKey(
+        MaintenanceOrder,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="Orden",
+    )
+
+    description = models.CharField(
+        "Descripción",
+        max_length=200,
+    )
+
+    quantity = models.DecimalField(
+        "Cantidad",
+        max_digits=10,
+        decimal_places=2,
+        default=1,
+    )
+
+    unit_price = models.DecimalField(
+        "Precio unitario",
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    subtotal = models.DecimalField(
+        "Subtotal",
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+    )
+
+    is_labor = models.BooleanField(
+        "Es mano de obra",
+        default=False,
+        help_text="Marcar si es trabajo/mano de obra (no una pieza)",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = "Item de orden de taller"
+        verbose_name_plural = "Items de orden de taller"
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.description} x {self.quantity}"
+
+    def save(self, *args, **kwargs):
+        self.subtotal = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+        # Recalcular total de la orden padre
+        if self.order_id:
+            self.order.recalculate_total()
+
+
+# ============================================================
+# FIN MÓDULO TALLER MECÁNICO
+# ============================================================
