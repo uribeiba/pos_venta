@@ -34,6 +34,11 @@ from booking.views import _build_trip_grid, calculate_final_price
 
 from .company_context import get_public_company
 
+from django.core.mail import EmailMultiAlternatives
+from django.core import signing
+from django.template.loader import render_to_string
+from email.mime.image import MIMEImage
+
 # Terceros
 import qrcode
 from bus_tickets import settings
@@ -105,6 +110,76 @@ def mask_phone(phone):
     if len(phone) <= 4:
         return phone
     return phone[:2] + 'XXXX' + phone[-2:]
+
+# ==================== ENVIO DE EMAIL AL CLIENTE ====================
+
+def enviar_correo_compra(order, tickets):
+    """
+    Genera el código QR y envía el correo de confirmación de compra.
+    """
+    try:
+        if not order.buyer_email:
+            return
+
+        # 1. Generar el código QR firmado (usando el primer ticket como representante)
+        primer_ticket = tickets[0]
+        qr_payload = signing.dumps(
+            {"ticket_id": primer_ticket.id, "ticket_number": primer_ticket.number},
+            salt="cejer-ticket-qr-v1",
+            compress=True,
+        )
+        qr_data = f"CEJER:TICKET:{qr_payload}"
+
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # 2. Guardar la imagen en memoria
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        qr_buffer = buffer.getvalue()
+        
+        # 3. Obtener colores y nombre de la empresa
+        company = order.trip.bus.company
+        primary_color = company.primary_color if company and company.primary_color else "#0B3B78"
+        company_name = company.name if company else "Buspasss"
+
+        # 4. Renderizar el HTML del correo
+        html_content = render_to_string('emails/ticket_email.html', {
+            'buyer_name': order.buyer_name,
+            'tickets': tickets,
+            'origin': order.trip.route.origin.name,
+            'destination': order.trip.route.destination.name,
+            'departure_date': order.trip.departure.strftime('%d/%m/%Y %H:%M'),
+            'total_amount': f"{order.total_amount:,.0f}".replace(",", "."),
+            'company_name': company_name,
+            'primary_color': primary_color,
+        })
+
+        # 5. Configurar y enviar el correo
+        subject = f"Tu pasaje {company_name} - Orden {order.code}"
+        text_content = f"Gracias por tu compra. Tu orden es {order.code}."
+
+        msg = EmailMultiAlternatives(
+            subject,
+            text_content,
+            settings.DEFAULT_FROM_EMAIL,
+            [order.buyer_email]
+        )
+        msg.attach_alternative(html_content, "text/html")
+        
+        # Adjuntar el QR como imagen incrustada
+        mime_image = MIMEImage(qr_buffer)
+        mime_image.add_header('Content-ID', '<qrcode_image>')
+        mime_image.add_header('Content-Disposition', 'inline', filename='qrcode.png')
+        msg.attach(mime_image)
+
+        msg.send(fail_silently=False)
+        logger.info(f"Correo de confirmación enviado para la orden {order.code} a {order.buyer_email}")
+
+    except Exception as e:
+        logger.error(f"Error enviando correo de compra para la orden {order.code}: {str(e)}")
 
 
 # ==================== VISTAS PÚBLICAS DEL CLIENTE ====================
@@ -2657,9 +2732,6 @@ def mercadopago_success(request):
     # 1. IDENTIFICAR TRANSACCIÓN LOCAL
     # ============================================================
 
-    # Mercado Pago puede devolver el order_id en la URL de retorno.
-    # Se usa como primera opción porque identifica directamente
-    # la PaymentTransaction local mediante payment.token.
     mercado_pago_order_id_from_return = (
         request.GET.get("order_id", "").strip()
     )
@@ -2674,9 +2746,6 @@ def mercadopago_success(request):
 
     payment = None
 
-    # ------------------------------------------------------------
-    # Prioridad 1: order_id devuelto por Mercado Pago.
-    # ------------------------------------------------------------
     if mercado_pago_order_id_from_return:
         payment = (
             PaymentTransaction.objects
@@ -2694,9 +2763,6 @@ def mercadopago_success(request):
             .first()
         )
 
-    # ------------------------------------------------------------
-    # Prioridad 2: pending_payment_id guardado en sesión.
-    # ------------------------------------------------------------
     if payment is None and pending_payment_id:
         payment = (
             PaymentTransaction.objects
@@ -2714,9 +2780,6 @@ def mercadopago_success(request):
             .first()
         )
 
-    # ------------------------------------------------------------
-    # Prioridad 3: pending_order_code guardado en sesión.
-    # ------------------------------------------------------------
     if payment is None and pending_order_code:
         payment = (
             PaymentTransaction.objects
@@ -3313,6 +3376,14 @@ def mercadopago_success(request):
         )
 
     # ============================================================
+    # 10.5 ENVIAR CORREO DE CONFIRMACIÓN
+    # ============================================================
+    # Lo enviamos fuera del bloque try/except de la base de datos
+    # para que si el correo falla, no revierta la venta de los tickets.
+    if created_tickets:
+        enviar_correo_compra(order, created_tickets)
+
+    # ============================================================
     # 11. SESIÓN PARA confirmation()
     # ============================================================
 
@@ -3351,7 +3422,6 @@ def mercadopago_success(request):
         "client_portal:confirmation",
         trip_id=order.trip_id,
     )
-
 
 
 def mercadopago_failure(request):
@@ -4209,10 +4279,10 @@ def webpay_return(request):
                 "El pago fue cancelado o abortado en Webpay.",
             )
 
-        return redirect(
-            "client_portal:payment_result",
-            order_code=order.code,
-)
+            return redirect(
+                "client_portal:payment_result",
+                order_code=order.code,
+            )
 
         messages.error(
             request,
@@ -4430,9 +4500,9 @@ def webpay_return(request):
         )
 
         return redirect(
-        "client_portal:payment_result",
-        order_code=order.code,
-)
+            "client_portal:payment_result",
+            order_code=order.code,
+        )
 
     # ========================================================================
     # 10. VALIDAR MONTO AUTORIZADO
@@ -4560,19 +4630,9 @@ def webpay_return(request):
                     trip_id=order.trip_id,
                 )
 
-             # ----------------------------------------------------
+            # ----------------------------------------------------
             # Registrar autorización de Transbank dentro del lock
             # ----------------------------------------------------
-            #
-            # En este punto YA validamos arriba:
-            #   response_code == 0
-            #   status == "AUTHORIZED"
-            #   buy_order correcto
-            #   monto correcto
-            #
-            # El PaymentTransaction local todavía puede estar
-            # "payment_started", porque recién estamos finalizando
-            # la compra después del commit de Transbank.
             payment.status = PaymentTransaction.STATUS_AUTHORIZED
             payment.authorization_code = str(
                 response.get("authorization_code", "") or ""
@@ -4621,10 +4681,7 @@ def webpay_return(request):
                 )
 
             # ----------------------------------------------------
-            # Evitar emisión duplicada
-            # ----------------------------------------------------
-            # ----------------------------------------------------
-            # Usuario técnico de venta web
+            # Evitar emisión duplicada / Usuario técnico
             # ----------------------------------------------------
             system_user = (
                 User.objects
@@ -4790,6 +4847,14 @@ def webpay_return(request):
         )
 
     # ========================================================================
+    # 11.5. ENVIAR CORREO DE CONFIRMACIÓN
+    # ========================================================================
+    # Lo enviamos fuera del bloque try/except de la base de datos
+    # para que si el correo falla, no revierta la venta de los tickets.
+    if created_tickets:
+        enviar_correo_compra(order, created_tickets)
+
+    # ========================================================================
     # 12. GUARDAR DATOS PARA confirmation()
     # ========================================================================
 
@@ -4802,11 +4867,11 @@ def webpay_return(request):
     request.session["last_payment_id"] = payment.id
 
     request.session["last_original_total"] = float(
-    order.subtotal
+        order.subtotal
     )
 
     request.session["last_discount_amount"] = float(
-    order.discount_amount
+        order.discount_amount
     )
 
     request.session.pop(
@@ -4840,7 +4905,6 @@ def webpay_return(request):
         "client_portal:confirmation",
         trip_id=order.trip_id,
     )
-
 
 
 

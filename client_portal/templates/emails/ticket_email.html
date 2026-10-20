@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .header { background-color: {{ primary_color }}; color: #ffffff; padding: 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { padding: 30px; }
+        .ticket-box { border: 1px dashed #cbd5e1; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: #f8fafc; }
+        .ticket-info { margin: 5px 0; color: #334155; font-size: 14px; }
+        .ticket-info strong { color: #0f172a; }
+        .total { font-size: 18px; font-weight: bold; color: #0f172a; text-align: right; margin-top: 20px; }
+        .qr-section { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+        .qr-section p { color: #64748b; font-size: 13px; margin-bottom: 10px; }
+        .footer { background-color: #f8fafc; color: #64748b; text-align: center; padding: 15px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Cabecera -->
+        <div class="header">
+            <h1>{{ company_name }}</h1>
+            <p style="margin: 5px 0 0 0;">¡Tu compra ha sido confirmada!</p>
+        </div>
+
+        <!-- Contenido -->
+        <div class="content">
+            <p style="color: #334155;">Hola <strong>{{ buyer_name }}</strong>,</p>
+            <p style="color: #334155;">Gracias por tu compra. Aquí tienes los detalles de tu pasaje:</p>
+
+            <!-- Detalle de los tickets -->
+            {% for ticket in tickets %}
+            <div class="ticket-box">
+                <div class="ticket-info"><strong>Nº Ticket:</strong> {{ ticket.number }}</div>
+                <div class="ticket-info"><strong>Pasajero:</strong> {{ ticket.buyer_name }}</div>
+                <div class="ticket-info"><strong>Ruta:</strong> {{ origin }} → {{ destination }}</div>
+                <div class="ticket-info"><strong>Fecha:</strong> {{ departure_date }}</div>
+                <div class="ticket-info"><strong>Asiento:</strong> {{ ticket.seat.number }} (Piso {{ ticket.seat.deck }})</div>
+            </div>
+            {% endfor %}
+
+            <div class="total">
+                Total Pagado: ${{ total_amount }}
+            </div>
+
+            <!-- Código QR (Se mostrará uno por el primer ticket para el abordaje) -->
+            <div class="qr-section">
+                <p>Presenta este código QR al momento de abordar:</p>
+                <img src="cid:qrcode_image" alt="Código QR" style="width: 150px; height: 150px;">
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            Este es un correo automático, por favor no respondas a este mensaje.<br>
+            © {% now "Y" %} {{ company_name }}. Todos los derechos reservados.
+        </div>
+    </div>
+</body>
+</html>
