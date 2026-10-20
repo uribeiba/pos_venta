@@ -338,13 +338,7 @@ if EMAIL_ATTACHMENT_MAX_SIZE < 1024 * 1024:
 if EMAIL_ATTACHMENT_MAX_SIZE > 25 * 1024 * 1024:
     warnings.warn(f"EMAIL_ATTACHMENT_MAX_SIZE es muy grande ({EMAIL_ATTACHMENT_MAX_SIZE} bytes). Gmail limita a 25MB.", RuntimeWarning)
 
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Cejer <noreply@cejer.cl>")
+
 
 # ============================================================================
 # LOGGING
