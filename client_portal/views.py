@@ -8,6 +8,13 @@ import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+
 
 
 # Django
@@ -114,39 +121,30 @@ def mask_phone(phone):
 # ==================== ENVIO DE EMAIL AL CLIENTE ====================
 
 def enviar_correo_compra(order, tickets):
-    """
-    Genera el código QR y envía el correo de confirmación de compra.
-    Soporta múltiples empresas usando el nombre de la empresa como remitente.
-    """
     try:
         if not order.buyer_email:
             return
 
-        # 1. Generar el código QR firmado (usando el primer ticket como representante)
+        # 1. Generar QR para el cuerpo del correo (el primero)
         primer_ticket = tickets[0]
-        qr_payload = signing.dumps(
-            {"ticket_id": primer_ticket.id, "ticket_number": primer_ticket.number},
-            salt="cejer-ticket-qr-v1",
-            compress=True,
-        )
+        qr_payload = signing.dumps({"ticket_id": primer_ticket.id, "ticket_number": primer_ticket.number}, salt="cejer-ticket-qr-v1", compress=True)
         qr_data = f"CEJER:TICKET:{qr_payload}"
 
+        import qrcode
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
         qr.add_data(qr_data)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
+        qr_buffer = io.BytesIO()
+        img.save(qr_buffer, format="PNG")
+        qr_bytes = qr_buffer.getvalue()
 
-        # 2. Guardar la imagen en memoria
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        qr_buffer = buffer.getvalue()
-        
-        # 3. Obtener colores y nombre de la empresa
+        # 2. Datos de la empresa
         company = order.trip.bus.company
         primary_color = company.primary_color if company and company.primary_color else "#0B3B78"
         company_name = company.name if company else "Buspasss"
 
-        # 4. Renderizar el HTML del correo
+        # 3. Renderizar HTML
         html_content = render_to_string('emails/ticket_email.html', {
             'buyer_name': order.buyer_name,
             'tickets': tickets,
@@ -156,41 +154,107 @@ def enviar_correo_compra(order, tickets):
             'total_amount': f"{order.total_amount:,.0f}".replace(",", "."),
             'company_name': company_name,
             'primary_color': primary_color,
+            'order_code': order.code,
         })
 
-        # 5. Configurar y enviar el correo (Dinámico por empresa)
+        # 4. Configurar Correo
         subject = f"Tu pasaje {company_name} - Orden {order.code}"
         text_content = f"Gracias por tu compra. Tu orden es {order.code}."
-
-        # Obtenemos el correo autenticado del .env (ej. ventas@losvilos.cl)
-        sender_email = getattr(settings, "EMAIL_HOST_USER", None)
         
-        if sender_email:
-            # Formato: "Buses La Porteña <ventas@losvilos.cl>"
-            from_email = f"{company_name} <{sender_email}>"
-        else:
-            # Fallback para desarrollo local (consola)
-            from_email = settings.DEFAULT_FROM_EMAIL
+        sender_email = getattr(settings, "EMAIL_HOST_USER", None)
+        from_email = f"{company_name} <{sender_email}>" if sender_email else settings.DEFAULT_FROM_EMAIL
 
-        msg = EmailMultiAlternatives(
-            subject,
-            text_content,
-            from_email,
-            [order.buyer_email]
-        )
+        msg = EmailMultiAlternatives(subject, text_content, from_email, [order.buyer_email])
         msg.attach_alternative(html_content, "text/html")
         
-        # Adjuntar el QR como imagen incrustada
-        mime_image = MIMEImage(qr_buffer)
+        # 5. Adjuntar QR al HTML
+        from email.mime.image import MIMEImage
+        mime_image = MIMEImage(qr_bytes)
         mime_image.add_header('Content-ID', '<qrcode_image>')
         mime_image.add_header('Content-Disposition', 'inline', filename='qrcode.png')
         msg.attach(mime_image)
 
+        # 6. Generar y Adjuntar PDF
+        try:
+            pdf_buffer = generar_pdf_ticket_bytes(tickets, order)
+            msg.attach(f"Pasaje_{order.code}.pdf", pdf_buffer.getvalue(), "application/pdf")
+        except Exception as e_pdf:
+            logger.error(f"Error generando PDF adjunto para orden {order.code}: {e_pdf}")
+
         msg.send(fail_silently=False)
-        logger.info(f"Correo de confirmación enviado para la orden {order.code} a {order.buyer_email}")
+        logger.info(f"Correo con PDF enviado para orden {order.code}")
 
     except Exception as e:
-        logger.error(f"Error enviando correo de compra para la orden {order.code}: {str(e)}")
+        logger.error(f"Error enviando correo para orden {order.code}: {str(e)}")
+        
+        
+
+def generar_pdf_ticket_bytes(tickets, order):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.3*cm, bottomMargin=1.3*cm)
+    styles = getSampleStyleSheet()
+    
+    company = order.trip.bus.company
+    primary_color = company.primary_color if company and company.primary_color else "#0B3B78"
+    company_name = company.name if company else "Buspasss"
+
+    title_style = ParagraphStyle("Title", parent=styles["Heading1"], alignment=TA_CENTER, fontSize=20, textColor=colors.HexColor(primary_color), fontName="Helvetica-Bold")
+    subtitle_style = ParagraphStyle("Subtitle", parent=styles["Normal"], alignment=TA_CENTER, fontSize=10, textColor=colors.HexColor("#64748b"), spaceAfter=20)
+    section_style = ParagraphStyle("Section", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0f172a"), spaceBefore=15, spaceAfter=10)
+    normal_style = ParagraphStyle("Normal", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#334155"), leading=14)
+
+    elements = []
+    elements.append(Paragraph(company_name, title_style))
+    elements.append(Paragraph(f"PASAJE ELECTRÓNICO - RESERVA {order.code}", subtitle_style))
+
+    for ticket in tickets:
+        # Generar QR
+        from django.core import signing
+        import qrcode
+        qr_payload = signing.dumps({"ticket_id": ticket.id, "ticket_number": ticket.number}, salt="cejer-ticket-qr-v1", compress=True)
+        qr_data = f"CEJER:TICKET:{qr_payload}"
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        qr_buffer = io.BytesIO()
+        img.save(qr_buffer, format="PNG")
+        qr_buffer.seek(0)
+        qr_image = Image(qr_buffer, width=3.5*cm, height=3.5*cm)
+
+        # Datos del ticket
+        departure = timezone.localtime(ticket.trip.departure).strftime("%d/%m/%Y %H:%M")
+        data = [
+            [Paragraph("<b>Nº Ticket</b>", normal_style), Paragraph(ticket.number, normal_style)],
+            [Paragraph("<b>Pasajero</b>", normal_style), Paragraph(ticket.buyer_name, normal_style)],
+            [Paragraph("<b>Documento</b>", normal_style), Paragraph(ticket.national_id, normal_style)],
+            [Paragraph("<b>Ruta</b>", normal_style), Paragraph(f"{ticket.trip.route.origin.name} → {ticket.trip.route.destination.name}", normal_style)],
+            [Paragraph("<b>Salida</b>", normal_style), Paragraph(departure, normal_style)],
+            [Paragraph("<b>Asiento</b>", normal_style), Paragraph(f"{ticket.seat.number} (Piso {ticket.seat.deck})", normal_style)],
+            [Paragraph("<b>Precio</b>", normal_style), Paragraph(f"${ticket.price:,.0f}", normal_style)],
+        ]
+        table = Table(data, colWidths=[4*cm, 10*cm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#f8fafc")),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+
+        # Layout del ticket (Tabla izquierda, QR derecha)
+        layout = Table([[table, qr_image]], colWidths=[14*cm, 4*cm])
+        layout.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('ALIGN', (1, 0), (1, 0), 'CENTER')]))
+
+        elements.append(layout)
+        elements.append(Spacer(1, 1*cm))
+
+    # Footer
+    elements.append(Paragraph("<i>Presenta este documento impreso o en tu celular al momento de abordar.</i>", normal_style))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
 
 # ==================== VISTAS PÚBLICAS DEL CLIENTE ====================
