@@ -180,11 +180,9 @@ def get_cors_allowed_origins() -> list:
     origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
     
     for origin in origins:
-        # Validar que tenga un esquema válido
         if not origin.startswith(("http://", "https://")):
             raise ValueError(f"Origen CORS inválido (debe incluir http:// o https://): {origin}")
         
-        # Advertir si es HTTP inseguro en producción, pero NO bloquear el arranque
         if origin.startswith("http://") and not origin.startswith("http://localhost") and not origin.startswith("http://127.0.0.1"):
             warnings.warn(f"⚠️ CORS usando HTTP inseguro en producción: {origin}. Se recomienda usar HTTPS.", RuntimeWarning)
     
@@ -202,13 +200,12 @@ CORS_ALLOW_HEADERS = [
 # CSRF TRUSTED ORIGINS
 # ============================================================================
 def get_csrf_trusted_origins() -> list:
-    """Obtiene los orígenes confiables para CSRF. Django 4.0+ requiere esquema."""
     if DEBUG:
         return [
-        "http://127.0.0.1:8000",
-        "http://localhost:8000",
-        "http://192.168.1.8:8000",
-    ]
+            "http://127.0.0.1:8000",
+            "http://localhost:8000",
+            "http://192.168.1.8:8000",
+        ]
     
     csrf_origins = os.getenv("CSRF_TRUSTED_ORIGINS")
     if not csrf_origins:
@@ -273,16 +270,11 @@ SECURE_CONTENT_TYPE_NOSNIFF = os.getenv('SECURE_CONTENT_TYPE_NOSNIFF', 'True') =
 SECURE_REFERRER_POLICY = os.getenv('SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
 
 # ============================================================================
-# CSRF & SESSION - CONFIGURACIÓN PARA DESARROLLO (NUEVO)
+# CSRF & SESSION
 # ============================================================================
-
-# ✅ PERMITIR QUE JAVASCRIPT LEA LA COOKIE CSRF
 CSRF_COOKIE_HTTPONLY = False
-
-# ✅ USAR COOKIES PARA CSRF (no sesiones)
 CSRF_USE_SESSIONS = False
 
-# ✅ CONFIGURACIÓN PARA DESARROLLO LOCAL
 if DEBUG:
     CSRF_COOKIE_SECURE = False
     SESSION_COOKIE_SECURE = False
@@ -290,10 +282,10 @@ if DEBUG:
     SESSION_COOKIE_SAMESITE = 'Lax'
 
 # ============================================================================
-# SESSION CONFIGURATION (adicional)
+# SESSION CONFIGURATION
 # ============================================================================
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 86400  # 24 horas
+SESSION_COOKIE_AGE = 86400
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
@@ -338,7 +330,15 @@ if EMAIL_ATTACHMENT_MAX_SIZE < 1024 * 1024:
 if EMAIL_ATTACHMENT_MAX_SIZE > 25 * 1024 * 1024:
     warnings.warn(f"EMAIL_ATTACHMENT_MAX_SIZE es muy grande ({EMAIL_ATTACHMENT_MAX_SIZE} bytes). Gmail limita a 25MB.", RuntimeWarning)
 
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
 
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "No responder <ventas@losvilos.cl>")
 
 # ============================================================================
 # LOGGING
@@ -607,14 +607,8 @@ if os.getenv('ENABLE_METRICS', 'False') == 'True':
 # ============================================================================
 # INICIO
 # ============================================================================
-# ============================================================
-# LOG DE ARRANQUE (no expone DEBUG en consola pública)
-# ============================================================
 _logger = logging.getLogger(__name__)
-_logger.info(
-    "Sistema iniciado. DEBUG=%s",
-    DEBUG,
-)
+_logger.info("Sistema iniciado. DEBUG=%s", DEBUG)
 
 print(f"📂 Directorio de logs: {LOG_DIR}")
 print(f"🔑 SECRET_KEY {'✅ CONFIGURADA' if SECRET_KEY else '❌ FALTANTE'}")

@@ -116,6 +116,7 @@ def mask_phone(phone):
 def enviar_correo_compra(order, tickets):
     """
     Genera el código QR y envía el correo de confirmación de compra.
+    Soporta múltiples empresas usando el nombre de la empresa como remitente.
     """
     try:
         if not order.buyer_email:
@@ -157,14 +158,24 @@ def enviar_correo_compra(order, tickets):
             'primary_color': primary_color,
         })
 
-        # 5. Configurar y enviar el correo
+        # 5. Configurar y enviar el correo (Dinámico por empresa)
         subject = f"Tu pasaje {company_name} - Orden {order.code}"
         text_content = f"Gracias por tu compra. Tu orden es {order.code}."
+
+        # Obtenemos el correo autenticado del .env (ej. ventas@losvilos.cl)
+        sender_email = getattr(settings, "EMAIL_HOST_USER", None)
+        
+        if sender_email:
+            # Formato: "Buses La Porteña <ventas@losvilos.cl>"
+            from_email = f"{company_name} <{sender_email}>"
+        else:
+            # Fallback para desarrollo local (consola)
+            from_email = settings.DEFAULT_FROM_EMAIL
 
         msg = EmailMultiAlternatives(
             subject,
             text_content,
-            settings.DEFAULT_FROM_EMAIL,
+            from_email,
             [order.buyer_email]
         )
         msg.attach_alternative(html_content, "text/html")
