@@ -7693,1361 +7693,262 @@ def client_display(request, trip_id=None):
 
 
 def download_ticket_pdf(request, ticket_id):
-    """
-    FASE 2D.4 - Comprobante PDF individual + QR seguro.
-
-    Seguridad:
-    - Permite descargar el ticket si pertenece a una BookingOrder PAID
-      del usuario actual.
-    - Mantiene compatibilidad con tickets antiguos creados directamente
-      por el usuario.
-    - No usa datos personales directamente dentro del QR.
-    - No modifica Ticket, BookingOrder ni PaymentTransaction.
-    """
-
     import io
-
     import qrcode
-
     from django.core import signing
     from django.http import HttpResponse
     from django.utils import timezone
-
-    from booking.models import (
-        BookingOrder,
-        PaymentTransaction,
-        Ticket,
-    )
+    from booking.models import BookingOrder, PaymentTransaction, Ticket
 
     try:
         from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.lib.enums import TA_CENTER
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import (
-            ParagraphStyle,
-            getSampleStyleSheet,
-        )
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import cm
-        from reportlab.platypus import (
-            Image,
-            Paragraph,
-            SimpleDocTemplate,
-            Spacer,
-            Table,
-            TableStyle,
-        )
-
+        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except ImportError:
-        messages.error(
-            request,
-            "ReportLab no está instalado. No se puede generar el PDF.",
-        )
-
-        return redirect(
-            "client_portal:my_reservations"
-        )
-
-    # ========================================================================
-    # 1. TICKET
-    # ========================================================================
+        messages.error(request, "ReportLab no está instalado.")
+        return redirect("client_portal:my_reservations")
 
     ticket = get_object_or_404(
         Ticket.objects.select_related(
-            "trip",
-            "trip__route",
-            "trip__route__origin",
-            "trip__route__destination",
-            "trip__bus",
-            "seat",
-            "customer",
-            "created_by",
+            "trip", "trip__route", "trip__route__origin", "trip__route__destination",
+            "trip__bus", "seat", "customer", "created_by",
         ),
         pk=ticket_id,
     )
 
     # ========================================================================
-    # 2. BUSCAR BOOKINGORDER WEB QUE ORIGINÓ EL TICKET
+    # SEGURIDAD: Permitir si es el dueño o si es la misma sesión que compró
     # ========================================================================
-
-    order = (
-        BookingOrder.objects
-        .filter(
-            trip=ticket.trip,
-            user=request.user,
-            status=BookingOrder.STATUS_PAID,
-            items__seat=ticket.seat,
-        )
-        .select_related(
-            "customer",
-            "trip",
-            "trip__route",
-        )
-        .distinct()
-        .order_by(
-            "-updated_at",
-            "-created_at",
-        )
-        .first()
+    order_qs = BookingOrder.objects.filter(
+        trip=ticket.trip,
+        items__seat=ticket.seat,
+        status=BookingOrder.STATUS_PAID
     )
+    
+    is_allowed = False
+    for order in order_qs:
+        if request.user.is_authenticated and order.user_id == request.user.id:
+            is_allowed = True
+            break
+        if order.session_key and order.session_key == request.session.session_key:
+            is_allowed = True
+            break
+            
+    if ticket.created_by_id == request.user.id:
+        is_allowed = True
 
-    # ========================================================================
-    # 3. SEGURIDAD
-    # ========================================================================
-
-    belongs_to_web_order = (
-        order is not None
-        and order.user_id == request.user.id
-    )
-
-    # Compatibilidad con ventas antiguas/POS donde created_by sí era
-    # directamente el usuario comprador/vendedor.
-    belongs_to_legacy_ticket = (
-        ticket.created_by_id == request.user.id
-    )
-
-    if not belongs_to_web_order and not belongs_to_legacy_ticket:
-
-        messages.error(
-            request,
-            "No tienes permiso para descargar este pasaje.",
-        )
-
-        return redirect(
-            "client_portal:my_reservations"
-        )
-
-    # ========================================================================
-    # 4. PAGO AUTORIZADO
-    # ========================================================================
+    if not is_allowed:
+        messages.error(request, "No tienes permiso para descargar este pasaje.")
+        return redirect("client_portal:search_trips")
 
     payment = None
-
-    if order:
-        payment = (
-            PaymentTransaction.objects
-            .filter(
-                order=order,
-                status=PaymentTransaction.STATUS_AUTHORIZED,
-            )
-            .order_by(
-                "-updated_at",
-                "-created_at",
-            )
-            .first()
-        )
-
-    # ========================================================================
-    # 5. QR SEGURO
-    # ========================================================================
-    #
-    # No incluimos:
-    # - nombre
-    # - RUT
-    # - teléfono
-    # - email
-    #
-    # El token está firmado con SECRET_KEY.
-    # En una futura fase de CHECK-IN podremos validarlo con signing.loads().
-    # ========================================================================
+    if order_qs.exists():
+        payment = PaymentTransaction.objects.filter(
+            order=order_qs.first(),
+            status=PaymentTransaction.STATUS_AUTHORIZED,
+        ).order_by("-updated_at", "-created_at").first()
 
     qr_payload = signing.dumps(
-        {
-            "ticket_id": ticket.id,
-            "ticket_number": ticket.number,
-        },
+        {"ticket_id": ticket.id, "ticket_number": ticket.number},
         salt="cejer-ticket-qr-v1",
         compress=True,
     )
-
     qr_data = f"CEJER:TICKET:{qr_payload}"
-
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=8,
-        border=2,
-    )
-
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
     qr.add_data(qr_data)
     qr.make(fit=True)
-
-    qr_pil = qr.make_image(
-        fill_color="black",
-        back_color="white",
-    )
+    qr_pil = qr.make_image(fill_color="black", back_color="white")
 
     qr_buffer = io.BytesIO()
-    qr_pil.save(
-        qr_buffer,
-        format="PNG",
-    )
+    qr_pil.save(qr_buffer, format="PNG")
     qr_buffer.seek(0)
+    qr_image = Image(qr_buffer, width=3.2 * cm, height=3.2 * cm)
 
-    qr_image = Image(
-        qr_buffer,
-        width=3.2 * cm,
-        height=3.2 * cm,
-    )
+    response = HttpResponse(content_type="application/pdf")
+    safe_ticket_number = str(ticket.number).replace("/", "-").replace("\\", "-")
+    response["Content-Disposition"] = f'attachment; filename="pasaje_{safe_ticket_number}.pdf"'
 
-    # ========================================================================
-    # 6. PDF RESPONSE
-    # ========================================================================
-
-    response = HttpResponse(
-        content_type="application/pdf"
-    )
-
-    safe_ticket_number = (
-        str(ticket.number)
-        .replace("/", "-")
-        .replace("\\", "-")
-    )
-
-    response["Content-Disposition"] = (
-        f'attachment; filename="pasaje_{safe_ticket_number}.pdf"'
-    )
-
-    doc = SimpleDocTemplate(
-        response,
-        pagesize=A4,
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
-        topMargin=1.3 * cm,
-        bottomMargin=1.3 * cm,
-    )
-
+    doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5 * cm, leftMargin=1.5 * cm, topMargin=1.3 * cm, bottomMargin=1.3 * cm)
     styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle(
-        "TicketTitle",
-        parent=styles["Heading1"],
-        alignment=TA_CENTER,
-        fontSize=21,
-        leading=25,
-        textColor=colors.HexColor("#f5821f"),
-        fontName="Helvetica-Bold",
-        spaceAfter=4,
-    )
-
-    subtitle_style = ParagraphStyle(
-        "TicketSubtitle",
-        parent=styles["Normal"],
-        alignment=TA_CENTER,
-        fontSize=10,
-        textColor=colors.HexColor("#64748b"),
-        spaceAfter=12,
-    )
-
-    section_style = ParagraphStyle(
-        "SectionTitle",
-        parent=styles["Heading2"],
-        fontSize=11,
-        leading=14,
-        textColor=colors.HexColor("#0f172a"),
-        fontName="Helvetica-Bold",
-        spaceBefore=10,
-        spaceAfter=6,
-    )
-
-    normal_style = ParagraphStyle(
-        "NormalCustom",
-        parent=styles["Normal"],
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor("#334155"),
-    )
-
-    small_style = ParagraphStyle(
-        "SmallCustom",
-        parent=styles["Normal"],
-        fontSize=7.5,
-        leading=10,
-        textColor=colors.HexColor("#64748b"),
-    )
+    title_style = ParagraphStyle("TicketTitle", parent=styles["Heading1"], alignment=TA_CENTER, fontSize=21, leading=25, textColor=colors.HexColor("#f5821f"), fontName="Helvetica-Bold", spaceAfter=4)
+    subtitle_style = ParagraphStyle("TicketSubtitle", parent=styles["Normal"], alignment=TA_CENTER, fontSize=10, textColor=colors.HexColor("#64748b"), spaceAfter=12)
+    section_style = ParagraphStyle("SectionTitle", parent=styles["Heading2"], fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold", spaceBefore=10, spaceAfter=6)
+    normal_style = ParagraphStyle("NormalCustom", parent=styles["Normal"], fontSize=9, leading=13, textColor=colors.HexColor("#334155"))
+    small_style = ParagraphStyle("SmallCustom", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"))
 
     elements = []
+    elements.append(Paragraph("CEJER", title_style))
+    elements.append(Paragraph("PASAJE ELECTRÓNICO", subtitle_style))
 
-    # ========================================================================
-    # 7. CABECERA
-    # ========================================================================
-
-    elements.append(
-        Paragraph(
-            "CEJER",
-            title_style,
-        )
-    )
-
-    elements.append(
-        Paragraph(
-            "PASAJE ELECTRÓNICO",
-            subtitle_style,
-        )
-    )
-
-    header = Table(
-        [
-            [
-                Paragraph(
-                    (
-                        "<b>Pago aprobado</b><br/>"
-                        "Comprobante válido de viaje"
-                    ),
-                    ParagraphStyle(
-                        "Approved",
-                        parent=normal_style,
-                        textColor=colors.HexColor("#166534"),
-                        fontSize=10,
-                        leading=14,
-                    ),
-                ),
-                qr_image,
-            ]
-        ],
-        colWidths=[
-            12.5 * cm,
-            4 * cm,
-        ],
-    )
-
-    header.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor("#f8fafc"),
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.7,
-                    colors.HexColor("#e2e8f0"),
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-                (
-                    "ALIGN",
-                    (1, 0),
-                    (1, 0),
-                    "CENTER",
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    10,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    10,
-                ),
-            ]
-        )
-    )
+    header = Table([[Paragraph("<b>Pago aprobado</b><br/>Comprobante válido de viaje", ParagraphStyle("Approved", parent=normal_style, textColor=colors.HexColor("#166534"), fontSize=10, leading=14)), qr_image]], colWidths=[12.5 * cm, 4 * cm])
+    header.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#e2e8f0")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (1, 0), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10)]))
 
     elements.append(header)
-    elements.append(
-        Spacer(
-            1,
-            0.25 * cm,
-        )
-    )
+    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(Paragraph("INFORMACIÓN DEL VIAJE", section_style))
 
-    # ========================================================================
-    # 8. INFORMACIÓN DEL PASAJE
-    # ========================================================================
-
-    elements.append(
-        Paragraph(
-            "INFORMACIÓN DEL VIAJE",
-            section_style,
-        )
-    )
-
-    departure_local = timezone.localtime(
-        ticket.trip.departure
-    )
-
+    departure_local = timezone.localtime(ticket.trip.departure)
     arrival_text = "No especificada"
-
     if ticket.trip.arrival:
-        arrival_local = timezone.localtime(
-            ticket.trip.arrival
-        )
-
-        arrival_text = arrival_local.strftime(
-            "%d/%m/%Y %H:%M hrs"
-        )
+        arrival_text = timezone.localtime(ticket.trip.arrival).strftime("%d/%m/%Y %H:%M hrs")
 
     ticket_data = [
-        [
-            "N° Ticket",
-            ticket.number,
-        ],
-        [
-            "Ruta",
-            (
-                f"{ticket.trip.route.origin.name} "
-                f"→ {ticket.trip.route.destination.name}"
-            ),
-        ],
-        [
-            "Fecha salida",
-            departure_local.strftime(
-                "%d/%m/%Y"
-            ),
-        ],
-        [
-            "Hora salida",
-            departure_local.strftime(
-                "%H:%M hrs"
-            ),
-        ],
-        [
-            "Llegada",
-            arrival_text,
-        ],
-        [
-            "Asiento",
-            (
-                f"{ticket.seat.number} "
-                f"(Piso {ticket.seat.deck})"
-            ),
-        ],
-        [
-            "Pasajero",
-            ticket.buyer_name,
-        ],
-        [
-            "Documento",
-            ticket.national_id or "No especificado",
-        ],
-        [
-            "Precio",
-            f"${ticket.price:,.0f}".replace(",", "."),
-        ],
-        [
-            "Método de pago",
-            ticket.get_payment_method_display(),
-        ],
+        ["N° Ticket", ticket.number],
+        ["Ruta", f"{ticket.trip.route.origin.name} → {ticket.trip.route.destination.name}"],
+        ["Fecha salida", departure_local.strftime("%d/%m/%Y")],
+        ["Hora salida", departure_local.strftime("%H:%M hrs")],
+        ["Llegada", arrival_text],
+        ["Asiento", f"{ticket.seat.number} (Piso {ticket.seat.deck})"],
+        ["Pasajero", ticket.buyer_name],
+        ["Documento", ticket.national_id or "No especificado"],
+        ["Precio", f"${ticket.price:,.0f}".replace(",", ".")],
+        ["Método de pago", ticket.get_payment_method_display()],
     ]
 
-    ticket_table = Table(
-        ticket_data,
-        colWidths=[
-            4.2 * cm,
-            11.8 * cm,
-        ],
-    )
-
-    ticket_table.setStyle(
-        TableStyle(
-            [
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#e2e8f0"),
-                ),
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (0, -1),
-                    colors.HexColor("#f8fafc"),
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (0, -1),
-                    "Helvetica-Bold",
-                ),
-                (
-                    "FONTNAME",
-                    (1, 0),
-                    (1, -1),
-                    "Helvetica",
-                ),
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    9,
-                ),
-                (
-                    "TEXTCOLOR",
-                    (0, 0),
-                    (0, -1),
-                    colors.HexColor("#64748b"),
-                ),
-                (
-                    "TEXTCOLOR",
-                    (1, 0),
-                    (1, -1),
-                    colors.HexColor("#0f172a"),
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-            ]
-        )
-    )
-
+    ticket_table = Table(ticket_data, colWidths=[4.2 * cm, 11.8 * cm])
+    ticket_table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8fafc")), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("FONTNAME", (1, 0), (1, -1), "Helvetica"), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")), ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#0f172a")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     elements.append(ticket_table)
 
-    # ========================================================================
-    # 9. INFORMACIÓN DE RESERVA / WEBPAY
-    # ========================================================================
-
-    if order:
-
-        elements.append(
-            Paragraph(
-                "INFORMACIÓN DE LA COMPRA",
-                section_style,
-            )
-        )
-
-        payment_data = [
-            [
-                "Código de reserva",
-                order.code,
-            ],
-            [
-                "Estado",
-                "PAGADA",
-            ],
-            [
-                "Total de la compra",
-                (
-                    f"${order.total_amount:,.0f}"
-                    .replace(",", ".")
-                ),
-            ],
-        ]
-
-        if payment:
-
-            payment_data.append(
-                [
-                    "Autorización Webpay",
-                    payment.authorization_code or "-",
-                ]
-            )
-
-            payment_data.append(
-                [
-                    "Orden de pago",
-                    payment.buy_order,
-                ]
-            )
-
-            commit_data = (
-                (payment.raw_response or {})
-                .get("commit")
-                or {}
-            )
-
-            card_detail = (
-                commit_data.get("card_detail")
-                or {}
-            )
-
-            last_four = (
-                card_detail.get("card_number")
-                or ""
-            )
-
-            if last_four:
-                payment_data.append(
-                    [
-                        "Tarjeta",
-                        f"•••• {last_four}",
-                    ]
-                )
-
-        payment_table = Table(
-            payment_data,
-            colWidths=[
-                4.2 * cm,
-                11.8 * cm,
-            ],
-        )
-
-        payment_table.setStyle(
-            TableStyle(
-                [
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.5,
-                        colors.HexColor("#e2e8f0"),
-                    ),
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (0, -1),
-                        colors.HexColor("#fff7ed"),
-                    ),
-                    (
-                        "FONTNAME",
-                        (0, 0),
-                        (0, -1),
-                        "Helvetica-Bold",
-                    ),
-                    (
-                        "FONTSIZE",
-                        (0, 0),
-                        (-1, -1),
-                        9,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        6,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        6,
-                    ),
-                ]
-            )
-        )
-
-        elements.append(payment_table)
-
-    # ========================================================================
-    # 10. VALIDACIÓN QR
-    # ========================================================================
-
-    elements.append(
-        Paragraph(
-            "CÓDIGO DE VALIDACIÓN",
-            section_style,
-        )
-    )
-
-    qr_text = Paragraph(
-        (
-            "<b>Presenta este código al abordar.</b><br/>"
-            "El código identifica digitalmente este pasaje.<br/>"
-            "No contiene tu nombre ni tu documento en texto plano."
-        ),
-        normal_style,
-    )
-
-    qr_info = Table(
-        [
-            [
-                qr_image,
-                qr_text,
-            ]
-        ],
-        colWidths=[
-            4 * cm,
-            12 * cm,
-        ],
-    )
-
-    qr_info.setStyle(
-        TableStyle(
-            [
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor("#cbd5e1"),
-                ),
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor("#f8fafc"),
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (0, 0),
-                    "CENTER",
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-            ]
-        )
-    )
-
+    elements.append(Paragraph("CÓDIGO DE VALIDACIÓN", section_style))
+    qr_text = Paragraph("<b>Presenta este código al abordar.</b><br/>El código identifica digitalmente este pasaje.<br/>No contiene tu nombre ni tu documento en texto plano.", normal_style)
+    qr_info = Table([[qr_image, qr_text]], colWidths=[4 * cm, 12 * cm])
+    qr_info.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")), ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
     elements.append(qr_info)
 
-    # ========================================================================
-    # 11. INDICACIONES
-    # ========================================================================
-
-    elements.append(
-        Spacer(
-            1,
-            0.25 * cm,
-        )
-    )
-
-    elements.append(
-        Paragraph(
-            (
-                "Presenta este comprobante, impreso o digital, "
-                "junto con tu documento de identidad al momento de abordar."
-            ),
-            normal_style,
-        )
-    )
-
-    elements.append(
-        Spacer(
-            1,
-            0.15 * cm,
-        )
-    )
-
-    elements.append(
-        Paragraph(
-            (
-                "Documento generado el "
-                f"{timezone.localtime().strftime('%d/%m/%Y %H:%M')}."
-            ),
-            small_style,
-        )
-    )
-
-    # ========================================================================
-    # 12. GENERAR PDF
-    # ========================================================================
+    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(Paragraph("Presenta este comprobante, impreso o digital, junto con tu documento de identidad al momento de abordar.", normal_style))
+    elements.append(Spacer(1, 0.15 * cm))
+    elements.append(Paragraph(f"Documento generado el {timezone.localtime().strftime('%d/%m/%Y %H:%M')}.", small_style))
 
     doc.build(elements)
-
     return response
 
 
 
 def download_purchase_pdf(request, order_code):
-    """
-    FASE 2D.4.1
-
-    Descarga todos los pasajes pertenecientes a una BookingOrder PAID
-    en un único PDF.
-
-    - Un QR independiente por Ticket.
-    - Sólo permite descargar compras del usuario actual.
-    - No modifica ningún dato.
-    - No toca Webpay.
-    """
-
     import io
     import qrcode
-
     from django.core import signing
     from django.http import HttpResponse
     from django.utils import timezone
-
-    from booking.models import (
-        BookingOrder,
-        PaymentTransaction,
-        Ticket,
-    )
-
+    from booking.models import BookingOrder, PaymentTransaction, Ticket
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import (
-        ParagraphStyle,
-        getSampleStyleSheet,
-    )
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import cm
-    from reportlab.platypus import (
-        Image,
-        PageBreak,
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
-    )
+    from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    # ============================================================
     # 1. RECUPERAR BOOKINGORDER
-    # ============================================================
-
     order = get_object_or_404(
-        BookingOrder.objects.select_related(
-            "trip",
-            "trip__route",
-            "trip__route__origin",
-            "trip__route__destination",
-            "customer",
-        ),
+        BookingOrder.objects.select_related("trip", "trip__route", "trip__route__origin", "trip__route__destination", "customer"),
         code=order_code,
         status=BookingOrder.STATUS_PAID,
-        user=request.user,
     )
 
-    # ============================================================
-    # 2. OBTENER ASIENTOS DE ESTA ORDEN
-    # ============================================================
+    # 2. SEGURIDAD (Para invitados y usuarios)
+    is_allowed = False
+    if request.user.is_authenticated and order.user_id == request.user.id:
+        is_allowed = True
+    elif order.session_key and order.session_key == request.session.session_key:
+        is_allowed = True
 
-    seat_ids = list(
-        order.items.values_list(
-            "seat_id",
-            flat=True,
-        )
-    )
+    if not is_allowed:
+        messages.error(request, "No tienes permiso para descargar estos pasajes.")
+        return redirect("client_portal:search_trips")
 
+    # 3. OBTENER ASIENTOS Y TICKETS
+    seat_ids = list(order.items.values_list("seat_id", flat=True))
     if not seat_ids:
-        messages.error(
-            request,
-            "Esta compra no contiene pasajes.",
-        )
-
-        return redirect(
-            "client_portal:confirmation",
-            trip_id=order.trip_id,
-        )
-
-    # ============================================================
-    # 3. TICKETS REALES DE ESTA COMPRA
-    # ============================================================
+        messages.error(request, "Esta compra no contiene pasajes.")
+        return redirect("client_portal:confirmation", trip_id=order.trip_id)
 
     tickets = list(
-        Ticket.objects
-        .filter(
-            trip=order.trip,
-            seat_id__in=seat_ids,
-        )
-        .select_related(
-            "seat",
-            "trip",
-            "trip__route",
-            "trip__route__origin",
-            "trip__route__destination",
-            "customer",
-        )
-        .order_by(
-            "seat__deck",
-            "seat__row",
-            "seat__position",
-            "id",
-        )
+        Ticket.objects.filter(trip=order.trip, seat_id__in=seat_ids)
+        .select_related("seat", "trip", "trip__route", "trip__route__origin", "trip__route__destination", "customer")
+        .order_by("seat__deck", "seat__row", "seat__position", "id")
     )
 
     if not tickets:
-        messages.error(
-            request,
-            "No se encontraron pasajes emitidos para esta compra.",
-        )
+        messages.error(request, "No se encontraron pasajes emitidos.")
+        return redirect("client_portal:confirmation", trip_id=order.trip_id)
 
-        return redirect(
-            "client_portal:confirmation",
-            trip_id=order.trip_id,
-        )
+    payment = PaymentTransaction.objects.filter(order=order, status=PaymentTransaction.STATUS_AUTHORIZED).order_by("-updated_at", "-created_at").first()
 
-    # ============================================================
-    # 4. PAGO AUTORIZADO
-    # ============================================================
+    # 4. GENERAR PDF
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="pasajes_{order.code}.pdf"'
 
-    payment = (
-        PaymentTransaction.objects
-        .filter(
-            order=order,
-            status=PaymentTransaction.STATUS_AUTHORIZED,
-        )
-        .order_by(
-            "-updated_at",
-            "-created_at",
-        )
-        .first()
-    )
-
-    # ============================================================
-    # 5. RESPONSE PDF
-    # ============================================================
-
-    response = HttpResponse(
-        content_type="application/pdf"
-    )
-
-    response["Content-Disposition"] = (
-        f'attachment; filename="pasajes_{order.code}.pdf"'
-    )
-
-    doc = SimpleDocTemplate(
-        response,
-        pagesize=A4,
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
-        topMargin=1.3 * cm,
-        bottomMargin=1.3 * cm,
-    )
-
+    doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5 * cm, leftMargin=1.5 * cm, topMargin=1.3 * cm, bottomMargin=1.3 * cm)
     styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle(
-        "PurchaseTitle",
-        parent=styles["Heading1"],
-        alignment=TA_CENTER,
-        fontSize=21,
-        textColor=colors.HexColor("#f5821f"),
-        fontName="Helvetica-Bold",
-        spaceAfter=4,
-    )
-
-    subtitle_style = ParagraphStyle(
-        "PurchaseSubtitle",
-        parent=styles["Normal"],
-        alignment=TA_CENTER,
-        fontSize=10,
-        textColor=colors.HexColor("#64748b"),
-        spaceAfter=14,
-    )
-
-    section_style = ParagraphStyle(
-        "PurchaseSection",
-        parent=styles["Heading2"],
-        fontSize=11,
-        textColor=colors.HexColor("#0f172a"),
-        fontName="Helvetica-Bold",
-        spaceBefore=10,
-        spaceAfter=6,
-    )
-
-    normal_style = ParagraphStyle(
-        "PurchaseNormal",
-        parent=styles["Normal"],
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor("#334155"),
-    )
+    title_style = ParagraphStyle("PurchaseTitle", parent=styles["Heading1"], alignment=TA_CENTER, fontSize=21, textColor=colors.HexColor("#f5821f"), fontName="Helvetica-Bold", spaceAfter=4)
+    subtitle_style = ParagraphStyle("PurchaseSubtitle", parent=styles["Normal"], alignment=TA_CENTER, fontSize=10, textColor=colors.HexColor("#64748b"), spaceAfter=14)
+    section_style = ParagraphStyle("PurchaseSection", parent=styles["Heading2"], fontSize=11, textColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold", spaceBefore=10, spaceAfter=6)
+    normal_style = ParagraphStyle("PurchaseNormal", parent=styles["Normal"], fontSize=9, leading=13, textColor=colors.HexColor("#334155"))
 
     elements = []
 
-    # ============================================================
-    # 6. UNA PÁGINA POR TICKET
-    # ============================================================
-
     for index, ticket in enumerate(tickets):
-
         if index > 0:
-            elements.append(
-                PageBreak()
-            )
+            elements.append(PageBreak())
 
-        # --------------------------------------------------------
-        # QR ÚNICO
-        # --------------------------------------------------------
-
-        qr_payload = signing.dumps(
-            {
-                "ticket_id": ticket.id,
-                "ticket_number": ticket.number,
-            },
-            salt="cejer-ticket-qr-v1",
-            compress=True,
-        )
-
-        qr_data = (
-            f"CEJER:TICKET:{qr_payload}"
-        )
-
-        qr = qrcode.QRCode(
-            version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_M,
-            box_size=8,
-            border=2,
-        )
-
+        qr_payload = signing.dumps({"ticket_id": ticket.id, "ticket_number": ticket.number}, salt="cejer-ticket-qr-v1", compress=True)
+        qr_data = f"CEJER:TICKET:{qr_payload}"
+        qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
         qr.add_data(qr_data)
         qr.make(fit=True)
-
-        qr_pil = qr.make_image(
-            fill_color="black",
-            back_color="white",
-        )
-
+        qr_pil = qr.make_image(fill_color="black", back_color="white")
         qr_buffer = io.BytesIO()
-
-        qr_pil.save(
-            qr_buffer,
-            format="PNG",
-        )
-
+        qr_pil.save(qr_buffer, format="PNG")
         qr_buffer.seek(0)
+        qr_image = Image(qr_buffer, width=3.2 * cm, height=3.2 * cm)
 
-        qr_image = Image(
-            qr_buffer,
-            width=3.2 * cm,
-            height=3.2 * cm,
-        )
+        elements.append(Paragraph("CEJER", title_style))
+        elements.append(Paragraph("PASAJE ELECTRÓNICO", subtitle_style))
 
-        # --------------------------------------------------------
-        # CABECERA
-        # --------------------------------------------------------
-
-        elements.append(
-            Paragraph(
-                "CEJER",
-                title_style,
-            )
-        )
-
-        elements.append(
-            Paragraph(
-                "PASAJE ELECTRÓNICO",
-                subtitle_style,
-            )
-        )
-
-        header_table = Table(
-            [
-                [
-                    Paragraph(
-                        (
-                            "<b>Pago aprobado</b><br/>"
-                            f"Reserva {order.code}"
-                        ),
-                        normal_style,
-                    ),
-                    qr_image,
-                ]
-            ],
-            colWidths=[
-                12.5 * cm,
-                4 * cm,
-            ],
-        )
-
-        header_table.setStyle(
-            TableStyle(
-                [
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, -1),
-                        colors.HexColor("#f8fafc"),
-                    ),
-                    (
-                        "BOX",
-                        (0, 0),
-                        (-1, -1),
-                        0.5,
-                        colors.HexColor("#e2e8f0"),
-                    ),
-                    (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "MIDDLE",
-                    ),
-                    (
-                        "ALIGN",
-                        (1, 0),
-                        (1, 0),
-                        "CENTER",
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        10,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        10,
-                    ),
-                ]
-            )
-        )
-
+        header_table = Table([[Paragraph(f"<b>Pago aprobado</b><br/>Reserva {order.code}", normal_style), qr_image]], colWidths=[12.5 * cm, 4 * cm])
+        header_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (1, 0), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10)]))
         elements.append(header_table)
 
-        # --------------------------------------------------------
-        # INFORMACIÓN
-        # --------------------------------------------------------
-
-        elements.append(
-            Paragraph(
-                "INFORMACIÓN DEL PASAJE",
-                section_style,
-            )
-        )
-
-        departure = timezone.localtime(
-            ticket.trip.departure
-        )
+        elements.append(Paragraph("INFORMACIÓN DEL PASAJE", section_style))
+        departure = timezone.localtime(ticket.trip.departure)
 
         data = [
-            [
-                "N° Ticket",
-                ticket.number,
-            ],
-            [
-                "Ruta",
-                (
-                    f"{ticket.trip.route.origin.name} "
-                    f"→ {ticket.trip.route.destination.name}"
-                ),
-            ],
-            [
-                "Fecha",
-                departure.strftime(
-                    "%d/%m/%Y"
-                ),
-            ],
-            [
-                "Hora",
-                departure.strftime(
-                    "%H:%M hrs"
-                ),
-            ],
-            [
-                "Asiento",
-                (
-                    f"{ticket.seat.number} "
-                    f"(Piso {ticket.seat.deck})"
-                ),
-            ],
-            [
-                "Pasajero",
-                ticket.buyer_name,
-            ],
-            [
-                "Documento",
-                ticket.national_id,
-            ],
-            [
-                "Precio",
-                (
-                    f"${ticket.price:,.0f}"
-                    .replace(",", ".")
-                ),
-            ],
+            ["N° Ticket", ticket.number],
+            ["Ruta", f"{ticket.trip.route.origin.name} → {ticket.trip.route.destination.name}"],
+            ["Fecha", departure.strftime("%d/%m/%Y")],
+            ["Hora", departure.strftime("%H:%M hrs")],
+            ["Asiento", f"{ticket.seat.number} (Piso {ticket.seat.deck})"],
+            ["Pasajero", ticket.buyer_name],
+            ["Documento", ticket.national_id],
+            ["Precio", f"${ticket.price:,.0f}".replace(",", ".")],
         ]
 
-        table = Table(
-            data,
-            colWidths=[
-                4.2 * cm,
-                11.8 * cm,
-            ],
-        )
-
-        table.setStyle(
-            TableStyle(
-                [
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.5,
-                        colors.HexColor("#e2e8f0"),
-                    ),
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (0, -1),
-                        colors.HexColor("#f8fafc"),
-                    ),
-                    (
-                        "FONTNAME",
-                        (0, 0),
-                        (0, -1),
-                        "Helvetica-Bold",
-                    ),
-                    (
-                        "FONTSIZE",
-                        (0, 0),
-                        (-1, -1),
-                        9,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        6,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        6,
-                    ),
-                ]
-            )
-        )
-
+        table = Table(data, colWidths=[4.2 * cm, 11.8 * cm])
+        table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8fafc")), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
         elements.append(table)
 
-        # --------------------------------------------------------
-        # WEBPAY
-        # --------------------------------------------------------
-
-        elements.append(
-            Paragraph(
-                "INFORMACIÓN DE LA COMPRA",
-                section_style,
-            )
-        )
-
+        elements.append(Paragraph("INFORMACIÓN DE LA COMPRA", section_style))
         payment_rows = [
-            [
-                "Código de reserva",
-                order.code,
-            ],
-            [
-                "Estado",
-                "PAGADA",
-            ],
-            [
-                "Total compra",
-                (
-                    f"${order.total_amount:,.0f}"
-                    .replace(",", ".")
-                ),
-            ],
+            ["Código de reserva", order.code],
+            ["Estado", "PAGADA"],
+            ["Total compra", f"${order.total_amount:,.0f}".replace(",", ".")],
         ]
-
         if payment:
+            payment_rows.append(["Autorización Webpay", payment.authorization_code or "-"])
+            payment_rows.append(["Orden de pago", payment.buy_order])
 
-            payment_rows.append(
-                [
-                    "Autorización Webpay",
-                    payment.authorization_code or "-",
-                ]
-            )
-
-            payment_rows.append(
-                [
-                    "Orden de pago",
-                    payment.buy_order,
-                ]
-            )
-
-        payment_table = Table(
-            payment_rows,
-            colWidths=[
-                4.2 * cm,
-                11.8 * cm,
-            ],
-        )
-
-        payment_table.setStyle(
-            TableStyle(
-                [
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.5,
-                        colors.HexColor("#e2e8f0"),
-                    ),
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (0, -1),
-                        colors.HexColor("#fff7ed"),
-                    ),
-                    (
-                        "FONTNAME",
-                        (0, 0),
-                        (0, -1),
-                        "Helvetica-Bold",
-                    ),
-                    (
-                        "FONTSIZE",
-                        (0, 0),
-                        (-1, -1),
-                        9,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        6,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        6,
-                    ),
-                ]
-            )
-        )
-
+        payment_table = Table(payment_rows, colWidths=[4.2 * cm, 11.8 * cm])
+        payment_table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#fff7ed")), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
         elements.append(payment_table)
 
-        elements.append(
-            Spacer(
-                1,
-                0.25 * cm,
-            )
-        )
-
-        elements.append(
-            Paragraph(
-                (
-                    "<b>Presenta este código QR al abordar.</b><br/>"
-                    "Cada pasaje posee un código de validación independiente."
-                ),
-                normal_style,
-            )
-        )
-
-    # ============================================================
-    # 7. GENERAR
-    # ============================================================
+        elements.append(Spacer(1, 0.25 * cm))
+        elements.append(Paragraph("<b>Presenta este código QR al abordar.</b><br/>Cada pasaje posee un código de validación independiente.", normal_style))
 
     doc.build(elements)
-
     return response
