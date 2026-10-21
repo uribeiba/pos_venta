@@ -7691,7 +7691,7 @@ def client_display(request, trip_id=None):
     return render(request, 'client_portal/client_display.html', context)
 
 
-@login_required
+
 def download_ticket_pdf(request, ticket_id):
     """
     FASE 2D.4 - Comprobante PDF individual + QR seguro.
@@ -8470,7 +8470,7 @@ def download_ticket_pdf(request, ticket_id):
     return response
 
 
-@login_required
+
 def download_purchase_pdf(request, order_code):
     """
     FASE 2D.4.1
