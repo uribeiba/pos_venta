@@ -140,6 +140,9 @@
     <div class="main-content">
         <div class="search-card-totem">
             <form action="{% url 'client_portal:search_trips' %}" method="GET">
+                <!-- NUEVA LÍNEA: Indica al sistema que el usuario viene del tótem -->
+                <input type="hidden" name="totem" value="1">
+
                 <div class="row g-4">
                     <!-- Origen -->
                     <div class="col-md-6">

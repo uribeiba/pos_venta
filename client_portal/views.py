@@ -532,6 +532,12 @@ def search_trips(request):
     public_company = get_public_company(request)
 
     # ============================================================
+    # NUEVO: DETECTAR SI VIENE DEL TÓTEM
+    # ============================================================
+    is_totem = request.GET.get("totem") == "1"
+    template_name = "totem/search_results_totem.html" if is_totem else "client_portal/search_results.html"
+
+    # ============================================================
     # 1. PARÁMETROS
     # ============================================================
     origin_raw = request.GET.get("origin", "").strip()
@@ -549,7 +555,7 @@ def search_trips(request):
     if not origin or not destination or not date_str:
         return render(
             request,
-            "client_portal/search_results.html",
+            template_name,
             {
                 "trips": [],
                 "origin": origin_raw,
@@ -558,13 +564,14 @@ def search_trips(request):
                 "return_date": return_date,
                 "error": "Por favor completa todos los campos de búsqueda",
                 "public_company": public_company,
+                "is_totem": is_totem,
             },
         )
 
     if origin == destination:
         return render(
             request,
-            "client_portal/search_results.html",
+            template_name,
             {
                 "trips": [],
                 "origin": origin_raw,
@@ -573,6 +580,7 @@ def search_trips(request):
                 "return_date": return_date,
                 "error": "El origen y el destino deben ser diferentes.",
                 "public_company": public_company,
+                "is_totem": is_totem,
             },
         )
 
@@ -587,7 +595,7 @@ def search_trips(request):
     except ValueError:
         return render(
             request,
-            "client_portal/search_results.html",
+            template_name,
             {
                 "trips": [],
                 "origin": origin_raw,
@@ -596,6 +604,7 @@ def search_trips(request):
                 "return_date": return_date,
                 "error": "La fecha ingresada no es válida",
                 "public_company": public_company,
+                "is_totem": is_totem,
             },
         )
 
@@ -803,7 +812,7 @@ def search_trips(request):
     # ============================================================
     return render(
         request,
-        "client_portal/search_results.html",
+        template_name,
         {
             "trips": trips_data,
             "origin": origin_raw, # Enviamos el original para mostrarlo en pantalla
@@ -812,6 +821,7 @@ def search_trips(request):
             "return_date": return_date,
             "total_results": len(trips_data),
             "public_company": public_company,
+            "is_totem": is_totem,
         },
     )
 
