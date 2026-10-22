@@ -478,6 +478,52 @@ def home(request):
         context,
     )
 
+def totem_home(request):
+    """
+    Pantalla principal del Tótem.
+    Diseñada para pantallas táctiles (iPad) sin menús de navegación.
+    """
+    public_company = get_public_company(request)
+
+    available_trips_qs = Trip.objects.filter(departure__gte=timezone.now())
+    if public_company:
+        available_trips_qs = available_trips_qs.filter(bus__company=public_company)
+
+    trip_stop_city_ids = (
+        TripStop.objects.filter(trip__in=available_trips_qs)
+        .values_list("city_id", flat=True)
+        .distinct()
+    )
+
+    origin_cities = City.objects.filter(id__in=trip_stop_city_ids).order_by("name")
+    destination_cities = City.objects.filter(id__in=trip_stop_city_ids).order_by("name")
+
+    # Obtener el logo de la empresa
+    company_logo = None
+    company_name = "Buses La Porteña"
+    primary_color = "#0B3B78"
+    
+    if public_company:
+        company_name = public_company.name
+        if public_company.logo:
+            company_logo = public_company.logo.url
+        if public_company.primary_color:
+            primary_color = public_company.primary_color
+
+    context = {
+        "public_company": public_company,
+        "origin_cities": origin_cities,
+        "destination_cities": destination_cities,
+        "company_logo": company_logo,
+        "company_name": company_name,
+        "primary_color": primary_color,
+    }
+    return render(request, "client_portal/totem/home_totem.html", context)
+
+
+
+
+
 def search_trips(request):
     """
     Busca viajes disponibles utilizando TripStop.

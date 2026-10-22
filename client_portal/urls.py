@@ -104,4 +104,9 @@ urlpatterns = [
         views.mercadopago_webhook,
         name='mercadopago_webhook'
          ),
+    
+    # ===== TÓTEM TÁCTIL =====
+    path('totem/', views.totem_home, name='totem_home'),
+
 ]
+
