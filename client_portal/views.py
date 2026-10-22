@@ -535,7 +535,7 @@ def search_trips(request):
     # NUEVO: DETECTAR SI VIENE DEL TÓTEM
     # ============================================================
     is_totem = request.GET.get("totem") == "1"
-    template_name = "totem/search_results_totem.html" if is_totem else "client_portal/search_results.html"
+    template_name = "client_portal/totem/search_results_totem.html" if is_totem else "client_portal/search_results.html"
 
     # ============================================================
     # 1. PARÁMETROS
